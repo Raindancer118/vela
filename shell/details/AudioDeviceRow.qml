@@ -52,7 +52,7 @@ Rectangle {
             Layout.bottomMargin: Theme.spacing.md
             implicitHeight: Theme.size.sliderHeightCompact
             enabled: root.node.audio !== null
-            icon: Audio.volumeIcon(root.node.audio?.volume ?? 0, root.node.audio?.muted ?? false)
+            icon: Audio.levelIcon(root.node)
             value: root.node.audio?.volume ?? 0
             dimmed: root.node.audio?.muted ?? false
             onMoved: value => Audio.setVolume(root.node, value)

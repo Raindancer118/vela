@@ -90,7 +90,6 @@ Singleton {
                 "Shut down now?": "Jetzt herunterfahren?",
                 "Cancel": "Abbrechen",
                 "Confirm": "Bestätigen",
-                "Audio output": "Audioausgabe",
                 "Microphone": "Mikrofon",
                 "Muted": "Stumm",
                 "Unmuted": "Aktiv",

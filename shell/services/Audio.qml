@@ -45,8 +45,13 @@ Singleton {
         return node.nickname || node.description || node.name;
     }
 
-    function deviceIcon(node: PwNode): string {
-        if (!node.isSink)
+    // Untyped: also called with plain objects in test-audio.qml.
+    function isInput(node): bool {
+        return node?.type === PwNodeType.AudioSource;
+    }
+
+    function deviceIcon(node): string {
+        if (isInput(node))
             return "mic";
         const name = node.name.toLowerCase();
         if (name.startsWith("bluez"))
@@ -58,6 +63,14 @@ Singleton {
     function streamName(node: PwNode): string {
         const props = node.properties ?? {};
         return props["application.name"] || node.description || node.name;
+    }
+
+    // Icon of a node's volume control: a microphone for inputs.
+    function levelIcon(node): string {
+        const muted = node?.audio?.muted ?? false;
+        if (isInput(node))
+            return muted ? "mic_off" : "mic";
+        return volumeIcon(node?.audio?.volume ?? 0, muted);
     }
 
     function volumeIcon(volume: real, muted: bool): string {

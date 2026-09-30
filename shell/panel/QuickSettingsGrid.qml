@@ -40,7 +40,7 @@ GridLayout {
         Layout.fillWidth: true
         Layout.preferredWidth: 1
         icon: Audio.muted ? "volume_off" : "volume_up"
-        title: I18n.tr("Audio output")
+        title: I18n.tr("Sound")
         subtitle: Audio.muted ? I18n.tr("Muted") : Audio.displayName(Audio.sink)
         active: Audio.sink !== null && !Audio.muted
         hasDetail: true
@@ -55,10 +55,9 @@ GridLayout {
         title: I18n.tr("Microphone")
         subtitle: Audio.source === null ? I18n.tr("No device") : Audio.micMuted ? I18n.tr("Muted") : I18n.tr("Unmuted")
         active: Audio.source !== null && !Audio.micMuted
-        hasDetail: true
+        // Just a mute switch; devices and levels are in the audio tile's menu.
         enabled: Audio.source !== null
         onToggled: Audio.toggleMute(Audio.source)
-        onDetailRequested: ShellState.openDetail("audio")
     }
 
     ToggleTile {
