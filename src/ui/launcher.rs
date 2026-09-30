@@ -72,6 +72,11 @@ pub fn keyboard_mode(preview: bool, close_on_click_outside: bool) -> KeyboardMod
     }
 }
 
+/// Whether the blurred backdrop goes behind the launcher.
+pub fn wants_backdrop(layer: bool, preview: bool, enabled: bool) -> bool {
+    layer && !preview && enabled
+}
+
 /// Side to launch the selected result on for a key press, if any. Only
 /// plain Left/Right in the result list; in the grid they navigate.
 pub fn launch_side(key: gdk::Key, mods: gdk::ModifierType, grid_mode: bool) -> Option<crate::hyprland::Side> {
@@ -149,6 +154,9 @@ pub struct Launcher {
     shown_keys: RefCell<std::collections::HashSet<String>>,
     /// Connector of the monitor the launcher is on.
     monitor: RefCell<Option<String>>,
+    app: adw::Application,
+    /// Full-monitor surface Hyprland blurs (layer rule on "vela-backdrop").
+    backdrop: RefCell<Option<gtk::Window>>,
 }
 
 impl Launcher {
@@ -317,6 +325,8 @@ impl Launcher {
             closing: Rc::default(),
             shown_keys: RefCell::default(),
             monitor: RefCell::default(),
+            app: app.clone(),
+            backdrop: RefCell::default(),
         });
 
         this.connect_signals(&gear);
@@ -460,6 +470,45 @@ impl Launcher {
         self.window.add_css_class(on);
     }
 
+    fn show_backdrop(&self) {
+        let backdrop = self.backdrop.borrow_mut().get_or_insert_with(|| self.new_backdrop()).clone();
+        let monitor = self.window.monitor();
+        if backdrop.is_visible() && backdrop.monitor() == monitor {
+            return;
+        }
+        backdrop.set_monitor(monitor.as_ref());
+        // Within a layer the surface mapped last is on top, so the launcher
+        // is (re)mapped after the backdrop, e.g. when leaving the preview.
+        self.window.set_visible(false);
+        backdrop.present();
+    }
+
+    fn hide_backdrop(&self) {
+        if let Some(b) = self.backdrop.borrow().as_ref() {
+            b.set_visible(false);
+        }
+    }
+
+    fn new_backdrop(&self) -> gtk::Window {
+        let w = gtk::Window::builder().application(&self.app).title("Vela backdrop").decorated(false).build();
+        w.add_css_class("vela-backdrop");
+        w.init_layer_shell();
+        w.set_layer(Layer::Overlay);
+        w.set_namespace(Some("vela-backdrop"));
+        w.set_keyboard_mode(KeyboardMode::None);
+        for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+            w.set_anchor(edge, true);
+        }
+        w.set_exclusive_zone(-1);
+        // Purely visual: pointer input goes to whatever is below.
+        w.connect_map(|w| {
+            if let Some(surface) = w.surface() {
+                surface.set_input_region(Some(&gtk::cairo::Region::create()));
+            }
+        });
+        w
+    }
+
     fn pick_monitor(&self) -> Option<gdk::Monitor> {
         let display = gdk::Display::default()?;
         let monitors = display.monitors();
@@ -514,6 +563,11 @@ impl Launcher {
         self.shift_held.set(false);
         self.shown_at.set(Some(Instant::now()));
         self.show_mode();
+        if wants_backdrop(self.layer, preview, self.config.borrow().appearance.backdrop) {
+            self.show_backdrop();
+        } else {
+            self.hide_backdrop();
+        }
         self.window.present();
         if !preview {
             self.entry.grab_focus();
@@ -524,6 +578,7 @@ impl Launcher {
         if !self.is_visible() {
             return;
         }
+        self.hide_backdrop();
         self.preview.set(false);
         self.had_focus.set(false);
         match style::motion(&self.config.borrow()) {
@@ -1127,6 +1182,14 @@ mod tests {
             "without click-outside other windows stay usable"
         );
         assert_eq!(keyboard_mode(true, true), KeyboardMode::None, "settings preview never takes the keyboard");
+    }
+
+    #[test]
+    fn backdrop_only_behind_the_interactive_launcher_when_enabled() {
+        assert!(wants_backdrop(true, false, true));
+        assert!(!wants_backdrop(true, true, true), "not behind the settings preview");
+        assert!(!wants_backdrop(true, false, false));
+        assert!(!wants_backdrop(false, false, true), "no layer-shell, no backdrop");
     }
 
     #[test]

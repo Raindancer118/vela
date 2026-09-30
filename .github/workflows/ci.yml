@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Install dependencies
         run: pacman -Syu --noconfirm --needed base-devel git rust gtk4 gtk4-layer-shell libadwaita weston adwaita-icon-theme
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Format
         run: cargo fmt --check
       - name: Clippy

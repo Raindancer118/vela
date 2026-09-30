@@ -91,6 +91,13 @@ function M.setup(opts)
         no_anim      = true,
     })
 
+    -- Optional blurred backdrop (Settings → Appearance); Hyprland fades it.
+    hl.layer_rule({
+        name  = "vela-backdrop",
+        match = { namespace = "^vela-backdrop$" },
+        blur  = o.blur,
+    })
+
     if o.autostart then
         hl.on("hyprland.start", function()
             -- The service needs this session's Wayland environment; restart

@@ -81,6 +81,10 @@ pub struct Appearance {
     pub animations: bool,
     /// 1.0 = normal, 2.0 = twice as fast.
     pub animation_speed: f64,
+    /// Blur (and dim) everything else on the launcher's monitor while it is open.
+    pub backdrop: bool,
+    /// Darkening of the backdrop, 0.0–0.8.
+    pub backdrop_dim: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -230,6 +234,8 @@ impl Default for Appearance {
             font_scale: 1.0,
             animations: true,
             animation_speed: 1.0,
+            backdrop: false,
+            backdrop_dim: 0.18,
         }
     }
 }
@@ -378,6 +384,7 @@ impl Config {
         a.surface_opacity = finite_or(a.surface_opacity, 0.06).clamp(0.0, 1.0);
         a.font_scale = finite_or(a.font_scale, 1.0).clamp(0.6, 2.0);
         a.animation_speed = finite_or(a.animation_speed, 1.0).clamp(0.25, 4.0);
+        a.backdrop_dim = finite_or(a.backdrop_dim, 0.18).clamp(0.0, 0.8);
         a.accent = a.accent.trim().to_owned();
         if !valid_hex_color(&a.accent) {
             a.accent = Appearance::default().accent;
@@ -532,6 +539,25 @@ mod tests {
         assert_eq!(cfg.apps.custom[0].id, "action-1");
         assert_eq!(cfg.search.file_roots, vec!["~"]);
         assert_eq!(cfg.claude.executable, "claude");
+    }
+
+    #[test]
+    fn example_config_is_valid_and_matches_the_defaults() {
+        let cfg = Config::from_toml(include_str!("../data/config.example.toml")).unwrap();
+        assert_eq!(cfg.appearance.backdrop, Appearance::default().backdrop);
+        assert_eq!(cfg.general.main_monitor, General::default().main_monitor);
+    }
+
+    #[test]
+    fn backdrop_is_off_by_default_and_its_dim_is_clamped() {
+        let a = Appearance::default();
+        assert!(!a.backdrop, "blurring the desktop is opt-in");
+        assert!((0.0..=0.8).contains(&a.backdrop_dim));
+        let cfg = Config::from_toml("[appearance]\nbackdrop = true\nbackdrop_dim = 3.0\n").unwrap();
+        assert!(cfg.appearance.backdrop);
+        assert_eq!(cfg.appearance.backdrop_dim, 0.8, "never black out the screen");
+        let cfg = Config::from_toml("[appearance]\nbackdrop_dim = -1.0\n").unwrap();
+        assert_eq!(cfg.appearance.backdrop_dim, 0.0);
     }
 
     #[test]

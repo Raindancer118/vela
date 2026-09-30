@@ -83,7 +83,9 @@ dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup()
    release bind can't.
 2. **Layer rule** for the `vela` namespace: blur behind the launcher, with
    `ignore_alpha` set so the soft shadow isn't blurred. Hyprland's own layer
-   animation is off because vela animates itself.
+   animation is off because vela animates itself. A second rule blurs the
+   `vela-backdrop` layer: the optional blurred, dimmed screen behind the
+   launcher (Settings → Appearance → Blur).
 3. **Autostart** of the daemon on `hyprland.start`. It imports the session
    environment into systemd and restarts `vela.service`, falling back to
    starting the daemon directly.
@@ -162,6 +164,7 @@ overwriting an unparsable file, vela backs it up as `config.toml.broken-<time>`.
 | | `columns` | fixed column count, `0` = derived from width |
 | | `show_labels` | app names under the icons |
 | | `animations`, `animation_speed` | motion on/off; speed factor (2 = twice as fast) |
+| | `backdrop`, `backdrop_dim` | blur everything else on the launcher's monitor while it is open; darkening 0–0.8 (blur strength = Hyprland's `decoration.blur`) |
 | `apps` | `grid` | `pinned`, `pinned_then_all`, `all` |
 | | `pinned` | desktop IDs (`firefox.desktop`), `custom:<id>` or `vela:settings`, in order |
 | | `hidden` | desktop IDs never shown |

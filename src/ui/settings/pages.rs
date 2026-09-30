@@ -467,8 +467,24 @@ pub fn appearance(b: &Binder) -> adw::PreferencesPage {
 
     let blur = group(
         "Blur",
-        "Blur behind the launcher is rendered by Hyprland. The provided Hyprland snippet enables it for the “vela” layer; see README → Hyprland.",
+        "Blur is rendered by Hyprland, its strength comes from decoration.blur. The provided Hyprland snippet enables it for the “vela” and “vela-backdrop” layers; see README → Hyprland.",
     );
+    blur.add(&b.switch(
+        "Blur the screen behind",
+        "Everything else on the launcher's monitor is blurred while it is open",
+        |c| c.appearance.backdrop,
+        |c, v| c.appearance.backdrop = v,
+    ));
+    blur.add(&b.spin(
+        "Backdrop dimming",
+        "0 = blur only, 0.8 = much darker",
+        0.0,
+        0.8,
+        0.02,
+        2,
+        |c| c.appearance.backdrop_dim,
+        |c, v| c.appearance.backdrop_dim = v,
+    ));
     p.add(&blur);
     p
 }

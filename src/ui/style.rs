@@ -70,10 +70,12 @@ pub fn launcher_css(cfg: &Config) -> String {
     let claude = CLAUDE_ORANGE;
     let font = a.font_scale;
     let spacing = a.spacing;
+    let backdrop_dim = a.backdrop_dim;
 
     format!(
         r#"
 window.vela-launcher, window.vela-launcher.background {{ background: transparent; box-shadow: none; }}
+window.vela-backdrop, window.vela-backdrop.background {{ background: rgba(0, 0, 0, {backdrop_dim}); box-shadow: none; }}
 .vela-launcher .vela-panel {{
   background-color: {bg};
   color: {fg};

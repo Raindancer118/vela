@@ -24,6 +24,9 @@ show_labels = true
 font_scale = 1.0
 animations = true
 animation_speed = 1.0
+# Blur and dim the rest of the launcher's monitor while open (needs the vela-backdrop layer rule).
+backdrop = false
+backdrop_dim = 0.18
 
 [apps]
 grid = "pinned"
