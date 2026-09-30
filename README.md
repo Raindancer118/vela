@@ -115,6 +115,7 @@ and it isn't tested with vela. Only the Lua module above is.
 | Enter | open the selected entry |
 | Shift+Enter | send the whole input to Claude Code |
 | Ctrl+Enter | show the selected file in its folder |
+| ← / → | open the selected result on the monitor left / right of this one (in the result list, when there is one) |
 | Ctrl+, | settings |
 | Esc | close |
 | right-click | pin / unpin / move tiles |

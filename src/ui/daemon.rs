@@ -306,6 +306,12 @@ impl Daemon {
                 }
             }),
             Request::Hidden => {}
+            Request::OnMonitor(monitor, inner) => {
+                if !crate::hyprland::focus_monitor(&monitor) {
+                    log::warn!("could not focus monitor {monitor}");
+                }
+                self.on_request(*inner);
+            }
         }
     }
 

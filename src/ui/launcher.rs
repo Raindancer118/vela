@@ -33,12 +33,17 @@ type RequestHandler = Rc<dyn Fn(Request)>;
 pub enum Request {
     Query(u64, String),
     LaunchEntry(String),
-    OpenPath { path: PathBuf, reveal: bool },
+    OpenPath {
+        path: PathBuf,
+        reveal: bool,
+    },
     Claude(String),
     OpenSettings,
     TogglePin(String),
     MovePin(String, i32),
     Hidden,
+    /// Run the inner request with the named monitor focused.
+    OnMonitor(String, Box<Request>),
 }
 
 /// Columns of the app grid for the configured width.
@@ -64,6 +69,20 @@ pub fn keyboard_mode(preview: bool, close_on_click_outside: bool) -> KeyboardMod
         (true, _) => KeyboardMode::None,
         (false, true) => KeyboardMode::Exclusive,
         (false, false) => KeyboardMode::OnDemand,
+    }
+}
+
+/// Side to launch the selected result on for a key press, if any. Only
+/// plain Left/Right in the result list; in the grid they navigate.
+pub fn launch_side(key: gdk::Key, mods: gdk::ModifierType, grid_mode: bool) -> Option<crate::hyprland::Side> {
+    use crate::hyprland::Side;
+    if grid_mode || mods.intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::SHIFT_MASK | gdk::ModifierType::ALT_MASK) {
+        return None;
+    }
+    match key {
+        gdk::Key::Left => Some(Side::Left),
+        gdk::Key::Right => Some(Side::Right),
+        _ => None,
     }
 }
 
@@ -128,6 +147,8 @@ pub struct Launcher {
     closing: Rc<RefCell<Option<glib::SourceId>>>,
     /// Identity of the rows currently shown; only new rows animate in.
     shown_keys: RefCell<std::collections::HashSet<String>>,
+    /// Connector of the monitor the launcher is on.
+    monitor: RefCell<Option<String>>,
 }
 
 impl Launcher {
@@ -293,6 +314,7 @@ impl Launcher {
             anim_flip: Cell::new(false),
             closing: Rc::default(),
             shown_keys: RefCell::default(),
+            monitor: RefCell::default(),
         });
 
         this.connect_signals(&gear);
@@ -452,6 +474,7 @@ impl Launcher {
         }
         let monitor = self.pick_monitor();
         self.window.set_monitor(monitor.as_ref());
+        *self.monitor.borrow_mut() = monitor.as_ref().and_then(|m| m.connector()).map(|c| c.to_string());
         let height = monitor
             .clone()
             .or_else(|| gdk::Display::default().and_then(|d| d.monitors().item(0).and_downcast::<gdk::Monitor>()))
@@ -977,6 +1000,21 @@ impl Launcher {
                 }
                 Stop
             }
+            gdk::Key::Left | gdk::Key::Right if launch_side(key, mods, grid_mode).is_some() => {
+                let side = launch_side(key, mods, grid_mode).expect("checked above");
+                let target = self.monitor.borrow().clone().and_then(|cur| {
+                    let monitors = crate::hyprland::monitors();
+                    crate::hyprland::neighbor(&monitors, &cur, side).map(str::to_owned)
+                });
+                // Without a monitor on that side the arrow edits the query.
+                match (target, self.selected_index().and_then(|i| self.item_request(i, mods))) {
+                    (Some(monitor), Some(req)) => {
+                        self.request(Request::OnMonitor(monitor, Box::new(req)));
+                        Stop
+                    }
+                    _ => Proceed,
+                }
+            }
             gdk::Key::Tab | gdk::Key::ISO_Left_Tab => Stop,
             _ => {
                 if !self.entry.has_focus() && !self.preview.get() {
@@ -988,15 +1026,20 @@ impl Launcher {
     }
 
     fn activate_item(&self, idx: usize, mods: gdk::ModifierType) {
-        let item = self.items.borrow().get(idx).cloned();
-        let reveal = mods.contains(gdk::ModifierType::CONTROL_MASK);
-        match item {
-            Some(Item::App { catalog, index }) => self.request(Request::LaunchEntry(catalog.entries[index].key.clone())),
-            Some(Item::File(hit)) => self.request(Request::OpenPath { path: hit.path, reveal }),
-            Some(Item::Path(p)) => self.request(Request::OpenPath { path: p, reveal }),
-            Some(Item::Claude) => self.request(Request::Claude(self.entry.text().to_string())),
-            None => {}
+        if let Some(req) = self.item_request(idx, mods) {
+            self.request(req);
         }
+    }
+
+    fn item_request(&self, idx: usize, mods: gdk::ModifierType) -> Option<Request> {
+        let item = self.items.borrow().get(idx).cloned()?;
+        let reveal = mods.contains(gdk::ModifierType::CONTROL_MASK);
+        Some(match item {
+            Item::App { catalog, index } => Request::LaunchEntry(catalog.entries[index].key.clone()),
+            Item::File(hit) => Request::OpenPath { path: hit.path, reveal },
+            Item::Path(p) => Request::OpenPath { path: p, reveal },
+            Item::Claude => Request::Claude(self.entry.text().to_string()),
+        })
     }
 }
 
@@ -1074,6 +1117,26 @@ mod tests {
             "without click-outside other windows stay usable"
         );
         assert_eq!(keyboard_mode(true, true), KeyboardMode::None, "settings preview never takes the keyboard");
+    }
+
+    #[test]
+    fn left_right_in_result_list_launch_on_a_side() {
+        use crate::hyprland::Side;
+        let none = gdk::ModifierType::empty();
+        assert_eq!(launch_side(gdk::Key::Left, none, false), Some(Side::Left));
+        assert_eq!(launch_side(gdk::Key::Right, none, false), Some(Side::Right));
+        assert_eq!(launch_side(gdk::Key::Right, none, true), None, "grid navigation keeps the arrows");
+        assert_eq!(
+            launch_side(gdk::Key::Left, gdk::ModifierType::SHIFT_MASK, false),
+            None,
+            "Shift+arrow selects text"
+        );
+        assert_eq!(
+            launch_side(gdk::Key::Left, gdk::ModifierType::CONTROL_MASK, false),
+            None,
+            "Ctrl+arrow jumps words"
+        );
+        assert_eq!(launch_side(gdk::Key::Up, none, false), None);
     }
 
     #[test]
