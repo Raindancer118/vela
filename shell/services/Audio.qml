@@ -18,7 +18,6 @@ Singleton {
 
     readonly property real volume: sink?.audio?.volume ?? 0
     readonly property bool muted: sink?.audio?.muted ?? true
-    readonly property bool micMuted: source?.audio?.muted ?? true
 
     function setVolume(node: PwNode, value: real): void {
         if (!node?.audio)

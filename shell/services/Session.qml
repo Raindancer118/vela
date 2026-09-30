@@ -19,6 +19,12 @@ Singleton {
         return I18n.uptime(Math.max(0, Math.floor((clock.date.getTime() - bootTime) / 1000)));
     }
 
+    // vela's settings window (launcher, control center, appearance).
+    function openSettings(): void {
+        ShellState.closePanel();
+        Quickshell.execDetached([Quickshell.env("VELA_BIN") || "vela", "settings", "panel"]);
+    }
+
     function lock(): void {
         ShellState.closePanel();
         Quickshell.execDetached(Config.lockCommand);

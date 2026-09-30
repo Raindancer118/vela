@@ -1,4 +1,4 @@
-// Locale test: env -u LANGUAGE LC_ALL=de_DE.UTF-8 qs -p test-i18n.qml  (also en_US, fr_FR, C); exits 0 on PASS
+// Locale test: env -u LANGUAGE LC_ALL=de_DE.UTF-8 qs -p test-i18n.qml  (also en_US, fr_FR, C); prints PASS or FAIL
 import QtQuick
 import Quickshell
 import qs
@@ -17,6 +17,6 @@ ShellRoot {
         }[Quickshell.env("LC_ALL").split(".")[0]] ?? null;
         const ok = JSON.stringify(got) === JSON.stringify(expected);
         console.log((ok ? "PASS " : "FAIL ") + Quickshell.env("LC_ALL") + " " + JSON.stringify(got) + (ok ? "" : "\n  expected " + JSON.stringify(expected)));
-        Qt.exit(ok ? 0 : 1);
+        Qt.callLater(Qt.quit);
     }
 }

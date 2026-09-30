@@ -4,7 +4,7 @@ import qs
 import qs.components
 import qs.services
 
-// Battery + uptime on the left, lock/power on the right. The power button
+// Battery + uptime on the left, settings/lock/power on the right. The power button
 // expands a session menu with an inline confirmation step.
 ColumnLayout {
     id: root
@@ -93,6 +93,11 @@ ColumnLayout {
                 color: Theme.colors.textMuted
                 font.pixelSize: Theme.font.small
             }
+        }
+
+        IconButton {
+            icon: "settings"
+            onClicked: Session.openSettings()
         }
 
         IconButton {

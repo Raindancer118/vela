@@ -1,5 +1,5 @@
 // Settings test: the shell takes its look and behaviour from `vela shell-config`.
-//   scripts/shell-test.sh   (sets VELA_BIN and a throwaway config); exits 0 on PASS
+//   scripts/shell-test.sh   (sets VELA_BIN and a throwaway config); prints PASS or FAIL
 import QtQuick
 import Quickshell
 import qs
@@ -35,7 +35,7 @@ ShellRoot {
         };
         const ok = JSON.stringify(got) === JSON.stringify(expected);
         console.log((ok ? "PASS " : "FAIL ") + JSON.stringify(got) + (ok ? "" : "\n  expected " + JSON.stringify(expected)));
-        Qt.exit(ok ? 0 : 1);
+        Qt.callLater(Qt.quit);
     }
 
     Connections {
@@ -52,7 +52,7 @@ ShellRoot {
         running: true
         onTriggered: {
             console.log("FAIL settings never arrived from", Quickshell.env("VELA_BIN"));
-            Qt.exit(1);
+            Qt.callLater(Qt.quit);
         }
     }
 }

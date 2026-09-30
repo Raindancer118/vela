@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs
 import qs.components
 import qs.services
+import Quickshell.Services.UPower
 
 // Icon = toggle, rest of the tile = detail view (where one exists).
 GridLayout {
@@ -51,13 +52,12 @@ GridLayout {
     ToggleTile {
         Layout.fillWidth: true
         Layout.preferredWidth: 1
-        icon: Audio.micMuted ? "mic_off" : "mic"
-        title: I18n.tr("Microphone")
-        subtitle: Audio.source === null ? I18n.tr("No device") : Audio.micMuted ? I18n.tr("Muted") : I18n.tr("Unmuted")
-        active: Audio.source !== null && !Audio.micMuted
-        // Just a mute switch; devices and levels are in the audio tile's menu.
-        enabled: Audio.source !== null
-        onToggled: Audio.toggleMute(Audio.source)
+        icon: PowerMode.icon(PowerMode.profile)
+        title: I18n.tr("Power mode")
+        subtitle: PowerMode.label(PowerMode.profile)
+        // Highlighted when not on the default (balanced) profile.
+        active: PowerMode.profile !== PowerProfile.Balanced
+        onToggled: PowerMode.cycle()
     }
 
     ToggleTile {
