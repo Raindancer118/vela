@@ -17,6 +17,7 @@ Singleton {
     readonly property bool closeOnFocusLoss: vp.closeOnFocusLoss
     readonly property bool panelBackdrop: vp.backdrop
     readonly property bool workspaceOsd: vp.workspaceOsd
+    readonly property bool clockCentered: vp.clockCentered
 
     readonly property int popupTimeout: vp.popupTimeoutMs
     // Upper bound for app-requested timeouts (ms).

@@ -521,6 +521,12 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
         |c, v| c.panel.close_on_focus_loss = v,
     ));
     panel.add(&b.switch(
+        "Centred clock",
+        "Clock and date in the middle of the panel",
+        |c| c.panel.clock_centered,
+        |c, v| c.panel.clock_centered = v,
+    ));
+    panel.add(&b.switch(
         "Workspace indicator",
         "Dots at the top of the screen when switching workspaces",
         |c| c.panel.workspace_osd,

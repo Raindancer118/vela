@@ -71,6 +71,7 @@ pub fn shell_json(cfg: &Config) -> String {
             "groupCollapsedCount": pn.group_collapsed_count,
             "workspaceOsd": pn.workspace_osd,
             "nightLightTemperature": pn.night_light_temperature,
+            "clockCentered": pn.clock_centered,
         },
     })
     .to_string()
@@ -182,6 +183,7 @@ mod tests {
         cfg.general.opacity = 0.7;
         cfg.panel.width = 500;
         cfg.panel.backdrop = true;
+        cfg.panel.clock_centered = true;
         let j = json(&cfg);
         assert_eq!(j["colors"]["primary"], "#ff0000");
         assert_eq!(j["appearance"]["radius"], 30);
@@ -191,6 +193,7 @@ mod tests {
         assert_eq!(j["panel"]["width"], 500);
         assert_eq!(j["panel"]["backdrop"], true);
         assert_eq!(j["panel"]["popupTimeoutMs"], 5000);
+        assert_eq!(j["panel"]["clockCentered"], true);
     }
 
     #[test]

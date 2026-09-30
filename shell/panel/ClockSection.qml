@@ -18,6 +18,7 @@ ColumnLayout {
     StyledText {
         Layout.fillWidth: true
         text: Config.locale.toString(clock.date, Config.timeFormat)
+        horizontalAlignment: Config.clockCentered ? Text.AlignHCenter : Text.AlignLeft
         font.pixelSize: Theme.font.clock
         font.weight: Theme.font.weightLight
     }
@@ -25,6 +26,7 @@ ColumnLayout {
     StyledText {
         Layout.fillWidth: true
         text: Config.locale.toString(clock.date, Config.dateFormat)
+        horizontalAlignment: Config.clockCentered ? Text.AlignHCenter : Text.AlignLeft
         color: Theme.colors.textMuted
         font.pixelSize: Theme.font.title
     }

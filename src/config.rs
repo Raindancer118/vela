@@ -108,6 +108,8 @@ pub struct Panel {
     pub workspace_osd: bool,
     /// Night light colour temperature in Kelvin.
     pub night_light_temperature: u32,
+    /// Clock and date centred at the top of the panel instead of on the left.
+    pub clock_centered: bool,
 }
 
 impl Default for Panel {
@@ -122,6 +124,7 @@ impl Default for Panel {
             group_collapsed_count: 2,
             workspace_osd: true,
             night_light_temperature: 4000,
+            clock_centered: false,
         }
     }
 }
@@ -616,6 +619,7 @@ mod tests {
         assert_eq!((p.popup_timeout_secs, p.popup_max_visible, p.group_collapsed_count), (5, 4, 2));
         assert!(p.critical_popups_stay && p.workspace_osd);
         assert_eq!(p.night_light_temperature, 4000);
+        assert!(!p.clock_centered, "clock on the left by default");
         let cfg = Config::from_toml("[panel]\nbackdrop = true\n").unwrap();
         assert!(cfg.panel.backdrop);
         assert!(!cfg.appearance.backdrop, "launcher and panel backdrop are independent");

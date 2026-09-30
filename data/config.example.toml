@@ -107,3 +107,4 @@ critical_popups_stay = true
 group_collapsed_count = 2
 workspace_osd = true
 night_light_temperature = 4000
+clock_centered = false

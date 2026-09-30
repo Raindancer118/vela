@@ -42,6 +42,7 @@ width = 500
 popup_timeout_secs = 7
 close_on_focus_loss = false
 backdrop = true
+clock_centered = true
 TOML
 
 fail() { echo "FAIL: $*"; exit 1; }

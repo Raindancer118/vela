@@ -200,6 +200,7 @@ overwriting an unparsable file, vela backs it up as `config.toml.broken-<time>`.
 | | `group_collapsed_count` | notifications per app before “Show more” |
 | | `workspace_osd` | workspace dots when switching workspaces |
 | | `night_light_temperature` | Kelvin (hyprsunset) |
+| | `clock_centered` | clock and date in the middle of the panel |
 | `terminal` | `executable` | default `kitty` |
 | | `exec_args` | arguments before the command; omit to use the known default (`-e` for most, none for kitty/foot, `start --` for wezterm) |
 
