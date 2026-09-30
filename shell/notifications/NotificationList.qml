@@ -185,6 +185,15 @@ ColumnLayout {
                 values: Notifications.apps
             }
 
+            Connections {
+                target: ShellState
+
+                function onPanelOpenChanged(): void {
+                    if (ShellState.panelOpen)
+                        view.forceLayout();
+                }
+            }
+
             delegate: NotificationGroup {
                 required property string modelData
                 required property int index

@@ -26,7 +26,11 @@ Card {
     implicitHeight: column.implicitHeight
     clip: true
 
+    // Only while visible: animating in the hidden panel left the ListView
+    // with stale positions (cards overlapping after it opened).
     Behavior on implicitHeight {
+        enabled: ShellState.panelOpen
+
         Anim {}
     }
 

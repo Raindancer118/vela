@@ -19,7 +19,7 @@ const ENTRIES: [(&str, &str, &str, &str); 9] = [
     ("Launcher", "search", "Search", "edit-find-symbolic"),
     ("Launcher", "claude", "Claude", "vela-claude-symbolic"),
     ("Control center", "panel", "Panel", "view-dual-symbolic"),
-    ("Control center", "notifications", "Notifications", "notification-active-symbolic"),
+    ("Control center", "notifications", "Notifications", "notifications-symbolic"),
     ("Control center", "power", "Power & idle", "system-shutdown-symbolic"),
     ("Everywhere", "appearance", "Appearance", "applications-graphics-symbolic"),
     ("Everywhere", "system", "System", "preferences-system-symbolic"),
@@ -50,10 +50,11 @@ impl SettingsWindow {
         window.add_css_class("vela-settings");
         let binder = Binder::new(daemon.store.clone());
 
-        // Slides up or down depending on where the page is in the sidebar.
+        // Old page fades out quickly while the new one rises in (CSS page-in),
+        // like StoneIntelligence's area switch.
         let stack = gtk::Stack::builder()
-            .transition_type(gtk::StackTransitionType::SlideUpDown)
-            .transition_duration(260)
+            .transition_type(gtk::StackTransitionType::Crossfade)
+            .transition_duration(140)
             .build();
         for (_, id, _, _) in ENTRIES {
             let page: gtk::Widget = match id {
@@ -85,9 +86,17 @@ impl SettingsWindow {
                 row.set_header(None::<&gtk::Widget>);
             }
         });
+        // Selection marker as its own layer so it can glide between rows.
+        let pill = gtk::Box::builder()
+            .css_classes(["vela-sidebar-pill"])
+            .can_target(false)
+            .valign(gtk::Align::Start)
+            .build();
+        let overlay = gtk::Overlay::builder().child(&sidebar).build();
+        overlay.add_overlay(&pill);
         let sidebar_scroll = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
-            .child(&sidebar)
+            .child(&overlay)
             .vexpand(true)
             .build();
         let version = gtk::Label::builder()
@@ -141,17 +150,43 @@ impl SettingsWindow {
         bp.add_setter(&split, "collapsed", Some(&true.to_value()));
         window.add_breakpoint(bp);
 
+        let marker = Rc::new(Marker::new(&pill, &sidebar));
+        let flip = Rc::new(std::cell::Cell::new(false));
         {
-            let (stack, content_page, split) = (stack.clone(), content_page.clone(), split.clone());
+            let (stack, content_page, split, marker, store) = (stack.clone(), content_page.clone(), split.clone(), marker.clone(), daemon.store.clone());
             sidebar.connect_row_selected(move |_, row| {
                 let Some(row) = row else { return };
                 let (_, id, title, _) = ENTRIES[row.index() as usize];
+                let animate = store.get().appearance.animations;
                 stack.set_visible_child_name(id);
+                if let Some(page) = stack.visible_child() {
+                    // Two identical keyframe sets: switching restarts the animation.
+                    let on = if flip.replace(!flip.get()) { "vela-page-in-a" } else { "vela-page-in-b" };
+                    for c in ["vela-page-in-a", "vela-page-in-b"] {
+                        page.remove_css_class(c);
+                    }
+                    if animate {
+                        page.add_css_class(on);
+                    }
+                }
+                marker.move_to(row, animate);
                 content_page.set_title(title);
                 split.set_show_content(true);
             });
         }
         sidebar.select_row(sidebar.row_at_index(0).as_ref());
+        {
+            // Rows have no size before the first allocation.
+            let (marker, sidebar) = (marker.clone(), sidebar.clone());
+            overlay.connect_map(move |_| {
+                let (marker, sidebar) = (marker.clone(), sidebar.clone());
+                glib::idle_add_local_once(move || {
+                    if let Some(row) = sidebar.selected_row() {
+                        marker.move_to(&row, false);
+                    }
+                });
+            });
+        }
 
         let launcher = daemon.launcher.clone();
         preview.connect_toggled(move |b| {
@@ -187,6 +222,58 @@ impl SettingsWindow {
 
     pub fn present(&self) {
         self.window.present();
+    }
+}
+
+/// The sidebar's selection marker: glides to the selected row with a
+/// slight spring.
+struct Marker {
+    pill: gtk::Box,
+    list: gtk::ListBox,
+    anim: std::cell::RefCell<Option<adw::TimedAnimation>>,
+    from: std::cell::Cell<(f64, f64)>,
+}
+
+impl Marker {
+    fn new(pill: &gtk::Box, list: &gtk::ListBox) -> Marker {
+        Marker {
+            pill: pill.clone(),
+            list: list.clone(),
+            anim: Default::default(),
+            from: Default::default(),
+        }
+    }
+
+    fn place(pill: &gtk::Box, y: f64, h: f64) {
+        pill.set_margin_top(y.round().max(0.0) as i32);
+        pill.set_height_request(h.round().max(1.0) as i32);
+    }
+
+    fn move_to(&self, row: &gtk::ListBoxRow, animate: bool) {
+        let Some(bounds) = row.compute_bounds(&self.list) else { return };
+        let (to_y, to_h) = (f64::from(bounds.y()), f64::from(bounds.height()));
+        if let Some(a) = self.anim.borrow_mut().take() {
+            a.skip();
+        }
+        let (from_y, from_h) = self.from.replace((to_y, to_h));
+        if !animate || from_h == 0.0 {
+            Marker::place(&self.pill, to_y, to_h);
+            return;
+        }
+        let pill = self.pill.clone();
+        let target = adw::CallbackAnimationTarget::new(move |t| {
+            Marker::place(&pill, from_y + (to_y - from_y) * t, from_h + (to_h - from_h) * t);
+        });
+        let a = adw::TimedAnimation::builder()
+            .widget(&self.pill)
+            .value_from(0.0)
+            .value_to(1.0)
+            .duration(260)
+            .easing(adw::Easing::EaseOutBack)
+            .target(&target)
+            .build();
+        a.play();
+        *self.anim.borrow_mut() = Some(a);
     }
 }
 
