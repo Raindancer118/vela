@@ -40,6 +40,8 @@ pub fn focused_monitor() -> Option<String> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Monitor {
     pub name: String,
+    /// Make, model and serial; stable across connectors, unlike `name`.
+    pub description: String,
     pub x: i32,
     pub y: i32,
     /// Logical size (scale and rotation applied), matching `x`/`y`.
@@ -68,6 +70,7 @@ pub fn parse_monitors(json: &str) -> Vec<Monitor> {
             let (w, h) = if int("transform").unwrap_or(0) % 2 == 1 { (h, w) } else { (w, h) };
             Some(Monitor {
                 name: m.get("name")?.as_str()?.to_owned(),
+                description: m.get("description").and_then(|v| v.as_str()).unwrap_or_default().trim().to_owned(),
                 x: int("x")?,
                 y: int("y")?,
                 width: w.round() as i32,
@@ -96,6 +99,29 @@ pub fn neighbor<'a>(monitors: &'a [Monitor], from: &str, side: Side) -> Option<&
         .map(|m| m.name.as_str())
 }
 
+/// Connector of the monitor a config value names, if connected. The value
+/// is `desc:<description>` (as in Hyprland monitor rules) or a connector.
+pub fn resolve_monitor<'a>(spec: &str, monitors: &'a [Monitor]) -> Option<&'a str> {
+    let spec = spec.trim();
+    if spec.is_empty() {
+        return None;
+    }
+    let found = match spec.strip_prefix("desc:") {
+        Some(desc) => monitors.iter().find(|m| !m.description.is_empty() && m.description == desc.trim()),
+        None => monitors.iter().find(|m| m.name == spec),
+    };
+    found.map(|m| m.name.as_str())
+}
+
+/// Config value that keeps naming this monitor on another connector.
+pub fn monitor_spec(m: &Monitor) -> String {
+    if m.description.is_empty() {
+        m.name.clone()
+    } else {
+        format!("desc:{}", m.description)
+    }
+}
+
 pub fn monitors() -> Vec<Monitor> {
     request("j/monitors").map(|j| parse_monitors(&j)).unwrap_or_default()
 }
@@ -121,9 +147,9 @@ mod tests {
 
     // Tom's dock: two 1920x1200 screens left of the laptop panel (1920x1080 @ 1.5).
     const DOCK: &str = r#"[
-        {"name":"DP-6","x":0,"y":0,"width":1920,"height":1200,"scale":1,"transform":0,"mirrorOf":"none","focused":false},
-        {"name":"DP-7","x":1920,"y":0,"width":1920,"height":1200,"scale":1,"transform":0,"mirrorOf":"none","focused":true},
-        {"name":"eDP-1","x":3840,"y":0,"width":1920,"height":1080,"scale":1.5,"transform":0,"mirrorOf":"none","focused":false}
+        {"name":"DP-6","description":"HP Inc. HP E243i 6CM8430N46","x":0,"y":0,"width":1920,"height":1200,"scale":1,"transform":0,"mirrorOf":"none","focused":false},
+        {"name":"DP-7","description":"HP Inc. HP E243i 6CM8191WP7","x":1920,"y":0,"width":1920,"height":1200,"scale":1,"transform":0,"mirrorOf":"none","focused":true},
+        {"name":"eDP-1","description":"Chimei Innolux Corporation 0x150C","x":3840,"y":0,"width":1920,"height":1080,"scale":1.5,"transform":0,"mirrorOf":"none","focused":false}
     ]"#;
 
     #[test]
@@ -134,6 +160,7 @@ mod tests {
             m[2],
             Monitor {
                 name: "eDP-1".into(),
+                description: "Chimei Innolux Corporation 0x150C".into(),
                 x: 3840,
                 y: 0,
                 width: 1280,
@@ -157,6 +184,24 @@ mod tests {
         assert_eq!(neighbor(&m, "eDP-1", Side::Right), None);
         assert_eq!(neighbor(&m, "eDP-1", Side::Left), Some("DP-7"), "the adjacent one, not the farthest");
         assert_eq!(neighbor(&m, "HDMI-A-9", Side::Left), None);
+    }
+
+    #[test]
+    fn main_monitor_is_found_by_description_or_connector() {
+        let m = parse_monitors(DOCK);
+        assert_eq!(resolve_monitor("desc:HP Inc. HP E243i 6CM8191WP7", &m), Some("DP-7"));
+        // The dock may hand the same screen another connector next time.
+        let swapped = DOCK.replace("\"DP-7\"", "\"DP-9\"");
+        assert_eq!(resolve_monitor("desc:HP Inc. HP E243i 6CM8191WP7", &parse_monitors(&swapped)), Some("DP-9"));
+        assert_eq!(resolve_monitor("eDP-1", &m), Some("eDP-1"));
+        assert_eq!(resolve_monitor("desc:Some Other Screen", &m), None, "not connected");
+        assert_eq!(resolve_monitor("", &m), None, "unset = follow focus");
+        assert_eq!(monitor_spec(&m[1]), "desc:HP Inc. HP E243i 6CM8191WP7");
+        let nameless = Monitor {
+            description: String::new(),
+            ..m[0].clone()
+        };
+        assert_eq!(monitor_spec(&nameless), "DP-6");
     }
 
     #[test]

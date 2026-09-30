@@ -273,6 +273,29 @@ impl Daemon {
 
     fn on_request(self: &Rc<Self>, req: Request) {
         match req {
+            Request::OnMonitor(monitor, inner) => {
+                if !crate::hyprland::focus_monitor(&monitor) {
+                    log::warn!("could not focus monitor {monitor}");
+                }
+                self.perform(*inner);
+            }
+            Request::LaunchEntry(_) | Request::OpenPath { .. } | Request::Claude(_) => {
+                // Apps open where the launcher is, also when that is the main
+                // monitor rather than the focused one.
+                if let Some(m) = self.launcher.monitor()
+                    && crate::hyprland::focused_monitor().is_some_and(|f| f != m)
+                    && !crate::hyprland::focus_monitor(&m)
+                {
+                    log::warn!("could not focus monitor {m}");
+                }
+                self.perform(req);
+            }
+            req => self.perform(req),
+        }
+    }
+
+    fn perform(self: &Rc<Self>, req: Request) {
+        match req {
             Request::Query(g, text) => self.engine.query(g, &text),
             Request::LaunchEntry(key) => self.launch_entry(&key),
             Request::OpenPath { path, reveal } => {
@@ -306,12 +329,7 @@ impl Daemon {
                 }
             }),
             Request::Hidden => {}
-            Request::OnMonitor(monitor, inner) => {
-                if !crate::hyprland::focus_monitor(&monitor) {
-                    log::warn!("could not focus monitor {monitor}");
-                }
-                self.on_request(*inner);
-            }
+            Request::OnMonitor(monitor, inner) => self.on_request(Request::OnMonitor(monitor, inner)),
         }
     }
 

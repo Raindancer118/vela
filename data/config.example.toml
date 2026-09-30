@@ -6,6 +6,8 @@ max_height = 580
 vertical_position = 18
 opacity = 0.86
 close_on_focus_loss = true
+# Monitor to always open on while connected ("desc:<make model serial>" or "DP-7"); empty = focused.
+main_monitor = ""
 max_results = 20
 systemd_scope = true
 

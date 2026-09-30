@@ -27,6 +27,9 @@ pub struct General {
     /// Background opacity of the launcher (0.0–1.0).
     pub opacity: f64,
     pub close_on_focus_loss: bool,
+    /// Monitor the launcher always opens on while connected: `desc:<make model
+    /// serial>` or a connector name. Empty = the focused monitor.
+    pub main_monitor: String,
     /// Total number of rows in the result list.
     pub max_results: u32,
     /// Start applications in their own transient systemd scope.
@@ -205,6 +208,7 @@ impl Default for General {
             vertical_position: 18,
             opacity: 0.86,
             close_on_focus_loss: true,
+            main_monitor: String::new(),
             max_results: 20,
             systemd_scope: true,
         }
@@ -494,6 +498,9 @@ mod tests {
         assert_eq!(cfg.general.max_height, General::default().max_height);
         assert!(!cfg.claude.shift_enter);
         assert_eq!(cfg.search, Search::default());
+        assert_eq!(cfg.general.main_monitor, "", "no main monitor = follow focus");
+        let cfg = Config::from_toml("[general]\nmain_monitor = \"desc:HP Inc. HP E243i 6CM8191WP7\"\n").unwrap();
+        assert_eq!(cfg.general.main_monitor, "desc:HP Inc. HP E243i 6CM8191WP7");
     }
 
     #[test]

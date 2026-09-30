@@ -152,7 +152,8 @@ overwriting an unparsable file, vela backs it up as `config.toml.broken-<time>`.
 | `general` | `width`, `max_height` | size of the launcher (logical px); content scrolls beyond `max_height` |
 | | `vertical_position` | distance from the top of the monitor in % |
 | | `opacity` | background opacity 0–1 |
-| | `close_on_focus_loss` | hide when another window gets focus |
+| | `close_on_focus_loss` | hide on a click outside the panel (keeps the keyboard while open) |
+| | `main_monitor` | always open on this monitor while connected: `"desc:<make model serial>"` or a connector like `"DP-7"`; empty = focused monitor |
 | | `max_results` | rows in the result list |
 | | `systemd_scope` | start apps in their own transient scope (`systemd-run --user --scope`) |
 | `appearance` | `theme` | `dark`, `midnight`, `graphite`, `nord`, `light` |

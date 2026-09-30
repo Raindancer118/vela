@@ -466,8 +466,16 @@ impl Launcher {
         let all: Vec<gdk::Monitor> = (0..monitors.n_items())
             .filter_map(|i| monitors.item(i).and_downcast::<gdk::Monitor>())
             .collect();
-        let name = crate::hyprland::focused_monitor();
+        let main = self.config.borrow().general.main_monitor.clone();
+        let name = crate::hyprland::resolve_monitor(&main, &crate::hyprland::monitors())
+            .map(str::to_owned)
+            .or_else(crate::hyprland::focused_monitor);
         name.and_then(|n| all.iter().find(|m| m.connector().is_some_and(|c| c == n)).cloned())
+    }
+
+    /// Connector of the monitor the launcher was last placed on.
+    pub fn monitor(&self) -> Option<String> {
+        self.monitor.borrow().clone()
     }
 
     fn place(&self) {

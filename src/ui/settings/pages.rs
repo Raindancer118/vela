@@ -14,6 +14,69 @@ fn page() -> adw::PreferencesPage {
 
 // ------------------------------------------------------------------ General
 
+/// Choices for the main monitor: follow focus, every connected monitor, and
+/// the configured one if it is unplugged right now.
+fn main_monitor_choices(current: &str) -> Vec<(String, String)> {
+    let mut choices = vec![(String::new(), "Focused monitor".to_owned())];
+    for m in crate::hyprland::monitors() {
+        let label = if m.description.is_empty() {
+            m.name.clone()
+        } else {
+            format!("{} · {}", m.name, m.description)
+        };
+        choices.push((crate::hyprland::monitor_spec(&m), label));
+    }
+    let current = current.trim();
+    if !current.is_empty() && !choices.iter().any(|(spec, _)| spec == current) {
+        let name = current.strip_prefix("desc:").unwrap_or(current);
+        choices.push((current.to_owned(), format!("Not connected · {name}")));
+    }
+    choices
+}
+
+fn main_monitor_row(b: &Binder) -> adw::ComboRow {
+    let row = adw::ComboRow::builder()
+        .title("Main monitor")
+        .subtitle("The launcher opens here whenever this monitor is connected")
+        .build();
+    let choices: Rc<std::cell::RefCell<Vec<(String, String)>>> = Rc::default();
+    let syncing = Rc::new(std::cell::Cell::new(false));
+    // Monitors come and go (dock), so the list is rebuilt whenever it is shown.
+    let sync = {
+        let (row, choices, syncing) = (row.downgrade(), choices.clone(), syncing.clone());
+        move |current: &str| {
+            let Some(row) = row.upgrade() else { return };
+            let list = main_monitor_choices(current);
+            let labels: Vec<&str> = list.iter().map(|(_, l)| l.as_str()).collect();
+            syncing.set(true);
+            row.set_model(Some(&gtk::StringList::new(&labels)));
+            row.set_selected(list.iter().position(|(spec, _)| spec == current.trim()).unwrap_or(0) as u32);
+            syncing.set(false);
+            *choices.borrow_mut() = list;
+        }
+    };
+    let sync = Rc::new(sync);
+    sync(&b.store.get().general.main_monitor);
+    {
+        let (choices, syncing, b) = (choices.clone(), syncing.clone(), b.clone());
+        row.connect_selected_notify(move |r| {
+            if syncing.get() {
+                return;
+            }
+            if let Some((spec, _)) = choices.borrow().get(r.selected() as usize) {
+                let spec = spec.clone();
+                b.write(|c| c.general.main_monitor = spec);
+            }
+        });
+    }
+    {
+        let (sync, b) = (sync.clone(), b.clone());
+        row.connect_map(move |_| sync(&b.store.get().general.main_monitor));
+    }
+    b.on_refresh(move |c| sync(&c.general.main_monitor));
+    row
+}
+
 pub fn general(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
     let p = page();
 
@@ -48,6 +111,7 @@ pub fn general(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
         |c| c.general.vertical_position.into(),
         |c, v| c.general.vertical_position = v as u32,
     ));
+    launcher.add(&main_monitor_row(b));
     launcher.add(&b.spin(
         "Background opacity",
         "0 = fully transparent, 1 = opaque",
