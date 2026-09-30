@@ -11,6 +11,7 @@ use crate::config::{Config, GridSource};
 use crate::paths;
 use crate::search::files::FileHit;
 use crate::search::results::{self, Item};
+use crate::ui::marker::Marker;
 use gtk::prelude::*;
 use gtk::{gdk, glib, pango};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
@@ -125,6 +126,10 @@ pub struct Launcher {
     grid_scroller: gtk::ScrolledWindow,
     list_scroller: gtk::ScrolledWindow,
     list: gtk::ListBox,
+    /// Selection background that glides between result rows.
+    list_marker: Marker,
+    /// Set while the results are rebuilt: the marker jumps instead of gliding.
+    snap_marker: Cell<bool>,
     empty_label: gtk::Label,
     error: gtk::Label,
     error_revealer: gtk::Revealer,
@@ -258,10 +263,11 @@ impl Launcher {
                 row.set_header(None::<&gtk::Widget>);
             }
         });
+        let (list_layer, list_marker) = Marker::below(&list, "vela-result-marker", true);
         let list_scroller = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .propagate_natural_height(true)
-            .child(&list)
+            .child(&list_layer)
             .build();
         let empty_label = gtk::Label::new(None);
         empty_label.add_css_class("vela-empty");
@@ -329,6 +335,8 @@ impl Launcher {
             monitor: RefCell::default(),
             app: app.clone(),
             backdrop: RefCell::default(),
+            list_marker,
+            snap_marker: Cell::new(false),
         });
 
         this.connect_signals(&gear);
@@ -393,6 +401,25 @@ impl Launcher {
             }
         });
         self.window.add_controller(keys);
+
+        let weak = Rc::downgrade(self);
+        self.list.connect_row_selected(move |_, row| {
+            let Some(l) = weak.upgrade() else { return };
+            let Some(row) = row.cloned() else {
+                l.list_marker.hide();
+                return;
+            };
+            let animate = !l.snap_marker.replace(false) && l.config.borrow().appearance.animations;
+            // Fresh rows have no size until the next layout.
+            if !l.list_marker.move_to(&row, animate) {
+                let weak = Rc::downgrade(&l);
+                glib::idle_add_local_once(move || {
+                    if let Some(l) = weak.upgrade() {
+                        l.list_marker.move_to(&row, false);
+                    }
+                });
+            }
+        });
 
         let weak = Rc::downgrade(self);
         self.list.connect_row_activated(move |_, row| {
@@ -892,7 +919,10 @@ impl Launcher {
         let has = !items.is_empty();
         *self.items.borrow_mut() = items;
         if has {
+            // New rows: the marker jumps to the first one instead of gliding.
+            self.snap_marker.set(true);
             self.list.select_row(self.list.row_at_index(0).as_ref());
+            self.snap_marker.set(false);
             self.list_scroller.vadjustment().set_value(0.0);
         }
         self.show_mode();

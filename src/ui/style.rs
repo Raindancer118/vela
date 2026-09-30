@@ -84,7 +84,8 @@ window.vela-backdrop, window.vela-backdrop.background {{ background: rgba(0, 0, 
   border-radius: {inner_radius}px; padding: 7px 10px; margin: 1px 0; color: {fg}; background: transparent; outline: none;
 }}
 .vela-launcher list.vela-results > row:hover {{ background: {tile_bg}; }}
-.vela-launcher list.vela-results > row:selected {{ background: alpha({accent}, 0.26); box-shadow: inset 0 0 0 1px alpha({accent}, 0.45); }}
+.vela-launcher list.vela-results > row:selected {{ background: transparent; box-shadow: none; }}
+.vela-launcher .vela-result-marker {{ background: alpha({accent}, 0.26); box-shadow: inset 0 0 0 1px alpha({accent}, 0.45); border-radius: {inner_radius}px; }}
 .vela-launcher .vela-row-title {{ font-weight: 600; }}
 .vela-launcher .vela-row-subtitle {{ color: {dim}; font-size: 0.86em; }}
 .vela-launcher .vela-row-badge {{ color: {dim}; font-size: 0.8em; padding: 2px 8px; border-radius: 99px; background: {tile_bg}; }}

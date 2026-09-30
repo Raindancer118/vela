@@ -13,31 +13,48 @@ ColumnLayout {
         title: I18n.tr("Power mode")
     }
 
-    ColumnLayout {
+    Item {
         Layout.fillWidth: true
-        spacing: Theme.spacing.xs
+        implicitHeight: rows.implicitHeight
 
-        Repeater {
-            model: PowerMode.profiles
+        SlidingHighlight {
+            target: {
+                rep.count;
+                return rep.itemAt(PowerMode.profiles.indexOf(PowerMode.profile));
+            }
+        }
 
-            ListRow {
-                id: row
+        Column {
+            id: rows
 
-                required property string modelData
+            width: parent.width
+            spacing: Theme.spacing.xs
 
-                Layout.fillWidth: true
-                icon: PowerMode.icon(modelData)
-                title: PowerMode.label(modelData)
-                subtitle: PowerMode.description(modelData)
-                highlighted: PowerMode.profile === modelData
-                clickable: !highlighted
-                onClicked: PowerMode.set(modelData)
+            Repeater {
+                id: rep
 
-                MaterialIcon {
-                    visible: row.highlighted
-                    icon: "check"
-                    size: Theme.icon.small
-                    color: Theme.colors.primary
+                model: PowerMode.profiles
+
+                ListRow {
+                    id: row
+
+                    required property string modelData
+
+                    width: rows.width
+                    ownBackground: false
+                    icon: PowerMode.icon(modelData)
+                    title: PowerMode.label(modelData)
+                    subtitle: PowerMode.description(modelData)
+                    highlighted: PowerMode.profile === modelData
+                    clickable: !highlighted
+                    onClicked: PowerMode.set(modelData)
+
+                    MaterialIcon {
+                        visible: row.highlighted
+                        icon: "check"
+                        size: Theme.icon.small
+                        color: Theme.colors.primary
+                    }
                 }
             }
         }

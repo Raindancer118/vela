@@ -31,17 +31,41 @@ ColumnLayout {
             bottomPadding: Theme.spacing.xs
         }
 
-        Repeater {
-            model: ScriptModel {
-                values: Audio.sinks
+        // Default device: the background glides to the newly chosen one.
+        Item {
+            width: parent.width
+            height: sinkRows.implicitHeight
+
+            SlidingHighlight {
+                color: Theme.colors.surfaceHigh
+                target: {
+                    sinkRep.count;
+                    return sinkRep.itemAt(Audio.sinks.indexOf(Audio.sink));
+                }
             }
 
-            AudioDeviceRow {
-                required property PwNode modelData
+            Column {
+                id: sinkRows
 
                 width: parent.width
-                node: modelData
-                isDefault: Audio.sink === modelData
+                spacing: Theme.spacing.xs
+
+                Repeater {
+                    id: sinkRep
+
+                    model: ScriptModel {
+                        values: Audio.sinks
+                    }
+
+                    AudioDeviceRow {
+                        required property PwNode modelData
+
+                        width: sinkRows.width
+                        ownBackground: false
+                        node: modelData
+                        isDefault: Audio.sink === modelData
+                    }
+                }
             }
         }
 
@@ -51,17 +75,41 @@ ColumnLayout {
             bottomPadding: Theme.spacing.xs
         }
 
-        Repeater {
-            model: ScriptModel {
-                values: Audio.sources
+        // Default device: the background glides to the newly chosen one.
+        Item {
+            width: parent.width
+            height: sourceRows.implicitHeight
+
+            SlidingHighlight {
+                color: Theme.colors.surfaceHigh
+                target: {
+                    sourceRep.count;
+                    return sourceRep.itemAt(Audio.sources.indexOf(Audio.source));
+                }
             }
 
-            AudioDeviceRow {
-                required property PwNode modelData
+            Column {
+                id: sourceRows
 
                 width: parent.width
-                node: modelData
-                isDefault: Audio.source === modelData
+                spacing: Theme.spacing.xs
+
+                Repeater {
+                    id: sourceRep
+
+                    model: ScriptModel {
+                        values: Audio.sources
+                    }
+
+                    AudioDeviceRow {
+                        required property PwNode modelData
+
+                        width: sourceRows.width
+                        ownBackground: false
+                        node: modelData
+                        isDefault: Audio.source === modelData
+                    }
+                }
             }
         }
 

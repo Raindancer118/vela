@@ -7,6 +7,7 @@ mod binder;
 mod pages;
 
 use super::daemon::Daemon;
+use super::marker::Marker;
 use adw::prelude::*;
 use binder::Binder;
 use gtk::{gdk, glib};
@@ -86,14 +87,8 @@ impl SettingsWindow {
                 row.set_header(None::<&gtk::Widget>);
             }
         });
-        // Selection marker as its own layer so it can glide between rows.
-        let pill = gtk::Box::builder()
-            .css_classes(["vela-sidebar-pill"])
-            .can_target(false)
-            .valign(gtk::Align::Start)
-            .build();
-        let overlay = gtk::Overlay::builder().child(&sidebar).build();
-        overlay.add_overlay(&pill);
+        // Selection marker below the rows so it can glide between them.
+        let (overlay, marker) = Marker::below(&sidebar, "vela-sidebar-pill", false);
         let sidebar_scroll = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .child(&overlay)
@@ -150,7 +145,7 @@ impl SettingsWindow {
         bp.add_setter(&split, "collapsed", Some(&true.to_value()));
         window.add_breakpoint(bp);
 
-        let marker = Rc::new(Marker::new(&pill, &overlay));
+        let marker = Rc::new(marker);
         let flip = Rc::new(std::cell::Cell::new(false));
         {
             let (stack, content_page, split, marker, store) = (stack.clone(), content_page.clone(), split.clone(), marker.clone(), daemon.store.clone());
@@ -222,60 +217,6 @@ impl SettingsWindow {
 
     pub fn present(&self) {
         self.window.present();
-    }
-}
-
-/// The sidebar's selection marker: glides to the selected row with a
-/// slight spring.
-struct Marker {
-    pill: gtk::Box,
-    /// The pill's parent; row bounds are taken in its coordinates, as the
-    /// list's own padding would otherwise shift the marker.
-    layer: gtk::Overlay,
-    anim: std::cell::RefCell<Option<adw::TimedAnimation>>,
-    from: std::cell::Cell<(f64, f64)>,
-}
-
-impl Marker {
-    fn new(pill: &gtk::Box, layer: &gtk::Overlay) -> Marker {
-        Marker {
-            pill: pill.clone(),
-            layer: layer.clone(),
-            anim: Default::default(),
-            from: Default::default(),
-        }
-    }
-
-    fn place(pill: &gtk::Box, y: f64, h: f64) {
-        pill.set_margin_top(y.round().max(0.0) as i32);
-        pill.set_height_request(h.round().max(1.0) as i32);
-    }
-
-    fn move_to(&self, row: &gtk::ListBoxRow, animate: bool) {
-        let Some(bounds) = row.compute_bounds(&self.layer) else { return };
-        let (to_y, to_h) = (f64::from(bounds.y()), f64::from(bounds.height()));
-        if let Some(a) = self.anim.borrow_mut().take() {
-            a.skip();
-        }
-        let (from_y, from_h) = self.from.replace((to_y, to_h));
-        if !animate || from_h == 0.0 {
-            Marker::place(&self.pill, to_y, to_h);
-            return;
-        }
-        let pill = self.pill.clone();
-        let target = adw::CallbackAnimationTarget::new(move |t| {
-            Marker::place(&pill, from_y + (to_y - from_y) * t, from_h + (to_h - from_h) * t);
-        });
-        let a = adw::TimedAnimation::builder()
-            .widget(&self.pill)
-            .value_from(0.0)
-            .value_to(1.0)
-            .duration(260)
-            .easing(adw::Easing::EaseOutBack)
-            .target(&target)
-            .build();
-        a.play();
-        *self.anim.borrow_mut() = Some(a);
     }
 }
 

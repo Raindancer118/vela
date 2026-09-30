@@ -11,6 +11,8 @@ Rectangle {
     property string title
     property string subtitle
     property bool highlighted: false
+    // Off when a SlidingHighlight draws the selected background instead.
+    property bool ownBackground: true
     property bool clickable: true
     property real iconFill: highlighted ? 1 : 0
     default property alias trailing: trailingRow.data
@@ -19,7 +21,7 @@ Rectangle {
 
     implicitHeight: Theme.size.listRow
     radius: Theme.radius.small
-    color: highlighted ? Theme.colors.surfaceHighest : "transparent"
+    color: highlighted && ownBackground ? Theme.colors.surfaceHighest : "transparent"
 
     Behavior on color {
         ColorAnim {}

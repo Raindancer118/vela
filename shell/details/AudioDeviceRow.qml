@@ -12,11 +12,13 @@ Rectangle {
 
     required property PwNode node
     property bool isDefault: false
+    // Off when a SlidingHighlight draws the default device's background.
+    property bool ownBackground: true
     property bool stream: false
 
     implicitHeight: column.implicitHeight
     radius: Theme.radius.small
-    color: isDefault ? Theme.colors.surfaceHigh : "transparent"
+    color: isDefault && ownBackground ? Theme.colors.surfaceHigh : "transparent"
 
     Behavior on color {
         ColorAnim {}

@@ -62,6 +62,13 @@ out="$(timeout 20 qs -p shell/test-power.qml 2>&1 | grep -E "PASS|FAIL" || true)
 echo "$out"
 [[ "$out" == *PASS* ]] || fail "power mode"
 
+for t in highlight details; do
+    echo ":: $t"
+    out="$(timeout 20 qs -p shell/test-$t.qml 2>&1 | grep -E "PASS|FAIL" || true)"
+    echo "$out"
+    [[ "$out" == *PASS* ]] || fail "$t"
+done
+
 echo ":: locales"
 for l in de_DE en_US fr_FR C; do
     out="$(env -u LANGUAGE LC_ALL=$l.UTF-8 timeout 20 qs -p shell/test-i18n.qml 2>&1 | grep -E "PASS|FAIL" || true)"
