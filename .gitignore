@@ -1,0 +1,5 @@
+/target
+/pkg/arch/src
+/pkg/arch/pkg
+/pkg/arch/*.tar.*
+Project.md

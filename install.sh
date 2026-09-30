@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Builds vela and installs it for the current user (no root needed).
+#
+#   ./install.sh              build + install binary, icons, desktop entry,
+#                             systemd user unit and ~/.config/hypr/vela.lua
+#   ./install.sh --hyprland   additionally add the dofile() line to
+#                             ~/.config/hypr/hyprland.lua (a backup is made)
+set -euo pipefail
+
+cd "$(dirname "$0")"
+PREFIX="${PREFIX:-$HOME/.local}"
+BINDIR="$PREFIX/bin"
+DATADIR="${XDG_DATA_HOME:-$HOME/.local/share}"
+CONFDIR="${XDG_CONFIG_HOME:-$HOME/.config}"
+HYPRDIR="$CONFDIR/hypr"
+EDIT_HYPR=0
+[[ "${1:-}" == "--hyprland" ]] && EDIT_HYPR=1
+
+say() { printf '\033[1;34m::\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
+
+# Dependencies (Arch package names)
+if command -v pacman >/dev/null; then
+    missing=()
+    for p in gtk4 gtk4-layer-shell libadwaita rust; do
+        pacman -Qq "$p" >/dev/null 2>&1 || missing+=("$p")
+    done
+    if ((${#missing[@]})); then
+        warn "missing packages: ${missing[*]}"
+        warn "install them with: sudo pacman -S --needed ${missing[*]}"
+        exit 1
+    fi
+    for p in plocate kitty xdg-utils; do
+        pacman -Qq "$p" >/dev/null 2>&1 || warn "optional package '$p' is not installed"
+    done
+fi
+command -v claude >/dev/null || [[ -x "$HOME/.local/bin/claude" ]] || warn "Claude Code (claude) not found — the Ask Claude action will report that"
+
+say "building (release)"
+cargo build --release --locked
+
+say "installing to $PREFIX"
+install -Dm755 target/release/vela "$BINDIR/vela"
+install -Dm755 target/release/vela-daemon "$BINDIR/vela-daemon"
+for icon in data/icons/*.svg; do
+    install -Dm644 "$icon" "$DATADIR/icons/hicolor/scalable/apps/$(basename "$icon")"
+done
+sed "s|^Exec=vela|Exec=$BINDIR/vela|" data/vela.desktop | install -Dm644 /dev/stdin "$DATADIR/applications/vela.desktop"
+sed "s|@BINDIR@|$BINDIR|" contrib/systemd/vela.service.in | install -Dm644 /dev/stdin "$CONFDIR/systemd/user/vela.service"
+install -Dm644 contrib/hyprland/vela.lua "$HYPRDIR/vela.lua"
+systemctl --user daemon-reload 2>/dev/null || true
+gtk-update-icon-cache -q -t "$DATADIR/icons/hicolor" 2>/dev/null || true
+
+LINE='dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup()'
+if [[ -f "$HYPRDIR/hyprland.lua" ]]; then
+    if grep -qF 'hypr/vela.lua' "$HYPRDIR/hyprland.lua"; then
+        say "hyprland.lua already loads vela.lua"
+    elif ((EDIT_HYPR)); then
+        cp "$HYPRDIR/hyprland.lua" "$HYPRDIR/hyprland.lua.bak-vela-$(date +%s)"
+        printf '\n-- vela launcher: tap Super to open\n%s\n' "$LINE" >>"$HYPRDIR/hyprland.lua"
+        say "added vela to hyprland.lua (backup created)"
+    else
+        say "add this line to $HYPRDIR/hyprland.lua (or rerun with --hyprland):"
+        echo "    $LINE"
+    fi
+else
+    warn "no Lua Hyprland config found; see README → Hyprland for hyprland.conf users"
+fi
+
+# Restart a running daemon so the new binary is used.
+if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+    systemctl --user import-environment WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP XDG_SESSION_TYPE DISPLAY
+    systemctl --user restart vela.service && say "vela daemon (re)started"
+elif systemctl --user -q is-active vela.service 2>/dev/null; then
+    systemctl --user restart vela.service
+fi
+
+case ":$PATH:" in *":$BINDIR:"*) ;; *) warn "$BINDIR is not in PATH" ;; esac
+say "done — tap Super in Hyprland, or run: vela"

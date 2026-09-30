@@ -1,0 +1,90 @@
+# vela configuration. Edited by the settings window (`vela settings`);
+# manual edits are picked up live. See README.md for every option.
+[general]
+width = 760
+max_height = 580
+vertical_position = 18
+opacity = 0.86
+close_on_focus_loss = true
+max_results = 20
+systemd_scope = true
+
+[appearance]
+theme = "dark"
+accent = "#7aa2f7"
+tile_size = 108
+icon_size = 52
+spacing = 8
+columns = 0
+border_radius = 22
+surface_opacity = 0.06
+show_labels = true
+font_scale = 1.0
+animations = true
+animation_speed = 1.0
+
+[apps]
+grid = "pinned"
+pinned = [
+    "firefox.desktop",
+    "brave-browser.desktop",
+    "google-chrome.desktop",
+    "chromium.desktop",
+    "kitty.desktop",
+    "com.mitchellh.ghostty.desktop",
+    "org.kde.dolphin.desktop",
+    "org.gnome.Nautilus.desktop",
+    "thunar.desktop",
+    "code.desktop",
+    "code-oss.desktop",
+    "jetbrains-idea.desktop",
+    "obsidian.desktop",
+    "spotify.desktop",
+    "discord.desktop",
+    "org.kde.kate.desktop",
+    "org.gnome.TextEditor.desktop",
+    "org.kde.systemsettings.desktop",
+    "vela:settings",
+]
+hidden = []
+desktop_actions = true
+custom = []
+
+[search]
+apps = true
+files = true
+claude = true
+max_app_results = 8
+max_file_results = 10
+file_backend = "auto"
+file_roots = ["~"]
+exclude = [
+    ".git",
+    "node_modules",
+    "target",
+    ".cache",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".gradle",
+    ".m2",
+    ".cargo",
+    ".rustup",
+    ".npm",
+]
+include_hidden = false
+include_directories = true
+min_file_query_len = 2
+debounce_ms = 80
+index_interval_minutes = 30
+
+[claude]
+always_visible = true
+shift_enter = true
+prefer_for_questions = true
+executable = "claude"
+args = ["--dangerously-skip-permissions"]
+working_dir = "~"
+
+[terminal]
+executable = "kitty"

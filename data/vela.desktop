@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Vela Settings
+GenericName=Application Launcher Settings
+Comment=Configure the vela launcher
+Exec=vela settings
+Icon=vela
+Terminal=false
+Categories=Settings;Utility;
+Keywords=launcher;spotlight;search;claude;

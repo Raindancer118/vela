@@ -1,0 +1,16 @@
+[Unit]
+Description=vela application launcher
+Documentation=https://github.com/Raindancer118/vela
+# Started by the Hyprland integration (vela.lua) or on demand by `vela toggle`.
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@BINDIR@/vela-daemon
+# Crashes restart; losing the Wayland display (session ended) does not.
+Restart=on-abnormal
+RestartSec=1
+# Apps are started in their own scopes; never take them down with vela.
+KillMode=process
+Environment=RUST_LOG=vela=info
