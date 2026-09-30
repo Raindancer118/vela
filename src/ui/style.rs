@@ -28,7 +28,7 @@ pub fn launcher_css(cfg: &Config) -> String {
     let claude = CLAUDE_ORANGE;
     let font = a.font_scale;
     let spacing = a.spacing;
-    let backdrop_dim = a.backdrop_dim;
+    let backdrop_dim = crate::theme::backdrop_layer_alpha(a.backdrop_dim, a.backdrop_strength);
 
     format!(
         r#"

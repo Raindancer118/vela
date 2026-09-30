@@ -155,8 +155,10 @@ pub struct Launcher {
     /// Connector of the monitor the launcher is on.
     monitor: RefCell<Option<String>>,
     app: adw::Application,
-    /// Full-monitor surface Hyprland blurs (layer rule on "vela-backdrop").
-    backdrop: RefCell<Option<gtk::Window>>,
+    /// Full-monitor surfaces Hyprland blurs (layer rule on "vela-backdrop");
+    /// `appearance.backdrop_strength` of them are stacked, each blurring the
+    /// result below again.
+    backdrop: RefCell<Vec<gtk::Window>>,
 }
 
 impl Launcher {
@@ -471,20 +473,33 @@ impl Launcher {
     }
 
     fn show_backdrop(&self) {
-        let backdrop = self.backdrop.borrow_mut().get_or_insert_with(|| self.new_backdrop()).clone();
+        let n = self.config.borrow().appearance.backdrop_strength.clamp(1, 4) as usize;
+        let layers: Vec<gtk::Window> = {
+            let mut all = self.backdrop.borrow_mut();
+            while all.len() < n {
+                all.push(self.new_backdrop());
+            }
+            for extra in &all[n..] {
+                extra.set_visible(false);
+            }
+            all[..n].to_vec()
+        };
         let monitor = self.window.monitor();
-        if backdrop.is_visible() && backdrop.monitor() == monitor {
+        if layers.iter().all(|b| b.is_visible() && b.monitor() == monitor) {
             return;
         }
-        backdrop.set_monitor(monitor.as_ref());
         // Within a layer the surface mapped last is on top, so the launcher
         // is (re)mapped after the backdrop, e.g. when leaving the preview.
         self.window.set_visible(false);
-        backdrop.present();
+        for b in &layers {
+            b.set_visible(false);
+            b.set_monitor(monitor.as_ref());
+            b.present();
+        }
     }
 
     fn hide_backdrop(&self) {
-        if let Some(b) = self.backdrop.borrow().as_ref() {
+        for b in self.backdrop.borrow().iter() {
             b.set_visible(false);
         }
     }

@@ -54,9 +54,6 @@ Singleton {
         // Workspace OSD dots.
         readonly property color dotEmpty: root.withAlpha(text, 0.22)
         readonly property color dotOccupied: root.withAlpha(text, 0.6)
-
-        // Blurred backdrop behind the panel (panel.backdrop).
-        readonly property color backdrop: Qt.rgba(0, 0, 0, root.va.backdropDim)
     }
 
     readonly property QtObject radius: QtObject {

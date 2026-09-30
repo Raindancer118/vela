@@ -90,6 +90,8 @@ pub struct Appearance {
     pub backdrop: bool,
     /// Darkening of the backdrop, 0.0–0.8.
     pub backdrop_dim: f64,
+    /// Blur strength of the launcher's backdrop, 1–4 (1 = Hyprland's blur).
+    pub backdrop_strength: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,6 +102,8 @@ pub struct Panel {
     pub close_on_focus_loss: bool,
     /// Blur (and dim, `appearance.backdrop_dim`) the rest of its monitor while open.
     pub backdrop: bool,
+    /// Blur strength of that backdrop, 1–4 (1 = Hyprland's blur).
+    pub backdrop_strength: u32,
     /// How long a notification popup stays (apps may ask for less).
     pub popup_timeout_secs: u32,
     pub popup_max_visible: u32,
@@ -120,6 +124,7 @@ impl Default for Panel {
             width: 420,
             close_on_focus_loss: true,
             backdrop: false,
+            backdrop_strength: 1,
             popup_timeout_secs: 5,
             popup_max_visible: 4,
             critical_popups_stay: true,
@@ -131,13 +136,18 @@ impl Default for Panel {
     }
 }
 
-/// Minutes of inactivity; 0 = never.
+/// Each step has a switch and a delay in minutes of inactivity.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Idle {
+    pub dim: bool,
     pub dim_after_min: f64,
+    pub lock: bool,
     pub lock_after_min: f64,
+    pub screen_off: bool,
     pub screen_off_after_min: f64,
+    /// Off = the computer never goes to sleep on its own.
+    pub suspend: bool,
     pub suspend_after_min: f64,
     /// Lock the session before the system goes to sleep.
     pub lock_before_sleep: bool,
@@ -146,9 +156,13 @@ pub struct Idle {
 impl Default for Idle {
     fn default() -> Self {
         Idle {
+            dim: true,
             dim_after_min: 2.5,
+            lock: true,
             lock_after_min: 5.0,
+            screen_off: true,
             screen_off_after_min: 5.5,
+            suspend: true,
             suspend_after_min: 30.0,
             lock_before_sleep: true,
         }
@@ -304,6 +318,7 @@ impl Default for Appearance {
             animation_speed: 1.0,
             backdrop: false,
             backdrop_dim: 0.18,
+            backdrop_strength: 1,
         }
     }
 }
@@ -453,6 +468,7 @@ impl Config {
         a.font_scale = finite_or(a.font_scale, 1.0).clamp(0.6, 2.0);
         a.animation_speed = finite_or(a.animation_speed, 1.0).clamp(0.25, 4.0);
         a.backdrop_dim = finite_or(a.backdrop_dim, 0.18).clamp(0.0, 0.8);
+        a.backdrop_strength = a.backdrop_strength.clamp(1, 4);
         a.accent = a.accent.trim().to_owned();
         if !valid_hex_color(&a.accent) {
             a.accent = Appearance::default().accent;
@@ -481,6 +497,7 @@ impl Config {
 
         let p = &mut self.panel;
         p.width = p.width.clamp(320, 800);
+        p.backdrop_strength = p.backdrop_strength.clamp(1, 4);
         p.popup_timeout_secs = p.popup_timeout_secs.clamp(1, 60);
         p.popup_max_visible = p.popup_max_visible.clamp(1, 10);
         p.group_collapsed_count = p.group_collapsed_count.clamp(1, 10);
@@ -493,7 +510,7 @@ impl Config {
             &mut i.screen_off_after_min,
             &mut i.suspend_after_min,
         ] {
-            *m = finite_or(*m, 0.0).clamp(0.0, 720.0);
+            *m = finite_or(*m, 5.0).clamp(0.5, 720.0);
         }
 
         if self.claude.executable.trim().is_empty() {
@@ -645,6 +662,9 @@ mod tests {
         assert_eq!(cfg.appearance.backdrop_dim, 0.8, "never black out the screen");
         let cfg = Config::from_toml("[appearance]\nbackdrop_dim = -1.0\n").unwrap();
         assert_eq!(cfg.appearance.backdrop_dim, 0.0);
+        assert_eq!((a.backdrop_strength, Panel::default().backdrop_strength), (1, 1), "1 = Hyprland's blur as is");
+        let cfg = Config::from_toml("[appearance]\nbackdrop_strength = 9\n[panel]\nbackdrop_strength = 0\n").unwrap();
+        assert_eq!((cfg.appearance.backdrop_strength, cfg.panel.backdrop_strength), (4, 1));
     }
 
     #[test]
@@ -684,9 +704,11 @@ mod tests {
             (2.5, 5.0, 5.5, 30.0)
         );
         assert!(i.lock_before_sleep);
-        let cfg = Config::from_toml("[idle]\nsuspend_after_min = 0\nlock_after_min = -3\ndim_after_min = 99999\n").unwrap();
-        assert_eq!(cfg.idle.suspend_after_min, 0.0, "0 = never");
-        assert_eq!(cfg.idle.lock_after_min, 0.0);
+        assert!(i.dim && i.lock && i.screen_off && i.suspend, "all on, like the hypridle sample");
+        let cfg = Config::from_toml("[idle]\nsuspend = false\nlock_after_min = -3\ndim_after_min = 99999\n").unwrap();
+        assert!(!cfg.idle.suspend && cfg.idle.lock);
+        assert_eq!(cfg.idle.suspend_after_min, 30.0, "the time is kept while switched off");
+        assert_eq!(cfg.idle.lock_after_min, 0.5);
         assert_eq!(cfg.idle.dim_after_min, 720.0);
     }
 

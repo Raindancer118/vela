@@ -6,8 +6,8 @@
 use crate::config::Idle;
 use std::fmt::Write;
 
-fn seconds(minutes: f64) -> Option<u64> {
-    (minutes > 0.0).then(|| ((minutes * 60.0).round() as u64).max(1))
+fn seconds(on: bool, minutes: f64) -> Option<u64> {
+    on.then(|| ((minutes * 60.0).round() as u64).max(1))
 }
 
 fn listener(out: &mut String, timeout: u64, on_timeout: &str, on_resume: Option<&str>) {
@@ -28,16 +28,16 @@ pub fn hypridle_conf(idle: &Idle, kbd: Option<&str>) -> String {
         out.push_str("    before_sleep_cmd = loginctl lock-session\n");
     }
     out.push_str("    after_sleep_cmd = hyprctl dispatch 'hl.dsp.dpms({action = \"on\"})'\n}\n");
-    if let Some(t) = seconds(idle.dim_after_min) {
+    if let Some(t) = seconds(idle.dim, idle.dim_after_min) {
         listener(&mut out, t, "brightnessctl -s set 10", Some("brightnessctl -r"));
         if let Some(k) = kbd {
             listener(&mut out, t, &format!("brightnessctl -sd {k} set 0"), Some(&format!("brightnessctl -rd {k}")));
         }
     }
-    if let Some(t) = seconds(idle.lock_after_min) {
+    if let Some(t) = seconds(idle.lock, idle.lock_after_min) {
         listener(&mut out, t, "loginctl lock-session", None);
     }
-    if let Some(t) = seconds(idle.screen_off_after_min) {
+    if let Some(t) = seconds(idle.screen_off, idle.screen_off_after_min) {
         listener(
             &mut out,
             t,
@@ -45,7 +45,7 @@ pub fn hypridle_conf(idle: &Idle, kbd: Option<&str>) -> String {
             Some("hyprctl dispatch 'hl.dsp.dpms({action = \"on\"})'"),
         );
     }
-    if let Some(t) = seconds(idle.suspend_after_min) {
+    if let Some(t) = seconds(idle.suspend, idle.suspend_after_min) {
         listener(&mut out, t, "systemctl suspend", None);
     }
     out
@@ -80,10 +80,10 @@ mod tests {
     }
 
     #[test]
-    fn zero_means_never() {
+    fn switched_off_means_never() {
         let idle = Idle {
-            suspend_after_min: 0.0,
-            dim_after_min: 0.0,
+            suspend: false,
+            dim: false,
             ..Idle::default()
         };
         let conf = hypridle_conf(&idle, Some("rgb:kbd_backlight"));

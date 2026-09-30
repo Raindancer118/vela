@@ -65,6 +65,18 @@ pub fn parse_hex(s: &str) -> Option<Rgb> {
     Some((ch(0)?, ch(2)?, ch(4)?))
 }
 
+/// Hyprland skips blurring nearly transparent layers.
+pub const MIN_BLUR_ALPHA: f64 = 0.05;
+
+/// Opacity of each of `layers` stacked backdrop layers so that together
+/// they darken by `dim`. Every layer blurs what is below it again, which is
+/// how the backdrop gets stronger than Hyprland's global blur.
+pub fn backdrop_layer_alpha(dim: f64, layers: u32) -> f64 {
+    let dim = dim.clamp(0.0, 0.95);
+    let each = if layers <= 1 { dim } else { 1.0 - (1.0 - dim).powf(1.0 / f64::from(layers)) };
+    each.max(MIN_BLUR_ALPHA)
+}
+
 /// Linear blend: t = 0 → a, t = 1 → b.
 pub fn mix(a: Rgb, b: Rgb, t: f64) -> Rgb {
     let m = |x: u8, y: u8| (f64::from(x) + (f64::from(y) - f64::from(x)) * t).round() as u8;
@@ -102,6 +114,18 @@ mod tests {
         assert_eq!(parse_hex("#7aa2f7ff"), Some((0x7a, 0xa2, 0xf7)));
         assert_eq!(hex((0x7a, 0xa2, 0xf7)), "#7aa2f7");
         assert!(parse_hex("7aa2f7").is_none() && parse_hex("#7aa").is_none() && parse_hex("#zzzzzz").is_none());
+    }
+
+    #[test]
+    fn stacked_backdrop_keeps_the_total_dimming() {
+        let total = |dim: f64, n: u32| 1.0_f64 - (1.0 - backdrop_layer_alpha(dim, n)).powi(n as i32);
+        for n in 1..=4 {
+            assert!((total(0.4, n) - 0.4_f64).abs() < 1e-9, "n = {n}");
+        }
+        assert_eq!(backdrop_layer_alpha(0.3, 1), 0.3);
+        // Hyprland doesn't blur nearly invisible layers.
+        assert_eq!(backdrop_layer_alpha(0.0, 1), MIN_BLUR_ALPHA);
+        assert_eq!(backdrop_layer_alpha(0.1, 4), MIN_BLUR_ALPHA);
     }
 
     #[test]

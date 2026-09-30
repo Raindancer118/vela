@@ -65,6 +65,8 @@ pub fn shell_json(cfg: &Config) -> String {
             "width": pn.width,
             "closeOnFocusLoss": pn.close_on_focus_loss,
             "backdrop": pn.backdrop,
+            "backdropLayers": pn.backdrop_strength,
+            "backdropLayerAlpha": theme::backdrop_layer_alpha(a.backdrop_dim, pn.backdrop_strength),
             "popupTimeoutMs": pn.popup_timeout_secs * 1000,
             "popupMaxVisible": pn.popup_max_visible,
             "criticalPopupsStay": pn.critical_popups_stay,
@@ -194,6 +196,11 @@ mod tests {
         assert_eq!(j["panel"]["backdrop"], true);
         assert_eq!(j["panel"]["popupTimeoutMs"], 5000);
         assert_eq!(j["panel"]["clockCentered"], true);
+        assert_eq!(j["panel"]["backdropLayers"], 1);
+        cfg.panel.backdrop_strength = 3;
+        let j = json(&cfg);
+        assert_eq!(j["panel"]["backdropLayers"], 3);
+        assert_eq!(j["panel"]["backdropLayerAlpha"], crate::theme::backdrop_layer_alpha(0.3, 3));
     }
 
     #[test]

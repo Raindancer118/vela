@@ -27,6 +27,8 @@ animation_speed = 1.0
 # Blur and dim the rest of the launcher's monitor while open (needs the vela-backdrop layer rule).
 backdrop = false
 backdrop_dim = 0.18
+# 1–4: stacks blurred layers for a stronger blur than Hyprland's decoration.blur.
+backdrop_strength = 1
 
 [apps]
 grid = "pinned"
@@ -101,6 +103,7 @@ width = 420
 close_on_focus_loss = true
 # Blur and dim the rest of the panel's monitor while open (needs the vela-shell-backdrop layer rule).
 backdrop = false
+backdrop_strength = 1
 popup_timeout_secs = 5
 popup_max_visible = 4
 critical_popups_stay = true
@@ -109,10 +112,15 @@ workspace_osd = true
 night_light_temperature = 4000
 clock_centered = false
 
-# While you're away (`vela idle` runs hypridle with these). Minutes; 0 = never.
+# While you're away (`vela idle` runs hypridle with these). Minutes without input.
 [idle]
+dim = true
 dim_after_min = 2.5
+lock = true
 lock_after_min = 5.0
+screen_off = true
 screen_off_after_min = 5.5
+# false = the computer never goes to sleep on its own.
+suspend = true
 suspend_after_min = 30.0
 lock_before_sleep = true

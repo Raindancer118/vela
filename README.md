@@ -204,7 +204,8 @@ overwriting an unparsable file, vela backs it up as `config.toml.broken-<time>`.
 | | `workspace_osd` | workspace dots when switching workspaces |
 | | `night_light_temperature` | Kelvin (hyprsunset) |
 | | `clock_centered` | clock and date in the middle of the panel |
-| `idle` | `dim_after_min`, `lock_after_min`, `screen_off_after_min`, `suspend_after_min` | minutes without input, `0` = never; `vela idle` runs hypridle with them |
+| `idle` | `dim`, `lock`, `screen_off`, `suspend` | switch each step on or off (`suspend = false`: never sleep on its own); `vela idle` runs hypridle with them |
+| | `dim_after_min`, `lock_after_min`, `screen_off_after_min`, `suspend_after_min` | minutes without input |
 | | `lock_before_sleep` | lock the session before suspend |
 | `terminal` | `executable` | default `kitty` |
 | | `exec_args` | arguments before the command; omit to use the known default (`-e` for most, none for kitty/foot, `start --` for wezterm) |
