@@ -502,7 +502,7 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
 
     let panel = group(
         "Control center",
-        "The Quickshell panel (`vela shell`). Theme, colours, corners, opacity, text size, motion and blur are set under Appearance.",
+        "The Quickshell panel (vela shell). Theme, colours, corners, opacity, text size, motion and blur are set under Appearance.",
     );
     panel.add(&b.spin(
         "Width",
