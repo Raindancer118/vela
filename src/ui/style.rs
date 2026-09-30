@@ -3,50 +3,8 @@
 //! are scoped below `.vela-launcher` so the settings window keeps the
 //! regular libadwaita look.
 
-use crate::config::{Config, Theme};
-
-struct Palette {
-    bg: (u8, u8, u8),
-    fg: (u8, u8, u8),
-    dim: (u8, u8, u8),
-    /// Base colour for surfaces and borders (white on dark, black on light).
-    tint: (u8, u8, u8),
-}
-
-fn palette(theme: Theme) -> Palette {
-    match theme {
-        Theme::Dark => Palette {
-            bg: (24, 24, 30),
-            fg: (236, 236, 244),
-            dim: (150, 150, 168),
-            tint: (255, 255, 255),
-        },
-        Theme::Midnight => Palette {
-            bg: (11, 14, 28),
-            fg: (228, 233, 255),
-            dim: (134, 143, 181),
-            tint: (190, 205, 255),
-        },
-        Theme::Graphite => Palette {
-            bg: (40, 40, 42),
-            fg: (240, 240, 240),
-            dim: (160, 160, 160),
-            tint: (255, 255, 255),
-        },
-        Theme::Nord => Palette {
-            bg: (46, 52, 64),
-            fg: (236, 239, 244),
-            dim: (160, 170, 190),
-            tint: (216, 222, 233),
-        },
-        Theme::Light => Palette {
-            bg: (248, 248, 250),
-            fg: (28, 28, 34),
-            dim: (100, 100, 115),
-            tint: (0, 0, 0),
-        },
-    }
-}
+use crate::config::Config;
+use crate::theme::palette;
 
 fn rgba((r, g, b): (u8, u8, u8), a: f64) -> String {
     format!("rgba({r},{g},{b},{a:.3})")
@@ -232,6 +190,7 @@ fn motion_css(cfg: &Config) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Theme;
 
     #[test]
     fn css_reflects_config() {

@@ -31,9 +31,11 @@ ShellRoot {
     // (e.g. a launcher). Merely hovering another monitor doesn't count.
     HyprlandFocusGrab {
         windows: [controlCenter, ...clickCatcher.instances]
-        active: ShellState.panelOpen
+        active: ShellState.panelOpen && Config.closeOnFocusLoss
         onCleared: ShellState.closePanel()
     }
+
+    Backdrop {}
 
     NotificationPopups {}
 

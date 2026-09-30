@@ -8,47 +8,61 @@ import Quickshell
 Singleton {
     id: root
 
+    // Colours, radius, text size, opacity and speed follow the vela
+    // settings (VelaConfig); surfaces are the theme's tint over the panel.
+    readonly property var vc: VelaConfig.colors
+    readonly property var va: VelaConfig.appearance
+
+    function withAlpha(c: color, a: real): color {
+        return Qt.rgba(c.r, c.g, c.b, Math.max(0, Math.min(1, a)));
+    }
+
     readonly property QtObject colors: QtObject {
-        readonly property color background: "#141218"
-        readonly property color surface: "#1d1b20"
-        readonly property color surfaceHigh: "#26232b"
-        readonly property color surfaceHighest: "#322f37"
-        readonly property color outline: "#2e2b33"
-        // Panel and detail window background (slightly translucent for blur).
-        readonly property color panel: Qt.rgba(background.r, background.g, background.b, root.surfaceOpacity)
+        readonly property color background: root.vc.background
+        readonly property color tint: root.vc.tint
+        readonly property real surfaceBase: root.va.surfaceOpacity
+        readonly property color surface: root.withAlpha(tint, surfaceBase)
+        readonly property color surfaceHigh: root.withAlpha(tint, surfaceBase + 0.05)
+        readonly property color surfaceHighest: root.withAlpha(tint, surfaceBase + 0.1)
+        readonly property color outline: root.withAlpha(tint, 0.1)
+        // Panel and detail window background (translucent; Hyprland blurs it).
+        readonly property color panel: root.withAlpha(background, root.surfaceOpacity)
 
-        readonly property color primary: "#d0cce0"
-        readonly property color textOnPrimary: "#1d1b26"
-        readonly property color primaryMuted: "#4a4658"
+        readonly property color primary: root.vc.primary
+        readonly property color textOnPrimary: root.vc.textOnPrimary
+        readonly property color primaryMuted: root.vc.primaryMuted
 
-        readonly property color text: "#e6e1e5"
-        readonly property color textMuted: "#9a95a0"
-        readonly property color textDisabled: "#5e5a64"
+        readonly property color text: root.vc.text
+        readonly property color textMuted: root.vc.textMuted
+        readonly property color textDisabled: root.vc.textDisabled
 
-        readonly property color error: "#f2b8b5"
-        readonly property color textOnError: "#601410"
-        readonly property color errorSurface: "#3a1d1f"
+        readonly property color error: root.vc.error
+        readonly property color textOnError: root.vc.textOnError
+        readonly property color errorSurface: root.vc.errorSurface
 
         // State layers drawn over a surface while hovered / pressed.
-        readonly property color hover: Qt.rgba(1, 1, 1, 0.07)
-        readonly property color pressed: Qt.rgba(1, 1, 1, 0.12)
+        readonly property color hover: root.withAlpha(tint, 0.07)
+        readonly property color pressed: root.withAlpha(tint, 0.12)
         readonly property color hoverOnPrimary: Qt.rgba(0, 0, 0, 0.08)
         readonly property color pressedOnPrimary: Qt.rgba(0, 0, 0, 0.14)
 
         // Icon circle inside a toggle tile.
         readonly property color tileIcon: surfaceHighest
         readonly property color tileIconActive: Qt.rgba(0, 0, 0, 0.1)
-        readonly property color textOnPrimaryMuted: Qt.rgba(0.11, 0.1, 0.15, 0.7)
+        readonly property color textOnPrimaryMuted: root.withAlpha(textOnPrimary, 0.7)
 
         // Workspace OSD dots.
-        readonly property color dotEmpty: Qt.rgba(0.9, 0.88, 0.9, 0.22)
-        readonly property color dotOccupied: Qt.rgba(0.9, 0.88, 0.9, 0.6)
+        readonly property color dotEmpty: root.withAlpha(text, 0.22)
+        readonly property color dotOccupied: root.withAlpha(text, 0.6)
+
+        // Blurred backdrop behind the panel (panel.backdrop).
+        readonly property color backdrop: Qt.rgba(0, 0, 0, root.va.backdropDim)
     }
 
     readonly property QtObject radius: QtObject {
-        readonly property int panel: 24
-        readonly property int card: 20
-        readonly property int small: 12
+        readonly property int panel: root.va.radius
+        readonly property int card: Math.max(0, root.va.radius - 4)
+        readonly property int small: Math.round(root.va.radius * 0.55)
     }
 
     readonly property QtObject spacing: QtObject {
@@ -63,11 +77,12 @@ Singleton {
         readonly property string family: "Rubik"
         readonly property string iconFamily: "Material Symbols Rounded"
 
-        readonly property int small: 12
-        readonly property int body: 14
-        readonly property int title: 16
-        readonly property int large: 20
-        readonly property int clock: 64
+        readonly property real scale: root.va.fontScale
+        readonly property int small: Math.round(12 * scale)
+        readonly property int body: Math.round(14 * scale)
+        readonly property int title: Math.round(16 * scale)
+        readonly property int large: Math.round(20 * scale)
+        readonly property int clock: Math.round(64 * scale)
         readonly property real labelLetterSpacing: 0.4
 
         readonly property int weightLight: Font.Light
@@ -131,7 +146,7 @@ Singleton {
         // Fallback width of controls that are normally sized by a layout.
         readonly property int controlWidth: 220
         readonly property int scrollbarWidth: 3
-        readonly property int panelWidth: 420
+        readonly property int panelWidth: VelaConfig.panel.width
         readonly property int panelPadding: 16
         readonly property int detailWidth: 380
         readonly property int tileHeight: 64
@@ -164,6 +179,6 @@ Singleton {
         readonly property int osdDotSpacing: 7
     }
 
-    // Surface opacity of the panel/cards; Hyprland blurs behind them.
-    readonly property real surfaceOpacity: 0.97
+    // Background opacity of the panel, popups and detail card.
+    readonly property real surfaceOpacity: va.opacity
 }

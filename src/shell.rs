@@ -1,0 +1,268 @@
+//! Settings for the Quickshell control center (`shell/`), which reads them
+//! from `vela shell-config` instead of parsing the TOML itself: sanitized
+//! values plus a ready-made colour palette derived from the vela theme.
+
+use crate::config::Config;
+use crate::theme::{self, Rgb, hex, mix, on_color, palette, parse_hex};
+use serde_json::json;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+
+/// Colour tokens the shell expects (all `#rrggbb`); surfaces and state
+/// layers are derived in `shell/Theme.qml` from `tint` and the opacities.
+pub const SHELL_COLOR_KEYS: [&str; 11] = [
+    "background",
+    "text",
+    "textMuted",
+    "textDisabled",
+    "tint",
+    "primary",
+    "textOnPrimary",
+    "primaryMuted",
+    "error",
+    "textOnError",
+    "errorSurface",
+];
+
+/// One JSON line with everything the control center needs.
+pub fn shell_json(cfg: &Config) -> String {
+    let a = &cfg.appearance;
+    let p = palette(a.theme);
+    let accent: Rgb = parse_hex(&a.accent).unwrap_or((0x7a, 0xa2, 0xf7));
+    let (error, on_error, error_surface): (Rgb, Rgb, Rgb) = if theme::is_light(a.theme) {
+        ((0xb3, 0x26, 0x1e), (0xff, 0xff, 0xff), (0xf9, 0xde, 0xdc))
+    } else {
+        ((0xf2, 0xb8, 0xb5), (0x60, 0x14, 0x10), mix(p.bg, (0xf2, 0xb8, 0xb5), 0.14))
+    };
+    let colors = json!({
+        "background": hex(p.bg),
+        "text": hex(p.fg),
+        "textMuted": hex(p.dim),
+        "textDisabled": hex(mix(p.bg, p.dim, 0.55)),
+        "tint": hex(p.tint),
+        "primary": hex(accent),
+        "textOnPrimary": hex(on_color(accent)),
+        "primaryMuted": hex(mix(p.bg, accent, 0.35)),
+        "error": hex(error),
+        "textOnError": hex(on_error),
+        "errorSurface": hex(error_surface),
+    });
+    let animation_scale = if a.animations { 1.0 / a.animation_speed } else { 0.0 };
+    let pn = &cfg.panel;
+    json!({
+        "colors": colors,
+        "appearance": {
+            "light": theme::is_light(a.theme),
+            "radius": a.border_radius,
+            "fontScale": a.font_scale,
+            "opacity": cfg.general.opacity,
+            "surfaceOpacity": a.surface_opacity,
+            "animationScale": animation_scale,
+            "backdropDim": a.backdrop_dim,
+        },
+        "panel": {
+            "width": pn.width,
+            "closeOnFocusLoss": pn.close_on_focus_loss,
+            "backdrop": pn.backdrop,
+            "popupTimeoutMs": pn.popup_timeout_secs * 1000,
+            "popupMaxVisible": pn.popup_max_visible,
+            "criticalPopupsStay": pn.critical_popups_stay,
+            "groupCollapsedCount": pn.group_collapsed_count,
+            "workspaceOsd": pn.workspace_osd,
+            "nightLightTemperature": pn.night_light_temperature,
+        },
+    })
+    .to_string()
+}
+
+/// Re-reads the config when the file changes and yields the new JSON line
+/// if it differs from the last one. Polling (mtime + size) is enough here
+/// and survives the atomic rename of saves, which breaks inotify watches.
+pub struct ConfigWatcher {
+    path: PathBuf,
+    stamp: Option<(Option<SystemTime>, u64)>,
+    last: Option<String>,
+    error: Option<String>,
+}
+
+impl ConfigWatcher {
+    pub fn new(path: PathBuf) -> ConfigWatcher {
+        ConfigWatcher {
+            path,
+            stamp: None,
+            last: None,
+            error: None,
+        }
+    }
+
+    pub fn poll(&mut self) -> Option<String> {
+        let meta = std::fs::metadata(&self.path).ok();
+        let stamp = (meta.as_ref().and_then(|m| m.modified().ok()), meta.as_ref().map_or(0, |m| m.len()));
+        if self.stamp == Some(stamp) {
+            return None;
+        }
+        self.stamp = Some(stamp);
+        let cfg = match std::fs::read_to_string(&self.path) {
+            Ok(text) => match Config::from_toml(&text) {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    self.error = Some(format!("invalid config {}: {e:#}", self.path.display()));
+                    return None;
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Config::default(),
+            Err(e) => {
+                self.error = Some(format!("cannot read {}: {e}", self.path.display()));
+                return None;
+            }
+        };
+        let line = shell_json(&cfg);
+        if self.last.as_ref() == Some(&line) {
+            return None;
+        }
+        self.last = Some(line.clone());
+        Some(line)
+    }
+
+    pub fn take_error(&mut self) -> Option<String> {
+        self.error.take()
+    }
+}
+
+/// Directory with `shell.qml`: `$VELA_SHELL_DIR`, else the first candidate.
+pub fn find_shell_dir(override_dir: Option<&OsStr>, candidates: &[PathBuf]) -> Option<PathBuf> {
+    let has_shell = |d: &Path| d.join("shell.qml").is_file();
+    if let Some(d) = override_dir.filter(|d| !d.is_empty()).map(PathBuf::from) {
+        return has_shell(&d).then_some(d);
+    }
+    candidates.iter().find(|d| has_shell(d)).cloned()
+}
+
+/// Where `vela shell` looks for the QML: next to a source checkout (for
+/// `target/release/vela`), the user install and the system package.
+pub fn shell_dir_candidates(exe: Option<&Path>) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(bin) = exe.and_then(Path::parent) {
+        dirs.push(bin.join("../../shell"));
+        dirs.push(bin.join("../share/vela/shell"));
+    }
+    dirs.push(crate::paths::home_dir().join(".local/share/vela/shell"));
+    dirs.push(PathBuf::from("/usr/share/vela/shell"));
+    dirs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{Config, Theme};
+    use serde_json::Value;
+
+    fn json(cfg: &Config) -> Value {
+        serde_json::from_str(&shell_json(cfg)).unwrap()
+    }
+
+    fn is_hex(v: &Value) -> bool {
+        let s = v.as_str().unwrap_or("");
+        s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit())
+    }
+
+    #[test]
+    fn is_a_single_line() {
+        assert!(!shell_json(&Config::default()).contains('\n'), "one line per update for the SplitParser");
+    }
+
+    #[test]
+    fn carries_shared_appearance_and_panel_settings() {
+        let mut cfg = Config::default();
+        cfg.appearance.accent = "#ff0000".into();
+        cfg.appearance.border_radius = 30;
+        cfg.appearance.font_scale = 1.25;
+        cfg.appearance.backdrop_dim = 0.3;
+        cfg.general.opacity = 0.7;
+        cfg.panel.width = 500;
+        cfg.panel.backdrop = true;
+        let j = json(&cfg);
+        assert_eq!(j["colors"]["primary"], "#ff0000");
+        assert_eq!(j["appearance"]["radius"], 30);
+        assert_eq!(j["appearance"]["fontScale"], 1.25);
+        assert_eq!(j["appearance"]["opacity"], 0.7);
+        assert_eq!(j["appearance"]["backdropDim"], 0.3);
+        assert_eq!(j["panel"]["width"], 500);
+        assert_eq!(j["panel"]["backdrop"], true);
+        assert_eq!(j["panel"]["popupTimeoutMs"], 5000);
+    }
+
+    #[test]
+    fn animation_scale_follows_speed_and_switch() {
+        let mut cfg = Config::default();
+        cfg.appearance.animation_speed = 2.0;
+        assert_eq!(json(&cfg)["appearance"]["animationScale"], 0.5);
+        cfg.appearance.animations = false;
+        assert_eq!(json(&cfg)["appearance"]["animationScale"], 0.0);
+    }
+
+    #[test]
+    fn every_theme_yields_a_full_palette() {
+        for t in Theme::ALL {
+            let mut cfg = Config::default();
+            cfg.appearance.theme = t;
+            let j = json(&cfg);
+            for key in SHELL_COLOR_KEYS {
+                assert!(is_hex(&j["colors"][key]), "{t:?}: {key} = {}", j["colors"][key]);
+            }
+        }
+    }
+
+    #[test]
+    fn light_theme_has_dark_text_and_readable_accent_text() {
+        let mut cfg = Config::default();
+        cfg.appearance.theme = Theme::Light;
+        let j = json(&cfg);
+        assert_eq!(j["colors"]["text"], "#1c1c22");
+        assert_eq!(j["colors"]["tint"], "#000000");
+        cfg.appearance.accent = "#ffff00".into();
+        assert_eq!(json(&cfg)["colors"]["textOnPrimary"], "#101014", "dark text on a bright accent");
+        cfg.appearance.accent = "#202080".into();
+        assert_eq!(json(&cfg)["colors"]["textOnPrimary"], "#ffffff", "light text on a dark accent");
+    }
+    #[test]
+    fn watcher_emits_on_start_and_on_real_changes_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let mut w = ConfigWatcher::new(path.clone());
+        let first = w.poll().expect("defaults when the file doesn't exist yet");
+        assert_eq!(json_of(&first)["panel"]["width"], 420);
+        assert!(w.poll().is_none(), "nothing changed");
+
+        std::fs::write(&path, "[panel]\nwidth = 500\n").unwrap();
+        assert_eq!(json_of(&w.poll().unwrap())["panel"]["width"], 500);
+        // Rewritten with the same content (e.g. atomic save): no new line.
+        std::fs::write(&path, "[panel]\nwidth = 500\n# comment\n").unwrap();
+        assert!(w.poll().is_none());
+
+        // A broken file keeps the last good values and reports once.
+        std::fs::write(&path, "[panel\nwidth = ").unwrap();
+        assert!(w.poll().is_none());
+        assert!(w.take_error().is_some());
+        std::fs::write(&path, "[panel]\nwidth = 600\n").unwrap();
+        assert_eq!(json_of(&w.poll().unwrap())["panel"]["width"], 600);
+    }
+
+    #[test]
+    fn shell_dir_prefers_the_override() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("shell.qml"), "").unwrap();
+        assert_eq!(find_shell_dir(Some(dir.path().as_os_str()), &[]), Some(dir.path().to_path_buf()));
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(
+            find_shell_dir(None, &[empty.path().to_path_buf(), dir.path().to_path_buf()]),
+            Some(dir.path().to_path_buf())
+        );
+        assert_eq!(find_shell_dir(None, &[empty.path().to_path_buf()]), None);
+    }
+
+    fn json_of(s: &str) -> Value {
+        serde_json::from_str(s).unwrap()
+    }
+}

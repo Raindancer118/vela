@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
+import qs
 import qs.services
 
 // While the panel is open, an invisible surface on every other monitor
@@ -14,7 +15,7 @@ Variants {
         required property ShellScreen modelData
 
         screen: modelData
-        visible: ShellState.panelOpen && modelData !== ShellState.panelScreen
+        visible: ShellState.panelOpen && Config.closeOnFocusLoss && modelData !== ShellState.panelScreen
         color: "transparent"
         anchors {
             top: true

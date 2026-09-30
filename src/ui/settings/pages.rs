@@ -325,7 +325,7 @@ fn rgba_to_hex(c: &gdk::RGBA) -> String {
 
 pub fn appearance(b: &Binder) -> adw::PreferencesPage {
     let p = page();
-    let look = group("Style", "");
+    let look = group("Style", "Applies to the launcher and the control center.");
     let labels: Vec<&str> = Theme::ALL.iter().map(|t| t.label()).collect();
     look.add(&b.combo(
         "Theme",
@@ -446,7 +446,7 @@ pub fn appearance(b: &Binder) -> adw::PreferencesPage {
     ));
     p.add(&grid);
 
-    let motion = group("Motion", "");
+    let motion = group("Motion", "Applies to the launcher and the control center.");
     motion.add(&b.switch(
         "Animations",
         "Opening, closing, tiles and results animate",
@@ -467,13 +467,19 @@ pub fn appearance(b: &Binder) -> adw::PreferencesPage {
 
     let blur = group(
         "Blur",
-        "Blur is rendered by Hyprland, its strength comes from decoration.blur. The provided Hyprland snippet enables it for the “vela” and “vela-backdrop” layers; see README → Hyprland.",
+        "Blur is rendered by Hyprland, its strength comes from decoration.blur. The provided Hyprland snippet (vela.lua) enables it for the launcher, the control center and their backdrops; see README → Hyprland.",
     );
     blur.add(&b.switch(
-        "Blur the screen behind",
+        "Blur the screen behind the launcher",
         "Everything else on the launcher's monitor is blurred while it is open",
         |c| c.appearance.backdrop,
         |c, v| c.appearance.backdrop = v,
+    ));
+    blur.add(&b.switch(
+        "Blur the screen behind the control center",
+        "Everything else on the panel's monitor is blurred while it is open",
+        |c| c.panel.backdrop,
+        |c, v| c.panel.backdrop = v,
     ));
     blur.add(&b.spin(
         "Backdrop dimming",
@@ -486,6 +492,107 @@ pub fn appearance(b: &Binder) -> adw::PreferencesPage {
         |c, v| c.appearance.backdrop_dim = v,
     ));
     p.add(&blur);
+    p
+}
+
+// -------------------------------------------------------------------- Panel
+
+pub fn panel(b: &Binder) -> adw::PreferencesPage {
+    let p = page();
+
+    let panel = group(
+        "Control center",
+        "The Quickshell panel (`vela shell`). Theme, colours, corners, opacity, text size, motion and blur are set under Appearance.",
+    );
+    panel.add(&b.spin(
+        "Width",
+        "Logical pixels",
+        320.0,
+        800.0,
+        10.0,
+        0,
+        |c| c.panel.width.into(),
+        |c, v| c.panel.width = v as u32,
+    ));
+    panel.add(&b.switch(
+        "Close when clicking elsewhere",
+        "Off: the rest of the screen stays usable while the panel is open",
+        |c| c.panel.close_on_focus_loss,
+        |c, v| c.panel.close_on_focus_loss = v,
+    ));
+    panel.add(&b.switch(
+        "Workspace indicator",
+        "Dots at the top of the screen when switching workspaces",
+        |c| c.panel.workspace_osd,
+        |c, v| c.panel.workspace_osd = v,
+    ));
+    panel.add(&b.spin(
+        "Night light temperature",
+        "Kelvin; lower is warmer",
+        1000.0,
+        6500.0,
+        100.0,
+        0,
+        |c| c.panel.night_light_temperature.into(),
+        |c, v| c.panel.night_light_temperature = v as u32,
+    ));
+    let open = adw::ButtonRow::builder()
+        .title("Open the control center")
+        .start_icon_name("view-reveal-symbolic")
+        .build();
+    open.connect_activated(|_| {
+        if let Ok(exe) = std::env::current_exe() {
+            // vela-daemon → vela next to it.
+            let vela = exe.with_file_name("vela");
+            let spec = launch::SpawnSpec {
+                argv: vec![vela.to_string_lossy().into_owned(), "panel".into(), "open".into()],
+                name: "vela".into(),
+                ..Default::default()
+            };
+            let _ = launch::spawn_detached(&spec, false);
+        }
+    });
+    panel.add(&open);
+    p.add(&panel);
+
+    let notes = group("Notifications", "");
+    notes.add(&b.spin(
+        "Popup duration",
+        "Seconds; apps may ask for less",
+        1.0,
+        60.0,
+        1.0,
+        0,
+        |c| c.panel.popup_timeout_secs.into(),
+        |c, v| c.panel.popup_timeout_secs = v as u32,
+    ));
+    notes.add(&b.spin(
+        "Popups at once",
+        "",
+        1.0,
+        10.0,
+        1.0,
+        0,
+        |c| c.panel.popup_max_visible.into(),
+        |c, v| c.panel.popup_max_visible = v as u32,
+    ));
+    notes.add(&b.switch(
+        "Keep critical notifications",
+        "Critical popups stay until dismissed",
+        |c| c.panel.critical_popups_stay,
+        |c, v| c.panel.critical_popups_stay = v,
+    ));
+    notes.add(&b.spin(
+        "Notifications per app",
+        "Shown before “Show more”",
+        1.0,
+        10.0,
+        1.0,
+        0,
+        |c| c.panel.group_collapsed_count.into(),
+        |c, v| c.panel.group_collapsed_count = v as u32,
+    ));
+    p.add(&notes);
     p
 }
 

@@ -36,6 +36,9 @@ local defaults = {
     -- Blur behind the launcher; vela animates itself, so Hyprland doesn't.
     blur = true,
     ignore_alpha = 0.3,
+    -- Start the control center (`vela shell`, needs Quickshell) with Hyprland.
+    -- Don't also start `qs` yourself: two notification daemons would fight.
+    shell = true,
 }
 
 function M.setup(opts)
@@ -97,6 +100,29 @@ function M.setup(opts)
         match = { namespace = "^vela-backdrop$" },
         blur  = o.blur,
     })
+
+    -- Control center: translucent panel, popups and workspace dots get
+    -- blurred behind their visible parts; they animate themselves.
+    hl.layer_rule({
+        name         = "vela-shell",
+        match        = { namespace = "^quickshell-(panel|notifications|osd)$" },
+        blur         = o.blur,
+        ignore_alpha = o.ignore_alpha,
+        no_anim      = true,
+    })
+
+    -- Optional backdrop behind the panel (Settings → Appearance → Blur).
+    hl.layer_rule({
+        name  = "vela-shell-backdrop",
+        match = { namespace = "^vela-shell-backdrop$" },
+        blur  = o.blur,
+    })
+
+    if o.shell then
+        hl.on("hyprland.start", function()
+            hl.exec_cmd(bin .. " shell")
+        end)
+    end
 
     if o.autostart then
         hl.on("hyprland.start", function()

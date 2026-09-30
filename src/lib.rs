@@ -12,4 +12,6 @@ pub mod ipc;
 pub mod launch;
 pub mod paths;
 pub mod search;
+pub mod shell;
+pub mod theme;
 pub mod ui;

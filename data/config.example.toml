@@ -93,3 +93,17 @@ working_dir = "~"
 
 [terminal]
 executable = "kitty"
+
+# Control center (`vela shell`, Quickshell). Theme, colours, radius, opacity,
+# text size and motion come from [general]/[appearance] like the launcher's.
+[panel]
+width = 420
+close_on_focus_loss = true
+# Blur and dim the rest of the panel's monitor while open (needs the vela-shell-backdrop layer rule).
+backdrop = false
+popup_timeout_secs = 5
+popup_max_visible = 4
+critical_popups_stay = true
+group_collapsed_count = 2
+workspace_osd = true
+night_light_temperature = 4000

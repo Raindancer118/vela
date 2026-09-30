@@ -42,8 +42,14 @@ PanelWindow {
     // away on close so the previous window gets its focus back.
     WlrLayershell.keyboardFocus: ShellState.panelOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
     // Click-through while the close animation is still running.
+    // With "close when clicking elsewhere" off, only the panel and the
+    // detail card take input; the rest of the monitor stays usable.
     mask: Region {
-        item: ShellState.panelOpen ? scope : null
+        item: !ShellState.panelOpen ? null : Config.closeOnFocusLoss ? scope : panel
+
+        Region {
+            item: ShellState.panelOpen && !Config.closeOnFocusLoss && ShellState.detail !== "" ? detailHost : null
+        }
     }
 
     Connections {
@@ -72,6 +78,7 @@ PanelWindow {
         // Click outside the panel.
         MouseArea {
             anchors.fill: parent
+            enabled: Config.closeOnFocusLoss
             onClicked: ShellState.closePanel()
         }
 
@@ -97,6 +104,8 @@ PanelWindow {
             }
 
             DetailHost {
+                id: detailHost
+
                 anchors.top: panel.top
                 anchors.right: panel.left
                 anchors.rightMargin: Theme.spacing.md

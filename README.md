@@ -16,6 +16,9 @@ gtk4-layer-shell.
   and is saved to `~/.config/vela/config.toml`.
 - **Instant**: a background daemon keeps everything warm; `vela toggle` answers
   in about a millisecond.
+- **Control center** (`vela shell`, built on Quickshell): quick settings, sound,
+  Wi-Fi, Bluetooth, notifications with popups, night light and a workspace
+  indicator. It uses the same theme, colours and motion settings as the launcher.
 
 ![vela](docs/screenshot.jpg)
 
@@ -89,6 +92,10 @@ dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup()
 3. **Autostart** of the daemon on `hyprland.start`. It imports the session
    environment into systemd and restarts `vela.service`, falling back to
    starting the daemon directly.
+4. **Control center**: starts `vela shell` on `hyprland.start` (`shell = false`
+   to skip) and blurs the `quickshell-panel`, `quickshell-notifications`,
+   `quickshell-osd` and `vela-shell-backdrop` layers. Don't also start `qs`
+   yourself; two notification daemons would fight.
 
 Options (all optional):
 
@@ -98,9 +105,14 @@ dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup({
     keycodes  = { 133, 134 }, -- Super_L, Super_R (XKB keycodes)
     blur      = true,
     autostart = true,
+    shell     = true,         -- start the control center
     binary    = nil,          -- path to `vela`, found automatically
 })
 ```
+
+The control center opens with the global shortcut `quickshell:panelToggle`,
+e.g. `hl.bind("SUPER + SPACE", hl.dsp.global("quickshell:panelToggle"))`, or
+with `vela panel [toggle|open|close]`.
 
 Still on a Hyprland version with `hyprland.conf`? The closest equivalent is a
 release bind, `bindr = SUPER, SUPER_L, exec, vela toggle`, plus a `layerrule`
@@ -181,10 +193,28 @@ overwriting an unparsable file, vela backs it up as `config.toml.broken-<time>`.
 | | `always_visible` | show "Ask Claude" even when other results exist |
 | | `shift_enter` | Shift+Enter sends the input to Claude |
 | | `prefer_for_questions` | put "Ask Claude" first for question-like input |
+| `panel` | `width` | width of the control center (logical px) |
+| | `close_on_focus_loss` | close it on a click elsewhere or when another surface takes the keyboard |
+| | `backdrop` | blur everything else on its monitor while open (own switch; dimming = `appearance.backdrop_dim`) |
+| | `popup_timeout_secs`, `popup_max_visible`, `critical_popups_stay` | notification popups |
+| | `group_collapsed_count` | notifications per app before “Show more” |
+| | `workspace_osd` | workspace dots when switching workspaces |
+| | `night_light_temperature` | Kelvin (hyprsunset) |
 | `terminal` | `executable` | default `kitty` |
 | | `exec_args` | arguments before the command; omit to use the known default (`-e` for most, none for kitty/foot, `start --` for wezterm) |
 
+The control center takes `theme`, `accent`, `border_radius`, `surface_opacity`,
+`font_scale`, `animations`, `animation_speed`, `backdrop_dim` and
+`general.opacity` from the same file.
+
 ## How it works
+
+- **Control center**: `vela shell` runs Quickshell on the QML in `shell/`
+  (installed to `/usr/share/vela/shell`, override with `VELA_SHELL_DIR`). The
+  shell doesn't parse TOML: it runs `vela shell-config --watch`, which prints
+  the sanitized settings plus a palette derived from the theme as one JSON
+  line per change. The QML started as the Quickshell config of
+  [Luna1506/nixos](https://github.com/Luna1506/nixos).
 
 - **`vela`** is a small client without GTK. It sends one line (`toggle`, `show`,
   …) to `$XDG_RUNTIME_DIR/vela.sock`.
@@ -266,6 +296,7 @@ cargo test                      # unit + integration tests
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 scripts/smoke-test.sh           # start-up test against a Wayland display
+scripts/shell-test.sh           # control center: settings, audio icons, locales, start-up (needs qs)
 ```
 
 Releases: `git tag X.Y.Z && git push origin X.Y.Z`. GitHub Actions builds and

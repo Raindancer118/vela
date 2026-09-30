@@ -13,6 +13,9 @@ pub struct Config {
     pub search: Search,
     pub claude: Claude,
     pub terminal: Terminal,
+    /// The Quickshell control center (`vela shell`). Style and motion come
+    /// from `appearance`/`general` like the launcher's.
+    pub panel: Panel,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -85,6 +88,42 @@ pub struct Appearance {
     pub backdrop: bool,
     /// Darkening of the backdrop, 0.0–0.8.
     pub backdrop_dim: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Panel {
+    /// Width of the control center in logical pixels.
+    pub width: u32,
+    pub close_on_focus_loss: bool,
+    /// Blur (and dim, `appearance.backdrop_dim`) the rest of its monitor while open.
+    pub backdrop: bool,
+    /// How long a notification popup stays (apps may ask for less).
+    pub popup_timeout_secs: u32,
+    pub popup_max_visible: u32,
+    pub critical_popups_stay: bool,
+    /// Notifications shown per app before "Show more".
+    pub group_collapsed_count: u32,
+    /// Workspace dots at the top when switching workspaces.
+    pub workspace_osd: bool,
+    /// Night light colour temperature in Kelvin.
+    pub night_light_temperature: u32,
+}
+
+impl Default for Panel {
+    fn default() -> Self {
+        Panel {
+            width: 420,
+            close_on_focus_loss: true,
+            backdrop: false,
+            popup_timeout_secs: 5,
+            popup_max_visible: 4,
+            critical_popups_stay: true,
+            group_collapsed_count: 2,
+            workspace_osd: true,
+            night_light_temperature: 4000,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -411,6 +450,13 @@ impl Config {
             s.file_roots.push("~".into());
         }
 
+        let p = &mut self.panel;
+        p.width = p.width.clamp(320, 800);
+        p.popup_timeout_secs = p.popup_timeout_secs.clamp(1, 60);
+        p.popup_max_visible = p.popup_max_visible.clamp(1, 10);
+        p.group_collapsed_count = p.group_collapsed_count.clamp(1, 10);
+        p.night_light_temperature = p.night_light_temperature.clamp(1000, 6500);
+
         if self.claude.executable.trim().is_empty() {
             self.claude.executable = Claude::default().executable;
         }
@@ -546,6 +592,7 @@ mod tests {
         let cfg = Config::from_toml(include_str!("../data/config.example.toml")).unwrap();
         assert_eq!(cfg.appearance.backdrop, Appearance::default().backdrop);
         assert_eq!(cfg.general.main_monitor, General::default().main_monitor);
+        assert_eq!(cfg.panel, Panel::default());
     }
 
     #[test]
@@ -558,6 +605,34 @@ mod tests {
         assert_eq!(cfg.appearance.backdrop_dim, 0.8, "never black out the screen");
         let cfg = Config::from_toml("[appearance]\nbackdrop_dim = -1.0\n").unwrap();
         assert_eq!(cfg.appearance.backdrop_dim, 0.0);
+    }
+
+    #[test]
+    fn panel_defaults_and_partial_files() {
+        let p = Panel::default();
+        assert_eq!(p.width, 420);
+        assert!(p.close_on_focus_loss);
+        assert!(!p.backdrop, "blurring the desktop is opt-in for the panel too");
+        assert_eq!((p.popup_timeout_secs, p.popup_max_visible, p.group_collapsed_count), (5, 4, 2));
+        assert!(p.critical_popups_stay && p.workspace_osd);
+        assert_eq!(p.night_light_temperature, 4000);
+        let cfg = Config::from_toml("[panel]\nbackdrop = true\n").unwrap();
+        assert!(cfg.panel.backdrop);
+        assert!(!cfg.appearance.backdrop, "launcher and panel backdrop are independent");
+        assert_eq!(cfg.panel.width, 420);
+    }
+
+    #[test]
+    fn panel_values_are_clamped() {
+        let cfg = Config::from_toml(
+            "[panel]\nwidth = 10\npopup_timeout_secs = 0\npopup_max_visible = 99\ngroup_collapsed_count = 0\nnight_light_temperature = 100000\n",
+        )
+        .unwrap();
+        assert_eq!(cfg.panel.width, 320);
+        assert_eq!(cfg.panel.popup_timeout_secs, 1);
+        assert_eq!(cfg.panel.popup_max_visible, 10);
+        assert_eq!(cfg.panel.group_collapsed_count, 1);
+        assert_eq!(cfg.panel.night_light_temperature, 6500);
     }
 
     #[test]

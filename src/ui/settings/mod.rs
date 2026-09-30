@@ -33,11 +33,13 @@ impl SettingsWindow {
         let apps = apps_page::build(daemon, &binder);
         let search = pages::search(daemon, &binder);
         let claude = pages::claude(&binder);
+        let panel = pages::panel(&binder);
         stack.add_titled_with_icon(&general, Some("general"), "General", "preferences-system-symbolic");
         stack.add_titled_with_icon(&appearance, Some("appearance"), "Appearance", "applications-graphics-symbolic");
         stack.add_titled_with_icon(&apps, Some("apps"), "Applications", "view-grid-symbolic");
         stack.add_titled_with_icon(&search, Some("search"), "Search", "system-search-symbolic");
         stack.add_titled_with_icon(&claude, Some("claude"), "Claude", "vela-claude-symbolic");
+        stack.add_titled_with_icon(&panel, Some("panel"), "Panel", "preferences-desktop-notification-symbolic");
 
         let header = adw::HeaderBar::new();
         let switcher = adw::ViewSwitcher::builder().stack(&stack).policy(adw::ViewSwitcherPolicy::Wide).build();

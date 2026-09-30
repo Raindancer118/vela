@@ -32,6 +32,8 @@ Variants {
         }
 
         function show(): void {
+            if (!Config.workspaceOsd)
+                return;
             shown = true;
             hideTimer.restart();
         }

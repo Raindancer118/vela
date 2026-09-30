@@ -48,6 +48,9 @@ done
 sed "s|^Exec=vela|Exec=$BINDIR/vela|" data/vela.desktop | install -Dm644 /dev/stdin "$DATADIR/applications/vela.desktop"
 sed "s|@BINDIR@|$BINDIR|" contrib/systemd/vela.service.in | install -Dm644 /dev/stdin "$CONFDIR/systemd/user/vela.service"
 install -Dm644 contrib/hyprland/vela.lua "$HYPRDIR/vela.lua"
+rm -rf "$DATADIR/vela/shell"
+find shell -type f -name '*.qml' ! -name 'test-*' -exec install -Dm644 {} "$DATADIR/vela/{}" \;
+command -v qs >/dev/null || warn "Quickshell (qs) not found — the control center (vela shell) needs it"
 systemctl --user daemon-reload 2>/dev/null || true
 gtk-update-icon-cache -q -t "$DATADIR/icons/hicolor" 2>/dev/null || true
 

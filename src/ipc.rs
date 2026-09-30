@@ -10,7 +10,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Pages of the settings window (`vela settings <page>`).
-pub const SETTINGS_PAGES: [&str; 5] = ["general", "appearance", "apps", "search", "claude"];
+pub const SETTINGS_PAGES: [&str; 6] = ["general", "appearance", "apps", "search", "claude", "panel"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {

@@ -11,18 +11,26 @@ Singleton {
     readonly property int osdMaxWorkspaces: 10
 
     // Notifications
-    readonly property int popupTimeout: 5000
+    readonly property var vp: VelaConfig.panel
+
+    // Control center (vela settings → Panel)
+    readonly property bool closeOnFocusLoss: vp.closeOnFocusLoss
+    readonly property bool panelBackdrop: vp.backdrop
+    readonly property bool workspaceOsd: vp.workspaceOsd
+
+    readonly property int popupTimeout: vp.popupTimeoutMs
     // Upper bound for app-requested timeouts (ms).
     readonly property int popupMaxTimeout: 30000
-    readonly property int popupMaxVisible: 4
-    readonly property bool criticalPopupsStay: true
+    readonly property int popupMaxVisible: vp.popupMaxVisible
+    readonly property bool criticalPopupsStay: vp.criticalPopupsStay
     // Notifications shown per app group before "Show more".
-    readonly property int groupCollapsedCount: 2
+    readonly property int groupCollapsedCount: vp.groupCollapsedCount
     // Refresh rate of "5 min ago" labels while visible (ms).
     readonly property int relativeTimeInterval: 30000
 
-    // Speed of all animations: 1 = normal, 2 = twice as slow, 0 = off.
-    readonly property real animationScale: 1
+    // Duration factor of all animations: 1 = normal, 2 = twice as slow,
+    // 0 = off (vela's animations switch and speed).
+    readonly property real animationScale: VelaConfig.appearance.animationScale
 
     // Sliders: volume/brightness change per mouse wheel notch.
     readonly property real sliderWheelStep: 0.05
@@ -34,7 +42,7 @@ Singleton {
     readonly property string shortDateFormat: I18n.withoutYear(locale.dateFormat(Locale.ShortFormat))
 
     // Night light color temperature in Kelvin (hyprsunset).
-    readonly property int nightLightTemperature: 4000
+    readonly property int nightLightTemperature: vp.nightLightTemperature
 
     // Session actions
     readonly property var lockCommand: ["hyprlock"]

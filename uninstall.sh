@@ -22,6 +22,7 @@ rm -f "$PREFIX/bin/vela" "$PREFIX/bin/vela-daemon" \
     "$DATADIR/icons/hicolor/scalable/apps/vela-drag-handle-symbolic.svg" \
     "$CONFDIR/systemd/user/vela.service" \
     "$HYPRDIR/vela.lua"
+rm -rf "$DATADIR/vela/shell"
 systemctl --user daemon-reload 2>/dev/null || true
 
 if [[ -f "$HYPRDIR/hyprland.lua" ]] && grep -qF 'hypr/vela.lua' "$HYPRDIR/hyprland.lua"; then

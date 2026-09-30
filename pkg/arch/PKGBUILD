@@ -1,6 +1,6 @@
 # Maintainer: Raindancer118 <tom560stieh@gmail.com>
 pkgname=vela
-pkgver=0.4.0
+pkgver=0.5.0
 pkgrel=1
 pkgdesc="Spotlight-style application launcher for Hyprland with file search and Claude Code integration"
 arch=('x86_64' 'aarch64')
@@ -11,7 +11,12 @@ makedepends=('cargo')
 optdepends=('plocate: indexed system-wide file search'
             'kitty: default terminal for Claude Code and terminal apps'
             'xdg-utils: open files with the default application'
-            'hyprland: Super-tap integration (vela.lua)')
+            'hyprland: Super-tap integration (vela.lua)'
+            'quickshell: control center and notifications (vela shell)'
+            'ttf-material-symbols-variable: control center icons'
+            'ttf-rubik-vf: control center font'
+            'papirus-icon-theme: control center app icons'
+            'hyprsunset: night light in the control center')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$pkgver.tar.gz")
 sha256sums=('SKIP')
 
@@ -39,6 +44,7 @@ package() {
   install -Dm755 target/release/vela-daemon "$pkgdir/usr/bin/vela-daemon"
   sed 's|@BINDIR@|/usr/bin|' contrib/systemd/vela.service.in | install -Dm644 /dev/stdin "$pkgdir/usr/lib/systemd/user/vela.service"
   install -Dm644 contrib/hyprland/vela.lua "$pkgdir/usr/share/vela/hyprland/vela.lua"
+  find shell -type f -name '*.qml' ! -name 'test-*' -exec install -Dm644 {} "$pkgdir/usr/share/vela/{}" \;
   install -Dm644 data/config.example.toml "$pkgdir/usr/share/vela/config.example.toml"
   install -Dm644 data/vela.desktop "$pkgdir/usr/share/applications/vela.desktop"
   for icon in data/icons/*.svg; do

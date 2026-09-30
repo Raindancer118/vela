@@ -26,6 +26,19 @@ Singleton {
 
     Component.onCompleted: proc.running = enabled
 
+    // A new temperature from the settings applies right away.
+    Connections {
+        target: Config
+
+        function onNightLightTemperatureChanged(): void {
+            if (!proc.running)
+                return;
+            root.restarts = 0;
+            proc.running = false;
+            restartTimer.restart();
+        }
+    }
+
     Process {
         id: proc
 
