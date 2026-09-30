@@ -31,7 +31,7 @@ enum Cmd {
     /// Hide the launcher.
     Hide,
     /// Open the settings window, optionally on a page
-    /// (general, appearance, apps, search, claude, panel).
+    /// (general, apps, search, claude, panel, notifications, power, appearance, system).
     Settings {
         #[arg(value_parser = clap::builder::PossibleValuesParser::new(ipc::SETTINGS_PAGES))]
         page: Option<String>,

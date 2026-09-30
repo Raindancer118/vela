@@ -77,10 +77,10 @@ fn main_monitor_row(b: &Binder) -> adw::ComboRow {
     row
 }
 
-pub fn general(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
+pub fn launcher(b: &Binder) -> adw::PreferencesPage {
     let p = page();
 
-    let launcher = group("Launcher", "");
+    let launcher = group("Window", "Where the launcher opens and how big it gets.");
     launcher.add(&b.spin(
         "Width",
         "Logical pixels",
@@ -112,23 +112,16 @@ pub fn general(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
         |c, v| c.general.vertical_position = v as u32,
     ));
     launcher.add(&main_monitor_row(b));
-    launcher.add(&b.spin(
-        "Background opacity",
-        "0 = fully transparent, 1 = opaque",
-        0.0,
-        1.0,
-        0.01,
-        2,
-        |c| c.general.opacity,
-        |c, v| c.general.opacity = v,
-    ));
-    launcher.add(&b.switch(
+    p.add(&launcher);
+
+    let behaviour = group("Behaviour", "");
+    behaviour.add(&b.switch(
         "Close when clicking elsewhere",
         "Clicking elsewhere hides the launcher",
         |c| c.general.close_on_focus_loss,
         |c, v| c.general.close_on_focus_loss = v,
     ));
-    launcher.add(&b.spin(
+    behaviour.add(&b.spin(
         "Maximum results",
         "Rows in the result list",
         1.0,
@@ -138,7 +131,16 @@ pub fn general(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
         |c| c.general.max_results.into(),
         |c, v| c.general.max_results = v as u32,
     ));
-    p.add(&launcher);
+    p.add(&behaviour);
+
+    p.add(&grid_group(b));
+    p
+}
+
+// ------------------------------------------------------------------- System
+
+pub fn system(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
+    let p = page();
 
     let term = group("Terminal", "Used for Claude and for applications that need a terminal.");
     let mut names: Vec<&str> = TERMINAL_PRESETS.iter().map(|(n, _)| *n).collect();
@@ -203,14 +205,14 @@ pub fn general(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
     term.add(&args);
     p.add(&term);
 
-    let behaviour = group("Behaviour", "");
-    behaviour.add(&b.switch(
+    let apps = group("Applications", "");
+    apps.add(&b.switch(
         "Separate systemd scope per application",
         "Launched apps survive restarts of the vela service (requires systemd-run)",
         |c| c.general.systemd_scope,
         |c, v| c.general.systemd_scope = v,
     ));
-    p.add(&behaviour);
+    p.add(&apps);
 
     let file = group(
         "Configuration",
@@ -314,89 +316,7 @@ fn add_exec_status(row: &adw::EntryRow, b: &Binder, get: fn(&Config) -> String) 
 
 // --------------------------------------------------------------- Appearance
 
-fn hex_to_rgba(hex: &str) -> gdk::RGBA {
-    gdk::RGBA::parse(hex).unwrap_or(gdk::RGBA::new(0.48, 0.64, 0.97, 1.0))
-}
-
-fn rgba_to_hex(c: &gdk::RGBA) -> String {
-    let ch = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-    format!("#{:02x}{:02x}{:02x}", ch(c.red()), ch(c.green()), ch(c.blue()))
-}
-
-pub fn appearance(b: &Binder) -> adw::PreferencesPage {
-    let p = page();
-    let look = group("Style", "Applies to the launcher and the control center.");
-    let labels: Vec<&str> = Theme::ALL.iter().map(|t| t.label()).collect();
-    look.add(&b.combo(
-        "Theme",
-        "",
-        &labels,
-        |c| Theme::ALL.iter().position(|t| *t == c.appearance.theme).unwrap_or(0),
-        |c, i| c.appearance.theme = Theme::ALL[i.min(Theme::ALL.len() - 1)],
-    ));
-
-    let accent_row = adw::ActionRow::builder()
-        .title("Accent colour")
-        .subtitle("Selection highlight and caret")
-        .build();
-    let color = gtk::ColorDialogButton::new(Some(gtk::ColorDialog::builder().with_alpha(false).build()));
-    color.set_valign(gtk::Align::Center);
-    color.set_rgba(&hex_to_rgba(&b.store.get().appearance.accent));
-    let b2 = b.clone();
-    color.connect_rgba_notify(move |btn| {
-        let hex = rgba_to_hex(&btn.rgba());
-        b2.write(|c| c.appearance.accent = hex);
-    });
-    let w = color.downgrade();
-    b.on_refresh(move |c| {
-        if let Some(btn) = w.upgrade() {
-            btn.set_rgba(&hex_to_rgba(&c.appearance.accent));
-        }
-    });
-    accent_row.add_suffix(&color);
-    look.add(&accent_row);
-    look.add(&b.spin(
-        "Corner radius",
-        "",
-        0.0,
-        64.0,
-        1.0,
-        0,
-        |c| c.appearance.border_radius.into(),
-        |c, v| c.appearance.border_radius = v as u32,
-    ));
-    look.add(&b.spin(
-        "Surface opacity",
-        "Background of tiles and hovered rows",
-        0.0,
-        1.0,
-        0.01,
-        2,
-        |c| c.appearance.surface_opacity,
-        |c, v| c.appearance.surface_opacity = v,
-    ));
-    look.add(&b.spin(
-        "Text size",
-        "Scale factor",
-        0.6,
-        2.0,
-        0.05,
-        2,
-        |c| c.appearance.font_scale,
-        |c, v| c.appearance.font_scale = v,
-    ));
-    look.add(&b.spin(
-        "Background opacity",
-        "Same as in General",
-        0.0,
-        1.0,
-        0.01,
-        2,
-        |c| c.general.opacity,
-        |c, v| c.general.opacity = v,
-    ));
-    p.add(&look);
-
+fn grid_group(b: &Binder) -> adw::PreferencesGroup {
     let grid = group("Application grid", "");
     grid.add(&b.spin(
         "Tile size",
@@ -444,17 +364,210 @@ pub fn appearance(b: &Binder) -> adw::PreferencesPage {
         |c| c.appearance.show_labels,
         |c, v| c.appearance.show_labels = v,
     ));
-    p.add(&grid);
+    grid
+}
 
-    let motion = group("Motion", "Applies to the launcher and the control center.");
-    motion.add(&b.switch(
+fn hex_to_rgba(hex: &str) -> gdk::RGBA {
+    gdk::RGBA::parse(hex).unwrap_or(gdk::RGBA::new(0.48, 0.64, 0.97, 1.0))
+}
+
+fn rgba_to_hex(c: &gdk::RGBA) -> String {
+    let ch = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    format!("#{:02x}{:02x}{:02x}", ch(c.red()), ch(c.green()), ch(c.blue()))
+}
+
+/// Accent presets offered as colour dots (Tokyo Night-ish, plus neutrals).
+pub const ACCENTS: [&str; 8] = ["#7aa2f7", "#bb9af7", "#f7768e", "#ff9e64", "#e0af68", "#9ece6a", "#2ac3de", "#c0caf5"];
+
+/// Themes as clickable swatches instead of a drop-down.
+fn theme_picker(b: &Binder) -> gtk::Widget {
+    let flow = gtk::FlowBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .homogeneous(true)
+        .max_children_per_line(5)
+        .min_children_per_line(3)
+        .column_spacing(12)
+        .row_spacing(12)
+        .margin_top(6)
+        .margin_bottom(6)
+        .build();
+    let mut first: Option<gtk::ToggleButton> = None;
+    let mut buttons = Vec::new();
+    for t in Theme::ALL {
+        let swatch = gtk::Box::builder()
+            .css_classes(["vela-swatch", &format!("vela-swatch-{}", t.label().to_lowercase())])
+            .build();
+        swatch.set_size_request(96, 60);
+        let label = gtk::Label::new(Some(t.label()));
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        content.append(&swatch);
+        content.append(&label);
+        let btn = gtk::ToggleButton::builder()
+            .child(&content)
+            .css_classes(["flat", "vela-theme-chip"])
+            .tooltip_text(t.label())
+            .build();
+        if let Some(f) = &first {
+            btn.set_group(Some(f));
+        } else {
+            first = Some(btn.clone());
+        }
+        btn.set_active(b.store.get().appearance.theme == t);
+        let b2 = b.clone();
+        btn.connect_toggled(move |btn| {
+            if btn.is_active() {
+                b2.write(|c| c.appearance.theme = t);
+            }
+        });
+        flow.insert(&btn, -1);
+        buttons.push((t, btn.downgrade()));
+    }
+    b.on_refresh(move |c| {
+        for (t, w) in &buttons {
+            if let Some(btn) = w.upgrade() {
+                btn.set_active(c.appearance.theme == *t);
+            }
+        }
+    });
+    flow.upcast()
+}
+
+/// Preset dots plus a custom colour button.
+fn accent_row(b: &Binder) -> adw::ActionRow {
+    let row = adw::ActionRow::builder()
+        .title("Accent colour")
+        .subtitle("Selection, sliders and active tiles")
+        .build();
+    let dots = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    dots.set_valign(gtk::Align::Center);
+    let mut first: Option<gtk::ToggleButton> = None;
+    let mut all = Vec::new();
+    for (i, hex) in ACCENTS.iter().enumerate() {
+        let dot = gtk::ToggleButton::builder()
+            .css_classes(["vela-accent-dot", &format!("vela-accent-{i}")])
+            .tooltip_text(*hex)
+            .valign(gtk::Align::Center)
+            .build();
+        if let Some(f) = &first {
+            dot.set_group(Some(f));
+        } else {
+            first = Some(dot.clone());
+        }
+        let b2 = b.clone();
+        let hex = hex.to_string();
+        dot.connect_toggled(move |d| {
+            if d.is_active() {
+                let hex = hex.clone();
+                b2.write(|c| c.appearance.accent = hex);
+            }
+        });
+        dots.append(&dot);
+        all.push(dot);
+    }
+    let custom = gtk::ColorDialogButton::new(Some(gtk::ColorDialog::builder().with_alpha(false).build()));
+    custom.set_valign(gtk::Align::Center);
+    custom.set_tooltip_text(Some("Custom colour"));
+    let b2 = b.clone();
+    custom.connect_rgba_notify(move |btn| {
+        let hex = rgba_to_hex(&btn.rgba());
+        b2.write(|c| c.appearance.accent = hex);
+    });
+    dots.append(&custom);
+    row.add_suffix(&dots);
+    let sync = {
+        let all: Vec<_> = all.iter().map(|d| d.downgrade()).collect();
+        let custom = custom.downgrade();
+        move |c: &Config| {
+            let accent = c.appearance.accent.to_lowercase();
+            for (i, w) in all.iter().enumerate() {
+                if let Some(d) = w.upgrade() {
+                    d.set_active(ACCENTS[i] == accent);
+                }
+            }
+            if let Some(btn) = custom.upgrade() {
+                btn.set_rgba(&hex_to_rgba(&accent));
+            }
+        }
+    };
+    sync(&b.store.get());
+    b.on_refresh(sync);
+    row
+}
+
+fn strength_row(b: &Binder, get: fn(&Config) -> f64, set: fn(&mut Config, f64)) -> adw::SpinRow {
+    b.spin(
+        "Strength",
+        "1 = Hyprland's blur; each step blurs once more (and a little darker)",
+        1.0,
+        4.0,
+        1.0,
+        0,
+        get,
+        set,
+    )
+}
+
+pub fn appearance(b: &Binder) -> adw::PreferencesPage {
+    let p = page();
+    p.set_description("Shared by the launcher and the control center.");
+
+    let theme = group("Theme", "");
+    theme.add(&theme_picker(b));
+    p.add(&theme);
+
+    let style = group("Colour, shape and text", "");
+    style.add(&accent_row(b));
+    style.add(&b.spin(
+        "Corner radius",
+        "",
+        0.0,
+        64.0,
+        1.0,
+        0,
+        |c| c.appearance.border_radius.into(),
+        |c, v| c.appearance.border_radius = v as u32,
+    ));
+    style.add(&b.spin(
+        "Background opacity",
+        "Launcher, panel and popups; 1 = opaque",
+        0.0,
+        1.0,
+        0.01,
+        2,
+        |c| c.general.opacity,
+        |c, v| c.general.opacity = v,
+    ));
+    style.add(&b.spin(
+        "Surface opacity",
+        "Tiles, cards and hovered rows",
+        0.0,
+        1.0,
+        0.01,
+        2,
+        |c| c.appearance.surface_opacity,
+        |c, v| c.appearance.surface_opacity = v,
+    ));
+    style.add(&b.spin(
+        "Text size",
+        "Scale factor",
+        0.6,
+        2.0,
+        0.05,
+        2,
+        |c| c.appearance.font_scale,
+        |c, v| c.appearance.font_scale = v,
+    ));
+    p.add(&style);
+
+    let motion = group("Motion", "");
+    let anim = b.expander(
         "Animations",
-        "Opening, closing, tiles and results animate",
+        "Opening, closing, lists and state changes",
         |c| c.appearance.animations,
         |c, v| c.appearance.animations = v,
-    ));
-    motion.add(&b.spin(
-        "Animation speed",
+    );
+    anim.add_row(&b.spin(
+        "Speed",
         "1 = normal, 2 = twice as fast",
         0.25,
         4.0,
@@ -463,26 +576,29 @@ pub fn appearance(b: &Binder) -> adw::PreferencesPage {
         |c| c.appearance.animation_speed,
         |c, v| c.appearance.animation_speed = v,
     ));
+    motion.add(&anim);
     p.add(&motion);
 
     let blur = group(
-        "Blur",
-        "Blur is rendered by Hyprland, its strength comes from decoration.blur. The provided Hyprland snippet (vela.lua) enables it for the launcher, the control center and their backdrops; see README → Hyprland.",
+        "Blur behind",
+        "Blurs everything else on the monitor while open. Hyprland renders it (decoration.blur, via vela.lua); it has no per-surface strength, so stronger levels stack blurred layers.",
     );
-    blur.add(&b.switch(
-        "Blur the screen behind the launcher",
-        "Everything else on the launcher's monitor is blurred while it is open",
-        |c| c.appearance.backdrop,
-        |c, v| c.appearance.backdrop = v,
+    let launcher = b.expander("The launcher", "", |c| c.appearance.backdrop, |c, v| c.appearance.backdrop = v);
+    launcher.add_row(&strength_row(
+        b,
+        |c| c.appearance.backdrop_strength.into(),
+        |c, v| c.appearance.backdrop_strength = v as u32,
     ));
-    blur.add(&b.switch(
-        "Blur the screen behind the control center",
-        "Everything else on the panel's monitor is blurred while it is open",
-        |c| c.panel.backdrop,
-        |c, v| c.panel.backdrop = v,
+    blur.add(&launcher);
+    let panel = b.expander("The control center", "", |c| c.panel.backdrop, |c, v| c.panel.backdrop = v);
+    panel.add_row(&strength_row(
+        b,
+        |c| c.panel.backdrop_strength.into(),
+        |c, v| c.panel.backdrop_strength = v as u32,
     ));
+    blur.add(&panel);
     blur.add(&b.spin(
-        "Backdrop dimming",
+        "Dimming",
         "0 = blur only, 0.8 = much darker",
         0.0,
         0.8,
@@ -495,53 +611,9 @@ pub fn appearance(b: &Binder) -> adw::PreferencesPage {
     p
 }
 
-// -------------------------------------------------------------------- Panel
+// -------------------------------------------------------- Control center
 
-pub fn panel(b: &Binder) -> adw::PreferencesPage {
-    let p = page();
-
-    let panel = group(
-        "Control center",
-        "The Quickshell panel (vela shell). Theme, colours, corners, opacity, text size, motion and blur are set under Appearance.",
-    );
-    panel.add(&b.spin(
-        "Width",
-        "Logical pixels",
-        320.0,
-        800.0,
-        10.0,
-        0,
-        |c| c.panel.width.into(),
-        |c, v| c.panel.width = v as u32,
-    ));
-    panel.add(&b.switch(
-        "Close when clicking elsewhere",
-        "Off: the rest of the screen stays usable while the panel is open",
-        |c| c.panel.close_on_focus_loss,
-        |c, v| c.panel.close_on_focus_loss = v,
-    ));
-    panel.add(&b.switch(
-        "Centred clock",
-        "Clock and date in the middle of the panel",
-        |c| c.panel.clock_centered,
-        |c, v| c.panel.clock_centered = v,
-    ));
-    panel.add(&b.switch(
-        "Workspace indicator",
-        "Dots at the top of the screen when switching workspaces",
-        |c| c.panel.workspace_osd,
-        |c, v| c.panel.workspace_osd = v,
-    ));
-    panel.add(&b.spin(
-        "Night light temperature",
-        "Kelvin; lower is warmer",
-        1000.0,
-        6500.0,
-        100.0,
-        0,
-        |c| c.panel.night_light_temperature.into(),
-        |c, v| c.panel.night_light_temperature = v as u32,
-    ));
+fn open_control_center_row() -> adw::ButtonRow {
     let open = adw::ButtonRow::builder()
         .title("Open the control center")
         .start_icon_name("view-reveal-symbolic")
@@ -558,12 +630,58 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
             let _ = launch::spawn_detached(&spec, false);
         }
     });
-    panel.add(&open);
-    p.add(&panel);
+    open
+}
 
-    let notes = group("Notifications", "");
-    notes.add(&b.spin(
-        "Popup duration",
+pub fn panel(b: &Binder) -> adw::PreferencesPage {
+    let p = page();
+    p.set_description("Quick settings, sound, network and notifications (vela shell). Colours, motion and blur are under Appearance.");
+
+    let layout = group("Layout", "");
+    layout.add(&b.spin(
+        "Width",
+        "Logical pixels",
+        320.0,
+        800.0,
+        10.0,
+        0,
+        |c| c.panel.width.into(),
+        |c, v| c.panel.width = v as u32,
+    ));
+    layout.add(&b.switch(
+        "Centred clock",
+        "Clock and date in the middle of the panel",
+        |c| c.panel.clock_centered,
+        |c, v| c.panel.clock_centered = v,
+    ));
+    p.add(&layout);
+
+    let behaviour = group("Behaviour", "");
+    behaviour.add(&b.switch(
+        "Close when clicking elsewhere",
+        "Off: the rest of the screen stays usable while the panel is open",
+        |c| c.panel.close_on_focus_loss,
+        |c, v| c.panel.close_on_focus_loss = v,
+    ));
+    behaviour.add(&b.switch(
+        "Workspace indicator",
+        "Dots at the top of the screen when switching workspaces",
+        |c| c.panel.workspace_osd,
+        |c, v| c.panel.workspace_osd = v,
+    ));
+    p.add(&behaviour);
+
+    let actions = group("", "");
+    actions.add(&open_control_center_row());
+    p.add(&actions);
+    p
+}
+
+pub fn notifications(b: &Binder) -> adw::PreferencesPage {
+    let p = page();
+    let popups = group("Popups", "Shown in the top right corner while the panel is closed.");
+    popups.add(&b.spin(
+        "Duration",
         "Seconds; apps may ask for less",
         1.0,
         60.0,
@@ -572,8 +690,8 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
         |c| c.panel.popup_timeout_secs.into(),
         |c, v| c.panel.popup_timeout_secs = v as u32,
     ));
-    notes.add(&b.spin(
-        "Popups at once",
+    popups.add(&b.spin(
+        "At once",
         "",
         1.0,
         10.0,
@@ -582,13 +700,16 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
         |c| c.panel.popup_max_visible.into(),
         |c, v| c.panel.popup_max_visible = v as u32,
     ));
-    notes.add(&b.switch(
+    popups.add(&b.switch(
         "Keep critical notifications",
         "Critical popups stay until dismissed",
         |c| c.panel.critical_popups_stay,
         |c, v| c.panel.critical_popups_stay = v,
     ));
-    notes.add(&b.spin(
+    p.add(&popups);
+
+    let list = group("In the panel", "");
+    list.add(&b.spin(
         "Notifications per app",
         "Shown before “Show more”",
         1.0,
@@ -598,54 +719,55 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
         |c| c.panel.group_collapsed_count.into(),
         |c, v| c.panel.group_collapsed_count = v as u32,
     ));
-    p.add(&notes);
+    p.add(&list);
+    p
+}
 
-    let idle = group(
-        "While you're away",
-        "Minutes without input; 0 = never. Run by vela idle (hypridle), started by vela.lua.",
+fn minutes_row(b: &Binder, get: fn(&Config) -> f64, set: fn(&mut Config, f64)) -> adw::SpinRow {
+    b.spin("After", "Minutes without input", 0.5, 720.0, 0.5, 1, get, set)
+}
+
+pub fn power(b: &Binder) -> adw::PreferencesPage {
+    let p = page();
+
+    let idle = group("While you're away", "Run by vela idle (hypridle), which vela.lua starts with Hyprland.");
+    let dim = b.expander("Dim the screen", "Also the keyboard backlight", |c| c.idle.dim, |c, v| c.idle.dim = v);
+    dim.add_row(&minutes_row(b, |c| c.idle.dim_after_min, |c, v| c.idle.dim_after_min = v));
+    idle.add(&dim);
+    let lock = b.expander("Lock the screen", "", |c| c.idle.lock, |c, v| c.idle.lock = v);
+    lock.add_row(&minutes_row(b, |c| c.idle.lock_after_min, |c, v| c.idle.lock_after_min = v));
+    idle.add(&lock);
+    let off = b.expander("Turn the screen off", "", |c| c.idle.screen_off, |c, v| c.idle.screen_off = v);
+    off.add_row(&minutes_row(b, |c| c.idle.screen_off_after_min, |c, v| c.idle.screen_off_after_min = v));
+    idle.add(&off);
+    let suspend = b.expander(
+        "Suspend",
+        "Off: the computer never goes to sleep on its own",
+        |c| c.idle.suspend,
+        |c, v| c.idle.suspend = v,
     );
-    idle.add(&b.spin(
-        "Dim the screen after",
-        "",
-        0.0,
-        720.0,
-        0.5,
-        1,
-        |c| c.idle.dim_after_min,
-        |c, v| c.idle.dim_after_min = v,
+    suspend.add_row(&minutes_row(b, |c| c.idle.suspend_after_min, |c, v| c.idle.suspend_after_min = v));
+    idle.add(&suspend);
+    idle.add(&b.switch(
+        "Lock before sleep",
+        "Also when suspending by hand or closing the lid",
+        |c| c.idle.lock_before_sleep,
+        |c, v| c.idle.lock_before_sleep = v,
     ));
-    idle.add(&b.spin(
-        "Lock after",
-        "",
-        0.0,
-        720.0,
-        0.5,
-        1,
-        |c| c.idle.lock_after_min,
-        |c, v| c.idle.lock_after_min = v,
-    ));
-    idle.add(&b.spin(
-        "Turn the screen off after",
-        "",
-        0.0,
-        720.0,
-        0.5,
-        1,
-        |c| c.idle.screen_off_after_min,
-        |c, v| c.idle.screen_off_after_min = v,
-    ));
-    idle.add(&b.spin(
-        "Suspend after",
-        "0 = the computer never goes to sleep on its own",
-        0.0,
-        720.0,
-        1.0,
-        1,
-        |c| c.idle.suspend_after_min,
-        |c, v| c.idle.suspend_after_min = v,
-    ));
-    idle.add(&b.switch("Lock before sleep", "", |c| c.idle.lock_before_sleep, |c, v| c.idle.lock_before_sleep = v));
     p.add(&idle);
+
+    let night = group("Night light", "Toggled in the control center.");
+    night.add(&b.spin(
+        "Temperature",
+        "Kelvin; lower is warmer",
+        1000.0,
+        6500.0,
+        100.0,
+        0,
+        |c| c.panel.night_light_temperature.into(),
+        |c, v| c.panel.night_light_temperature = v as u32,
+    ));
+    p.add(&night);
     p
 }
 

@@ -3,7 +3,7 @@
 //! are scoped below `.vela-launcher` so the settings window keeps the
 //! regular libadwaita look.
 
-use crate::config::Config;
+use crate::config::{Config, Theme};
 use crate::theme::palette;
 
 fn rgba((r, g, b): (u8, u8, u8), a: f64) -> String {
@@ -98,6 +98,32 @@ window.vela-backdrop, window.vela-backdrop.background {{ background: rgba(0, 0, 
 .vela-launcher .vela-spacing {{ border-spacing: {spacing}px; }}
 "#
     ) + &motion_css(cfg)
+}
+
+/// Settings window extras: theme swatches, accent dots, sidebar headings.
+pub fn settings_css(accents: &[&str]) -> String {
+    let mut css = String::from(
+        r#"
+.vela-settings .vela-sidebar-heading { font-size: 0.8em; font-weight: 700; opacity: 0.55; margin: 14px 12px 4px 12px; }
+.vela-settings .vela-theme-chip { padding: 8px; border-radius: 14px; }
+.vela-settings .vela-theme-chip:checked { background: alpha(@accent_bg_color, 0.18); box-shadow: inset 0 0 0 2px @accent_bg_color; }
+.vela-settings .vela-swatch { border-radius: 10px; box-shadow: inset 0 0 0 1px alpha(currentColor, 0.15); }
+.vela-settings .vela-accent-dot { min-width: 22px; min-height: 22px; padding: 0; border-radius: 99px; border: none; }
+.vela-settings .vela-accent-dot:checked { box-shadow: 0 0 0 2px @window_bg_color, 0 0 0 4px @window_fg_color; }
+"#,
+    );
+    for t in Theme::ALL {
+        let p = palette(t);
+        let (bg, fg, dim, tint) = (rgba(p.bg, 1.0), rgba(p.fg, 1.0), rgba(p.dim, 1.0), rgba(p.tint, 0.12));
+        let name = t.label().to_lowercase();
+        css += &format!(
+            ".vela-settings .vela-swatch-{name} {{ background-color: {bg}; background-image: linear-gradient(to right, {fg} 0, {fg} 100%), linear-gradient(to right, {dim} 0, {dim} 100%), linear-gradient(to right, {tint} 0, {tint} 100%); background-size: 42% 5px, 60% 4px, 76% 18px; background-position: 12px 12px, 12px 23px, 12px 34px; background-repeat: no-repeat; }}\n"
+        );
+    }
+    for (i, hex) in accents.iter().enumerate() {
+        css += &format!(".vela-settings .vela-accent-{i}, .vela-settings .vela-accent-{i}:hover {{ background: {hex}; }}\n");
+    }
+    css
 }
 
 /// Upper bound for staggered entrance delays (`vela-d0` … `vela-dN`).

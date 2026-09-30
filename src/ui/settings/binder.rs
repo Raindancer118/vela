@@ -61,6 +61,32 @@ impl Binder {
         row
     }
 
+    /// Row with an on/off switch; its rows (e.g. a delay) show when on.
+    pub fn expander(&self, title: &str, subtitle: &str, get: fn(&Config) -> bool, set: fn(&mut Config, bool)) -> adw::ExpanderRow {
+        let on = get(&self.store.get());
+        let row = adw::ExpanderRow::builder()
+            .title(title)
+            .show_enable_switch(true)
+            .enable_expansion(on)
+            .expanded(on)
+            .build();
+        if !subtitle.is_empty() {
+            row.set_subtitle(subtitle);
+        }
+        let b = self.clone();
+        row.connect_enable_expansion_notify(move |r| {
+            let v = r.enables_expansion();
+            b.write(|c| set(c, v));
+        });
+        let w = row.downgrade();
+        self.on_refresh(move |c| {
+            if let Some(r) = w.upgrade() {
+                r.set_enable_expansion(get(c));
+            }
+        });
+        row
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn spin(
         &self,

@@ -1,5 +1,6 @@
 //! Settings window. Every widget writes straight into the config store, so
-//! changes apply to the launcher immediately and are saved automatically.
+//! changes apply to the launcher and the control center immediately and are
+//! saved automatically.
 
 mod apps_page;
 mod binder;
@@ -8,48 +9,107 @@ mod pages;
 use super::daemon::Daemon;
 use adw::prelude::*;
 use binder::Binder;
-use gtk::glib;
+use gtk::{gdk, glib};
 use std::rc::Rc;
+
+/// Sidebar entries: (section, page id, title, icon). Ids are `SETTINGS_PAGES`.
+const ENTRIES: [(&str, &str, &str, &str); 9] = [
+    ("Launcher", "general", "Launcher", "system-search-symbolic"),
+    ("Launcher", "apps", "Applications", "view-grid-symbolic"),
+    ("Launcher", "search", "Search", "edit-find-symbolic"),
+    ("Launcher", "claude", "Claude", "vela-claude-symbolic"),
+    ("Control center", "panel", "Panel", "view-dual-symbolic"),
+    ("Control center", "notifications", "Notifications", "notification-active-symbolic"),
+    ("Control center", "power", "Power & idle", "system-shutdown-symbolic"),
+    ("Everywhere", "appearance", "Appearance", "applications-graphics-symbolic"),
+    ("Everywhere", "system", "System", "preferences-system-symbolic"),
+];
 
 pub struct SettingsWindow {
     window: adw::ApplicationWindow,
-    stack: adw::ViewStack,
+    sidebar: gtk::ListBox,
+}
+
+fn sidebar_row(title: &str, icon: &str) -> gtk::ListBoxRow {
+    let b = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    b.append(&gtk::Image::from_icon_name(icon));
+    b.append(&gtk::Label::builder().label(title).xalign(0.0).build());
+    gtk::ListBoxRow::builder().child(&b).build()
 }
 
 impl SettingsWindow {
     pub fn new(daemon: &Rc<Daemon>) -> Rc<SettingsWindow> {
+        install_css();
         let window = adw::ApplicationWindow::builder()
             .application(&daemon.app)
             .title("Vela Settings")
-            .default_width(820)
-            .default_height(760)
+            .default_width(980)
+            .default_height(780)
             .icon_name("vela")
             .build();
+        window.add_css_class("vela-settings");
         let binder = Binder::new(daemon.store.clone());
 
-        let stack = adw::ViewStack::new();
-        let general = pages::general(daemon, &binder);
-        let appearance = pages::appearance(&binder);
-        let apps = apps_page::build(daemon, &binder);
-        let search = pages::search(daemon, &binder);
-        let claude = pages::claude(&binder);
-        let panel = pages::panel(&binder);
-        stack.add_titled_with_icon(&general, Some("general"), "General", "preferences-system-symbolic");
-        stack.add_titled_with_icon(&appearance, Some("appearance"), "Appearance", "applications-graphics-symbolic");
-        stack.add_titled_with_icon(&apps, Some("apps"), "Applications", "view-grid-symbolic");
-        stack.add_titled_with_icon(&search, Some("search"), "Search", "system-search-symbolic");
-        stack.add_titled_with_icon(&claude, Some("claude"), "Claude", "vela-claude-symbolic");
-        stack.add_titled_with_icon(&panel, Some("panel"), "Panel", "preferences-desktop-notification-symbolic");
+        // Slides up or down depending on where the page is in the sidebar.
+        let stack = gtk::Stack::builder()
+            .transition_type(gtk::StackTransitionType::SlideUpDown)
+            .transition_duration(260)
+            .build();
+        for (_, id, _, _) in ENTRIES {
+            let page: gtk::Widget = match id {
+                "general" => pages::launcher(&binder).upcast(),
+                "apps" => apps_page::build(daemon, &binder).upcast(),
+                "search" => pages::search(daemon, &binder).upcast(),
+                "claude" => pages::claude(&binder).upcast(),
+                "panel" => pages::panel(&binder).upcast(),
+                "notifications" => pages::notifications(&binder).upcast(),
+                "power" => pages::power(&binder).upcast(),
+                "appearance" => pages::appearance(&binder).upcast(),
+                _ => pages::system(daemon, &binder).upcast(),
+            };
+            stack.add_named(&page, Some(id));
+        }
 
+        // Sidebar with a heading above each section.
+        let sidebar = gtk::ListBox::builder().css_classes(["navigation-sidebar"]).build();
+        for (_, _, title, icon) in ENTRIES {
+            sidebar.append(&sidebar_row(title, icon));
+        }
+        sidebar.set_header_func(|row, before| {
+            let i = row.index() as usize;
+            let section = ENTRIES[i].0;
+            if before.is_none_or(|b| ENTRIES[b.index() as usize].0 != section) {
+                let label = gtk::Label::builder().label(section).xalign(0.0).css_classes(["vela-sidebar-heading"]).build();
+                row.set_header(Some(&label));
+            } else {
+                row.set_header(None::<&gtk::Widget>);
+            }
+        });
+        let sidebar_scroll = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .child(&sidebar)
+            .vexpand(true)
+            .build();
+        let version = gtk::Label::builder()
+            .label(format!("vela {}", env!("CARGO_PKG_VERSION")))
+            .css_classes(["dim-label", "caption"])
+            .margin_bottom(12)
+            .build();
+        let sidebar_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        sidebar_box.append(&sidebar_scroll);
+        sidebar_box.append(&version);
+        let sidebar_view = adw::ToolbarView::new();
+        sidebar_view.add_top_bar(&adw::HeaderBar::new());
+        sidebar_view.set_content(Some(&sidebar_box));
+        let sidebar_page = adw::NavigationPage::builder().title("Vela").child(&sidebar_view).build();
+
+        // Content: page title in the header, config errors as a banner.
         let header = adw::HeaderBar::new();
-        let switcher = adw::ViewSwitcher::builder().stack(&stack).policy(adw::ViewSwitcherPolicy::Wide).build();
-        header.set_title_widget(Some(&switcher));
         let preview = gtk::ToggleButton::builder()
             .icon_name("view-reveal-symbolic")
             .tooltip_text("Show a live preview of the launcher")
             .build();
-        header.pack_start(&preview);
-
+        header.pack_end(&preview);
         let banner = adw::Banner::new("");
         banner.set_button_label(Some("Reload file"));
         let set_banner = {
@@ -63,20 +123,35 @@ impl SettingsWindow {
         daemon.store.subscribe_errors(set_banner);
         let store = daemon.store.clone();
         banner.connect_button_clicked(move |_| store.reload_from_disk());
+        let content_view = adw::ToolbarView::new();
+        content_view.add_top_bar(&header);
+        content_view.add_top_bar(&banner);
+        content_view.set_content(Some(&stack));
+        let content_page = adw::NavigationPage::builder().title(ENTRIES[0].2).child(&content_view).build();
 
-        let bottom = adw::ViewSwitcherBar::builder().stack(&stack).build();
-        let toolbar = adw::ToolbarView::new();
-        toolbar.add_top_bar(&header);
-        toolbar.add_top_bar(&banner);
-        toolbar.set_content(Some(&stack));
-        toolbar.add_bottom_bar(&bottom);
-        window.set_content(Some(&toolbar));
+        let split = adw::NavigationSplitView::builder()
+            .sidebar(&sidebar_page)
+            .content(&content_page)
+            .min_sidebar_width(210.0)
+            .max_sidebar_width(260.0)
+            .build();
+        window.set_content(Some(&split));
 
-        // Narrow windows: switcher moves to the bottom.
         let bp = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 640sp").expect("valid breakpoint"));
-        bp.add_setter(&switcher, "visible", Some(&false.to_value()));
-        bp.add_setter(&bottom, "reveal", Some(&true.to_value()));
+        bp.add_setter(&split, "collapsed", Some(&true.to_value()));
         window.add_breakpoint(bp);
+
+        {
+            let (stack, content_page, split) = (stack.clone(), content_page.clone(), split.clone());
+            sidebar.connect_row_selected(move |_, row| {
+                let Some(row) = row else { return };
+                let (_, id, title, _) = ENTRIES[row.index() as usize];
+                stack.set_visible_child_name(id);
+                content_page.set_title(title);
+                split.set_show_content(true);
+            });
+        }
+        sidebar.select_row(sidebar.row_at_index(0).as_ref());
 
         let launcher = daemon.launcher.clone();
         preview.connect_toggled(move |b| {
@@ -101,14 +176,27 @@ impl SettingsWindow {
         let b = binder.clone();
         daemon.store.subscribe_replace(move |cfg| b.refresh(cfg));
 
-        Rc::new(SettingsWindow { window, stack })
+        Rc::new(SettingsWindow { window, sidebar })
     }
 
     pub fn show_page(&self, name: &str) {
-        self.stack.set_visible_child_name(name);
+        if let Some(i) = ENTRIES.iter().position(|(_, id, _, _)| *id == name) {
+            self.sidebar.select_row(self.sidebar.row_at_index(i as i32).as_ref());
+        }
     }
 
     pub fn present(&self) {
         self.window.present();
     }
+}
+
+fn install_css() {
+    thread_local! { static DONE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+    if DONE.with(|d| d.replace(true)) {
+        return;
+    }
+    let Some(display) = gdk::Display::default() else { return };
+    let provider = gtk::CssProvider::new();
+    provider.load_from_string(&crate::ui::style::settings_css(&pages::ACCENTS));
+    gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
 }
