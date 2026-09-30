@@ -150,7 +150,7 @@ impl SettingsWindow {
         bp.add_setter(&split, "collapsed", Some(&true.to_value()));
         window.add_breakpoint(bp);
 
-        let marker = Rc::new(Marker::new(&pill, &sidebar));
+        let marker = Rc::new(Marker::new(&pill, &overlay));
         let flip = Rc::new(std::cell::Cell::new(false));
         {
             let (stack, content_page, split, marker, store) = (stack.clone(), content_page.clone(), split.clone(), marker.clone(), daemon.store.clone());
@@ -229,16 +229,18 @@ impl SettingsWindow {
 /// slight spring.
 struct Marker {
     pill: gtk::Box,
-    list: gtk::ListBox,
+    /// The pill's parent; row bounds are taken in its coordinates, as the
+    /// list's own padding would otherwise shift the marker.
+    layer: gtk::Overlay,
     anim: std::cell::RefCell<Option<adw::TimedAnimation>>,
     from: std::cell::Cell<(f64, f64)>,
 }
 
 impl Marker {
-    fn new(pill: &gtk::Box, list: &gtk::ListBox) -> Marker {
+    fn new(pill: &gtk::Box, layer: &gtk::Overlay) -> Marker {
         Marker {
             pill: pill.clone(),
-            list: list.clone(),
+            layer: layer.clone(),
             anim: Default::default(),
             from: Default::default(),
         }
@@ -250,7 +252,7 @@ impl Marker {
     }
 
     fn move_to(&self, row: &gtk::ListBoxRow, animate: bool) {
-        let Some(bounds) = row.compute_bounds(&self.list) else { return };
+        let Some(bounds) = row.compute_bounds(&self.layer) else { return };
         let (to_y, to_h) = (f64::from(bounds.y()), f64::from(bounds.height()));
         if let Some(a) = self.anim.borrow_mut().take() {
             a.skip();
