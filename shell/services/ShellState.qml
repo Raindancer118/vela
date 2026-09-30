@@ -38,7 +38,7 @@ Singleton {
         panelOpen ? closePanel() : openPanel();
     }
 
-    readonly property var details: ["wifi", "bluetooth", "audio"]
+    readonly property var details: ["wifi", "bluetooth", "audio", "power"]
 
     function openDetail(name: string): void {
         if (!details.includes(name)) {

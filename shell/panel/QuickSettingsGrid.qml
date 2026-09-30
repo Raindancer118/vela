@@ -57,7 +57,9 @@ GridLayout {
         // Highlighted when not on the default (balanced) profile.
         active: PowerMode.available && PowerMode.profile !== "balanced"
         enabled: PowerMode.available
+        hasDetail: true
         onToggled: PowerMode.cycle()
+        onDetailRequested: ShellState.openDetail("power")
     }
 
     ToggleTile {

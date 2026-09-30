@@ -27,6 +27,8 @@ Item {
             return bluetoothDetail;
         case "audio":
             return audioDetail;
+        case "power":
+            return powerDetail;
         default:
             return null;
         }
@@ -92,5 +94,11 @@ Item {
         id: audioDetail
 
         AudioDetail {}
+    }
+
+    Component {
+        id: powerDetail
+
+        PowerDetail {}
     }
 }

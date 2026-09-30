@@ -37,6 +37,12 @@ Singleton {
         return p === "performance" ? I18n.tr("Performance") : I18n.tr("Balanced");
     }
 
+    function description(p: string): string {
+        if (p === "power-saver")
+            return I18n.tr("Longer battery life, less performance");
+        return p === "performance" ? I18n.tr("Full performance, higher power use") : I18n.tr("Normal performance and power use");
+    }
+
     // Profile names from `powerprofilesctl list`, in `order`.
     function parseList(text: string): var {
         const found = text.split("\n").map(l => l.match(/^\*?\s*([a-z-]+):$/)).filter(m => m).map(m => m[1]);
@@ -48,13 +54,16 @@ Singleton {
         listProc.running = true;
     }
 
-    function cycle(): void {
-        if (!available)
+    function set(target: string): void {
+        if (!available || !profiles.includes(target) || target === profile)
             return;
-        const target = next(profile, profiles);
         profile = target;
         setProc.command = ["powerprofilesctl", "set", target];
         setProc.running = true;
+    }
+
+    function cycle(): void {
+        set(next(profile, profiles));
     }
 
     Component.onCompleted: refresh()
