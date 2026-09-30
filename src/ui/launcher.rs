@@ -197,6 +197,8 @@ impl Launcher {
         chip.set_valign(gtk::Align::Center);
         chip.set_halign(gtk::Align::Start);
         chip.set_hexpand(false);
+        // A Box packs its only child at the start; expanding lets it centre.
+        chip_icons.set_hexpand(true);
         chip_icons.set_halign(gtk::Align::Center);
         chip_icons.set_valign(gtk::Align::Center);
         chip.append(&chip_icons);
