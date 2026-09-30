@@ -92,6 +92,7 @@ Singleton {
                 "Confirm": "Bestätigen",
                 "Muted": "Stumm",
                 "Power mode": "Energiemodus",
+                "Not available": "Nicht verfügbar",
                 "Power saver": "Energiesparen",
                 "Balanced": "Ausgewogen",
                 "Performance": "Leistung",

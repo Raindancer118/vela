@@ -2,38 +2,94 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
-import Quickshell.Services.UPower
+import Quickshell.Io
 import qs
 
-// Power profile (power-profiles-daemon via UPower): the tile cycles
-// power saver → balanced → performance.
+// Power profile of power-profiles-daemon; the tile cycles power saver →
+// balanced → performance. Uses powerprofilesctl: Quickshell's UPower
+// PowerProfiles (0.3.1) reports "balanced" without a performance profile
+// on machines that have one, while setting works.
 Singleton {
     id: root
 
-    readonly property int profile: PowerProfiles.profile
-    readonly property bool hasPerformance: PowerProfiles.hasPerformanceProfile
+    // "power-saver", "balanced", "performance"; "" = daemon not available.
+    property string profile: ""
+    property var profiles: []
+    readonly property bool available: profile !== ""
 
-    function next(current: int, performance: bool): int {
-        if (current === PowerProfile.PowerSaver)
-            return PowerProfile.Balanced;
-        if (current === PowerProfile.Balanced && performance)
-            return PowerProfile.Performance;
-        return PowerProfile.PowerSaver;
+    readonly property var order: ["power-saver", "balanced", "performance"]
+
+    function next(current: string, available: var): string {
+        const usable = order.filter(p => available.includes(p));
+        const i = usable.indexOf(current);
+        return i < 0 ? "balanced" : usable[(i + 1) % usable.length];
     }
 
-    function icon(p: int): string {
-        if (p === PowerProfile.PowerSaver)
+    function icon(p: string): string {
+        if (p === "power-saver")
             return "energy_savings_leaf";
-        return p === PowerProfile.Performance ? "speed" : "balance";
+        return p === "performance" ? "speed" : "balance";
     }
 
-    function label(p: int): string {
-        if (p === PowerProfile.PowerSaver)
+    function label(p: string): string {
+        if (p === "power-saver")
             return I18n.tr("Power saver");
-        return p === PowerProfile.Performance ? I18n.tr("Performance") : I18n.tr("Balanced");
+        return p === "performance" ? I18n.tr("Performance") : I18n.tr("Balanced");
+    }
+
+    // Profile names from `powerprofilesctl list`, in `order`.
+    function parseList(text: string): var {
+        const found = text.split("\n").map(l => l.match(/^\*?\s*([a-z-]+):$/)).filter(m => m).map(m => m[1]);
+        return order.filter(p => found.includes(p));
+    }
+
+    function refresh(): void {
+        getProc.running = true;
+        listProc.running = true;
     }
 
     function cycle(): void {
-        PowerProfiles.profile = next(profile, hasPerformance);
+        if (!available)
+            return;
+        const target = next(profile, profiles);
+        profile = target;
+        setProc.command = ["powerprofilesctl", "set", target];
+        setProc.running = true;
+    }
+
+    Component.onCompleted: refresh()
+
+    // Other tools may change it; the panel shows it fresh when opened.
+    Connections {
+        target: ShellState
+
+        function onPanelOpenChanged(): void {
+            if (ShellState.panelOpen)
+                root.refresh();
+        }
+    }
+
+    Process {
+        id: getProc
+
+        command: ["powerprofilesctl", "get"]
+        stdout: StdioCollector {
+            onStreamFinished: root.profile = root.order.includes(text.trim()) ? text.trim() : ""
+        }
+    }
+
+    Process {
+        id: listProc
+
+        command: ["powerprofilesctl", "list"]
+        stdout: StdioCollector {
+            onStreamFinished: root.profiles = root.parseList(text)
+        }
+    }
+
+    Process {
+        id: setProc
+
+        onExited: root.refresh()
     }
 }

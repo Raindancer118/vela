@@ -16,7 +16,8 @@ optdepends=('plocate: indexed system-wide file search'
             'ttf-material-symbols-variable: control center icons'
             'ttf-rubik-vf: control center font'
             'papirus-icon-theme: control center app icons'
-            'hyprsunset: night light in the control center')
+            'hyprsunset: night light in the control center'
+            'power-profiles-daemon: power mode tile in the control center')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$pkgver.tar.gz")
 sha256sums=('SKIP')
 

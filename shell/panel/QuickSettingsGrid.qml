@@ -3,7 +3,6 @@ import QtQuick.Layouts
 import qs
 import qs.components
 import qs.services
-import Quickshell.Services.UPower
 
 // Icon = toggle, rest of the tile = detail view (where one exists).
 GridLayout {
@@ -54,9 +53,10 @@ GridLayout {
         Layout.preferredWidth: 1
         icon: PowerMode.icon(PowerMode.profile)
         title: I18n.tr("Power mode")
-        subtitle: PowerMode.label(PowerMode.profile)
+        subtitle: PowerMode.available ? PowerMode.label(PowerMode.profile) : I18n.tr("Not available")
         // Highlighted when not on the default (balanced) profile.
-        active: PowerMode.profile !== PowerProfile.Balanced
+        active: PowerMode.available && PowerMode.profile !== "balanced"
+        enabled: PowerMode.available
         onToggled: PowerMode.cycle()
     }
 
