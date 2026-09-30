@@ -52,6 +52,21 @@ pub fn grid_columns(cfg: &Config) -> usize {
     (((avail + a.spacing as i32) / per.max(1)).max(1)) as usize
 }
 
+/// Keyboard interactivity of the launcher surface.
+///
+/// Hyprland's `follow_mouse` hands keyboard focus to whatever the pointer
+/// moves over, so an on-demand layer loses focus (and closed) as soon as the
+/// mouse left it. An exclusive layer keeps focus; Hyprland then routes all
+/// pointer input to it, clicks elsewhere arrive with coordinates outside the
+/// panel, see `connect_signals`.
+pub fn keyboard_mode(preview: bool, close_on_click_outside: bool) -> KeyboardMode {
+    match (preview, close_on_click_outside) {
+        (true, _) => KeyboardMode::None,
+        (false, true) => KeyboardMode::Exclusive,
+        (false, false) => KeyboardMode::OnDemand,
+    }
+}
+
 /// Next selection index for an arrow key in a grid of `n` items.
 pub fn grid_move(sel: usize, n: usize, cols: usize, key: gdk::Key) -> usize {
     if n == 0 {
@@ -349,6 +364,25 @@ impl Launcher {
                 l.activate_item(row.index().max(0) as usize, gdk::ModifierType::empty());
             }
         });
+        // With an exclusive layer, Hyprland delivers clicks anywhere on the
+        // screen to the launcher; outside the panel they mean "click elsewhere".
+        let click = gtk::GestureClick::builder().button(0).propagation_phase(gtk::PropagationPhase::Capture).build();
+        let weak = Rc::downgrade(self);
+        click.connect_pressed(move |g, _, x, y| {
+            let Some(l) = weak.upgrade() else { return };
+            let inside = l
+                .window
+                .child()
+                .and_then(|panel| panel.compute_bounds(&l.window))
+                .is_some_and(|b| b.contains_point(&gtk::graphene::Point::new(x as f32, y as f32)));
+            log::debug!("launcher click at {x:.0},{y:.0} inside={inside}");
+            if !inside && l.is_visible() && !l.preview.get() && l.config.borrow().general.close_on_focus_loss {
+                g.set_state(gtk::EventSequenceState::Claimed);
+                l.hide();
+            }
+        });
+        self.window.add_controller(click);
+
         let weak = Rc::downgrade(self);
         self.window.connect_is_active_notify(move |w| {
             let Some(l) = weak.upgrade() else { return };
@@ -429,7 +463,8 @@ impl Launcher {
     pub fn show(&self, preview: bool) {
         self.preview.set(preview);
         if self.layer {
-            self.window.set_keyboard_mode(if preview { KeyboardMode::None } else { KeyboardMode::OnDemand });
+            let click_outside = self.config.borrow().general.close_on_focus_loss;
+            self.window.set_keyboard_mode(keyboard_mode(preview, click_outside));
         }
         let reopening = self.closing.borrow().is_some();
         self.cancel_closing();
@@ -1028,6 +1063,17 @@ mod tests {
         assert_eq!(grid_columns(&cfg), 2);
         cfg.appearance.columns = 9;
         assert_eq!(grid_columns(&cfg), 9);
+    }
+
+    #[test]
+    fn launcher_keeps_the_keyboard_while_it_closes_on_click_outside() {
+        assert_eq!(keyboard_mode(false, true), KeyboardMode::Exclusive);
+        assert_eq!(
+            keyboard_mode(false, false),
+            KeyboardMode::OnDemand,
+            "without click-outside other windows stay usable"
+        );
+        assert_eq!(keyboard_mode(true, true), KeyboardMode::None, "settings preview never takes the keyboard");
     }
 
     #[test]

@@ -59,7 +59,7 @@ pub fn general(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
         |c, v| c.general.opacity = v,
     ));
     launcher.add(&b.switch(
-        "Close when focus is lost",
+        "Close when clicking elsewhere",
         "Clicking elsewhere hides the launcher",
         |c| c.general.close_on_focus_loss,
         |c, v| c.general.close_on_focus_loss = v,
