@@ -17,7 +17,7 @@ gtk4-layer-shell.
 - **Instant**: a background daemon keeps everything warm; `vela toggle` answers
   in about a millisecond.
 
-![vela](docs/screenshot.png)
+![vela](docs/screenshot.jpg)
 
 ## Installation (Arch Linux)
 
@@ -234,6 +234,11 @@ Claude lives somewhere else, set the full path under *Settings → Claude*.
 **Terminal apps or Claude open the wrong terminal.** Set it under
 *Settings → General → Terminal*. For terminals vela doesn't know, turn off
 "Default arguments" and enter the flag that runs a command (usually `-e`).
+
+**Testing in a nested Hyprland.** Pass `autostart = false` to `setup()` in the
+nested config. The autostart hook imports `WAYLAND_DISPLAY` into the systemd
+user environment, which is right for your real session. In a nested instance it
+would send D-Bus-activated apps of the outer session into the nested one.
 
 **Logs.** `journalctl --user -u vela -f`, or run `vela-daemon` in a terminal
 (`RUST_LOG=vela=debug` for more detail).

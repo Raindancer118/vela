@@ -219,6 +219,13 @@ pub fn wrap_in_scope(spec: &SpawnSpec) -> Vec<String> {
     argv
 }
 
+/// Variables Claude Code sets for its own child processes. If the daemon was
+/// started from inside a Claude Code session, a Claude started by vela would
+/// otherwise think it is a sub-session (and e.g. not save its transcript).
+fn is_claude_session_marker(key: &str) -> bool {
+    key == "CLAUDECODE" || key == "CLAUDE_PID" || key.starts_with("CLAUDE_CODE_")
+}
+
 /// Starts the process fully detached (double fork + setsid) so it neither
 /// becomes a zombie of the daemon nor shares its session.
 pub fn spawn_detached(spec: &SpawnSpec, use_scope: bool) -> Result<(), LaunchError> {
@@ -230,8 +237,13 @@ pub fn spawn_detached(spec: &SpawnSpec, use_scope: bool) -> Result<(), LaunchErr
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .env("PATH", paths::child_path_env());
-    for (k, v) in &spec.env {
+    for (k, v) in spec.env.iter().filter(|(k, _)| !is_claude_session_marker(k)) {
         cmd.env(k, v);
+    }
+    for (k, _) in std::env::vars_os() {
+        if k.to_str().is_some_and(is_claude_session_marker) {
+            cmd.env_remove(k);
+        }
     }
     let cwd = spec.cwd.clone().filter(|d| d.is_dir()).unwrap_or_else(paths::home_dir);
     cmd.current_dir(cwd);
@@ -453,6 +465,33 @@ mod tests {
         let spec = entry_spec(&entry, &term).unwrap();
         assert_eq!(spec.argv[1], "-e");
         assert_eq!(spec.argv[3], "a b");
+    }
+
+    #[test]
+    fn claude_session_markers_are_not_inherited() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("env");
+        let script = dir.path().join("dump-env");
+        fs::write(&script, "#!/bin/sh\nenv > \"$OUT.tmp\"\nmv \"$OUT.tmp\" \"$OUT\"\n").unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+        let spec = SpawnSpec {
+            argv: vec![script.to_string_lossy().into()],
+            env: vec![("OUT".into(), out.to_string_lossy().into()), ("CLAUDE_CODE_CHILD_SESSION".into(), "1".into())],
+            ..Default::default()
+        };
+        spawn_detached(&spec, false).unwrap();
+        let start = Instant::now();
+        while !out.exists() {
+            assert!(start.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let env = fs::read_to_string(&out).unwrap();
+        assert!(
+            env.lines()
+                .all(|l| !l.starts_with("CLAUDECODE=") && !l.starts_with("CLAUDE_CODE_") && !l.starts_with("CLAUDE_PID=")),
+            "{env}"
+        );
+        assert!(env.contains("PATH="));
     }
 
     #[test]
