@@ -39,6 +39,9 @@ local defaults = {
     -- Start the control center (`vela shell`, needs Quickshell) with Hyprland.
     -- Don't also start `qs` yourself: two notification daemons would fight.
     shell = true,
+    -- Run hypridle with vela's [idle] settings (`vela idle`). Don't also
+    -- start hypridle yourself.
+    idle = true,
 }
 
 function M.setup(opts)
@@ -117,6 +120,12 @@ function M.setup(opts)
         match = { namespace = "^vela-shell-backdrop$" },
         blur  = o.blur,
     })
+
+    if o.idle then
+        hl.on("hyprland.start", function()
+            hl.exec_cmd(bin .. " idle")
+        end)
+    end
 
     if o.shell then
         hl.on("hyprland.start", function()

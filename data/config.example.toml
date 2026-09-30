@@ -108,3 +108,11 @@ group_collapsed_count = 2
 workspace_osd = true
 night_light_temperature = 4000
 clock_centered = false
+
+# While you're away (`vela idle` runs hypridle with these). Minutes; 0 = never.
+[idle]
+dim_after_min = 2.5
+lock_after_min = 5.0
+screen_off_after_min = 5.5
+suspend_after_min = 30.0
+lock_before_sleep = true

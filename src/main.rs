@@ -6,7 +6,7 @@ use std::os::unix::process::CommandExt;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 use vela::ipc::{self, Command, SendError};
-use vela::{config, launch, paths, shell};
+use vela::{config, idle, launch, paths, shell};
 
 /// Spotlight-style launcher for Hyprland with file search and Claude Code.
 #[derive(Parser)]
@@ -51,6 +51,8 @@ enum Cmd {
         #[arg(default_value = "toggle", value_parser = ["toggle", "open", "close"])]
         action: String,
     },
+    /// Run hypridle with the [idle] settings; restarts it when they change.
+    Idle,
     /// Print the control center settings as JSON (used by the shell).
     ShellConfig {
         /// Keep running and print a new line whenever the config changes.
@@ -89,6 +91,7 @@ fn main() -> ExitCode {
         Cmd::Shell => return run_qs(&[]),
         Cmd::Panel { action } => return run_qs(&["ipc", "call", "panel", &action]),
         Cmd::ShellConfig { watch } => return shell_config(watch),
+        Cmd::Idle => return run_idle(),
     };
     client(ipc_cmd)
 }
@@ -209,6 +212,61 @@ fn shell_config(watch: bool) -> ExitCode {
             return ExitCode::SUCCESS;
         }
         std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
+/// Keeps hypridle running with a config generated from `[idle]`.
+fn run_idle() -> ExitCode {
+    use std::os::unix::process::CommandExt as _;
+    let Some(hypridle) = paths::find_executable("hypridle") else {
+        eprintln!("vela: hypridle is not installed");
+        return ExitCode::FAILURE;
+    };
+    let conf_path = paths::state_dir().join("hypridle.conf");
+    let kbd = idle::keyboard_backlight();
+    let mut current: Option<config::Idle> = None;
+    let mut child: Option<std::process::Child> = None;
+    let mut stamp = None;
+    loop {
+        let meta = std::fs::metadata(paths::config_file()).ok();
+        let now = meta.map(|m| (m.modified().ok(), m.len()));
+        if now != stamp || current.is_none() {
+            stamp = now;
+            let wanted = match std::fs::read_to_string(paths::config_file()) {
+                Ok(text) => config::Config::from_toml(&text).map(|c| c.idle).ok(),
+                Err(_) => Some(config::Idle::default()),
+            };
+            // A broken file keeps the running settings.
+            if let Some(wanted) = wanted.filter(|w| current.as_ref() != Some(w)) {
+                if let Err(e) = config::write_atomic(&conf_path, &idle::hypridle_conf(&wanted, kbd.as_deref())) {
+                    eprintln!("vela: cannot write {}: {e:#}", conf_path.display());
+                    return ExitCode::FAILURE;
+                }
+                if let Some(mut c) = child.take() {
+                    let _ = c.kill();
+                    let _ = c.wait();
+                }
+                current = Some(wanted);
+            }
+        }
+        // (Re)start hypridle: after a change, or if it died.
+        let running = child.as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None)));
+        if !running {
+            let mut cmd = std::process::Command::new(&hypridle);
+            cmd.arg("-q").arg("-c").arg(&conf_path);
+            // SAFETY: prctl is async-signal-safe; hypridle dies with us.
+            unsafe {
+                cmd.pre_exec(|| {
+                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                    Ok(())
+                });
+            }
+            match cmd.spawn() {
+                Ok(c) => child = Some(c),
+                Err(e) => eprintln!("vela: cannot start hypridle: {e}"),
+            }
+        }
+        std::thread::sleep(Duration::from_millis(1000));
     }
 }
 

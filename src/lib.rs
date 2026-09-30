@@ -8,6 +8,7 @@ pub mod apps;
 pub mod config;
 pub mod history;
 pub mod hyprland;
+pub mod idle;
 pub mod ipc;
 pub mod launch;
 pub mod paths;

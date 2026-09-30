@@ -96,6 +96,9 @@ dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup()
    to skip) and blurs the `quickshell-panel`, `quickshell-notifications`,
    `quickshell-osd` and `vela-shell-backdrop` layers. Don't also start `qs`
    yourself; two notification daemons would fight.
+5. **Idle**: starts `vela idle` (`idle = false` to skip), which runs hypridle
+   with a config generated from `[idle]` and restarts it when that changes.
+   Don't also start hypridle yourself.
 
 Options (all optional):
 
@@ -201,6 +204,8 @@ overwriting an unparsable file, vela backs it up as `config.toml.broken-<time>`.
 | | `workspace_osd` | workspace dots when switching workspaces |
 | | `night_light_temperature` | Kelvin (hyprsunset) |
 | | `clock_centered` | clock and date in the middle of the panel |
+| `idle` | `dim_after_min`, `lock_after_min`, `screen_off_after_min`, `suspend_after_min` | minutes without input, `0` = never; `vela idle` runs hypridle with them |
+| | `lock_before_sleep` | lock the session before suspend |
 | `terminal` | `executable` | default `kitty` |
 | | `exec_args` | arguments before the command; omit to use the known default (`-e` for most, none for kitty/foot, `start --` for wezterm) |
 

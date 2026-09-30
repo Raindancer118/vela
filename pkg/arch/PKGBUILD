@@ -17,7 +17,9 @@ optdepends=('plocate: indexed system-wide file search'
             'ttf-rubik-vf: control center font'
             'papirus-icon-theme: control center app icons'
             'hyprsunset: night light in the control center'
-            'power-profiles-daemon: power mode tile in the control center')
+            'power-profiles-daemon: power mode tile in the control center'
+            'hypridle: dimming, locking and suspend while away (vela idle)'
+            'brightnessctl: dimming while away')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$pkgver.tar.gz")
 sha256sums=('SKIP')
 

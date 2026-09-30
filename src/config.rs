@@ -16,6 +16,8 @@ pub struct Config {
     /// The Quickshell control center (`vela shell`). Style and motion come
     /// from `appearance`/`general` like the launcher's.
     pub panel: Panel,
+    /// Dimming, locking, screen off and suspend while away (`vela idle`).
+    pub idle: Idle,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -125,6 +127,30 @@ impl Default for Panel {
             workspace_osd: true,
             night_light_temperature: 4000,
             clock_centered: false,
+        }
+    }
+}
+
+/// Minutes of inactivity; 0 = never.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Idle {
+    pub dim_after_min: f64,
+    pub lock_after_min: f64,
+    pub screen_off_after_min: f64,
+    pub suspend_after_min: f64,
+    /// Lock the session before the system goes to sleep.
+    pub lock_before_sleep: bool,
+}
+
+impl Default for Idle {
+    fn default() -> Self {
+        Idle {
+            dim_after_min: 2.5,
+            lock_after_min: 5.0,
+            screen_off_after_min: 5.5,
+            suspend_after_min: 30.0,
+            lock_before_sleep: true,
         }
     }
 }
@@ -460,6 +486,16 @@ impl Config {
         p.group_collapsed_count = p.group_collapsed_count.clamp(1, 10);
         p.night_light_temperature = p.night_light_temperature.clamp(1000, 6500);
 
+        let i = &mut self.idle;
+        for m in [
+            &mut i.dim_after_min,
+            &mut i.lock_after_min,
+            &mut i.screen_off_after_min,
+            &mut i.suspend_after_min,
+        ] {
+            *m = finite_or(*m, 0.0).clamp(0.0, 720.0);
+        }
+
         if self.claude.executable.trim().is_empty() {
             self.claude.executable = Claude::default().executable;
         }
@@ -596,6 +632,7 @@ mod tests {
         assert_eq!(cfg.appearance.backdrop, Appearance::default().backdrop);
         assert_eq!(cfg.general.main_monitor, General::default().main_monitor);
         assert_eq!(cfg.panel, Panel::default());
+        assert_eq!(cfg.idle, Idle::default());
     }
 
     #[test]
@@ -637,6 +674,20 @@ mod tests {
         assert_eq!(cfg.panel.popup_max_visible, 10);
         assert_eq!(cfg.panel.group_collapsed_count, 1);
         assert_eq!(cfg.panel.night_light_temperature, 6500);
+    }
+
+    #[test]
+    fn idle_defaults_and_clamping() {
+        let i = Idle::default();
+        assert_eq!(
+            (i.dim_after_min, i.lock_after_min, i.screen_off_after_min, i.suspend_after_min),
+            (2.5, 5.0, 5.5, 30.0)
+        );
+        assert!(i.lock_before_sleep);
+        let cfg = Config::from_toml("[idle]\nsuspend_after_min = 0\nlock_after_min = -3\ndim_after_min = 99999\n").unwrap();
+        assert_eq!(cfg.idle.suspend_after_min, 0.0, "0 = never");
+        assert_eq!(cfg.idle.lock_after_min, 0.0);
+        assert_eq!(cfg.idle.dim_after_min, 720.0);
     }
 
     #[test]

@@ -599,6 +599,53 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
         |c, v| c.panel.group_collapsed_count = v as u32,
     ));
     p.add(&notes);
+
+    let idle = group(
+        "While you're away",
+        "Minutes without input; 0 = never. Run by vela idle (hypridle), started by vela.lua.",
+    );
+    idle.add(&b.spin(
+        "Dim the screen after",
+        "",
+        0.0,
+        720.0,
+        0.5,
+        1,
+        |c| c.idle.dim_after_min,
+        |c, v| c.idle.dim_after_min = v,
+    ));
+    idle.add(&b.spin(
+        "Lock after",
+        "",
+        0.0,
+        720.0,
+        0.5,
+        1,
+        |c| c.idle.lock_after_min,
+        |c, v| c.idle.lock_after_min = v,
+    ));
+    idle.add(&b.spin(
+        "Turn the screen off after",
+        "",
+        0.0,
+        720.0,
+        0.5,
+        1,
+        |c| c.idle.screen_off_after_min,
+        |c, v| c.idle.screen_off_after_min = v,
+    ));
+    idle.add(&b.spin(
+        "Suspend after",
+        "0 = the computer never goes to sleep on its own",
+        0.0,
+        720.0,
+        1.0,
+        1,
+        |c| c.idle.suspend_after_min,
+        |c, v| c.idle.suspend_after_min = v,
+    ));
+    idle.add(&b.switch("Lock before sleep", "", |c| c.idle.lock_before_sleep, |c, v| c.idle.lock_before_sleep = v));
+    p.add(&idle);
     p
 }
 
