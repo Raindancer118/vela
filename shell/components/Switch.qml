@@ -28,6 +28,8 @@ Rectangle {
     }
 
     Rectangle {
+        id: knob
+
         property real knob: root.checked ? Theme.size.switchKnobOn : Theme.size.switchKnobOff
 
         width: knob
@@ -39,11 +41,39 @@ Rectangle {
         color: root.checked ? Theme.colors.textOnPrimary : Theme.colors.textMuted
 
         Behavior on x {
-            Anim {}
+            SpringAnim {
+                duration: Theme.anim.normal
+            }
         }
 
         Behavior on knob {
-            Anim {}
+            SpringAnim {
+                duration: Theme.anim.normal
+            }
         }
+
+        // Switching on: the knob gives a small springy pop.
+        SequentialAnimation {
+            id: pop
+
+            NumberAnimation {
+                target: knob
+                property: "scale"
+                to: 1.18
+                duration: Theme.anim.fast
+                easing.type: Easing.OutCubic
+            }
+
+            SpringAnim {
+                target: knob
+                property: "scale"
+                to: 1
+            }
+        }
+    }
+
+    onCheckedChanged: {
+        if (checked)
+            pop.restart();
     }
 }

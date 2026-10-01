@@ -699,6 +699,12 @@ fn claude_usage_group(b: &Binder) -> adw::PreferencesGroup {
     );
     g.add(&b.switch("Show Claude usage", "", |c| c.panel.claude_usage, |c, v| c.panel.claude_usage = v));
     g.add(&b.switch(
+        "Subtle style",
+        "Grey text under a line at the bottom edge instead of a card",
+        |c| c.panel.claude_usage_subtle,
+        |c, v| c.panel.claude_usage_subtle = v,
+    ));
+    g.add(&b.switch(
         "Only the default account",
         "Just the profile in ~/.claude",
         |c| c.panel.claude_usage_only_default,

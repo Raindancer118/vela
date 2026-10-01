@@ -122,6 +122,8 @@ pub struct Panel {
     pub clock_centered: bool,
     /// Claude plan usage at the bottom of the panel.
     pub claude_usage: bool,
+    /// Subtle style: grey text under a line instead of a card.
+    pub claude_usage_subtle: bool,
     /// Only the profile in ~/.claude, not the ccacct ones.
     pub claude_usage_only_default: bool,
     /// Profile names (`default`, ccacct names) that are not shown or fetched.
@@ -143,6 +145,7 @@ impl Default for Panel {
             night_light_temperature: 4000,
             clock_centered: false,
             claude_usage: true,
+            claude_usage_subtle: false,
             claude_usage_only_default: false,
             claude_usage_hidden: Vec::new(),
         }
@@ -693,6 +696,7 @@ mod tests {
         assert_eq!(p.night_light_temperature, 4000);
         assert!(!p.clock_centered, "clock on the left by default");
         assert!(p.claude_usage && !p.claude_usage_only_default && p.claude_usage_hidden.is_empty());
+        assert!(!p.claude_usage_subtle, "the card is the default style");
         let cfg = Config::from_toml("[panel]\nbackdrop = true\n").unwrap();
         assert!(cfg.panel.backdrop);
         assert!(!cfg.appearance.backdrop, "launcher and panel backdrop are independent");

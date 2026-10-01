@@ -5,14 +5,36 @@ import qs.components
 import qs.services
 
 // Claude plan usage per profile: 5-hour and 7-day window, coloured by how
-// much is used, with the reset time.
+// much is used, with the reset time. Card by default; the subtle style is
+// grey text under a thin line at the bottom edge.
 Card {
     id: root
 
     readonly property var accounts: ClaudeUsage.accounts
+    readonly property bool subtle: Config.claudeUsageSubtle
+    readonly property real pad: subtle ? 0 : Theme.spacing.md
 
     visible: Config.claudeUsage && accounts.length > 0
-    implicitHeight: column.implicitHeight + 2 * Theme.spacing.md
+    implicitHeight: column.implicitHeight + 2 * pad + (subtle ? Theme.spacing.sm : 0)
+    color: subtle ? "transparent" : Theme.colors.surface
+
+    Behavior on color {
+        ColorAnim {}
+    }
+
+    // Subtle style: the line separating it from the notifications.
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: Theme.size.border
+        color: Theme.colors.outline
+        opacity: root.subtle ? 1 : 0
+
+        Behavior on opacity {
+            Anim {}
+        }
+    }
 
     // Plan name as a small accent pill ("Pro", "Max 20×", "Team").
     component PlanBadge: Rectangle {
@@ -74,6 +96,11 @@ Card {
                 width: Math.max(height, parent.width * Math.min(1, row.value))
                 radius: height / 2
                 color: row.tone
+                opacity: root.subtle ? 0.55 : 1
+
+                Behavior on opacity {
+                    Anim {}
+                }
 
                 Behavior on width {
                     Anim {}
@@ -89,7 +116,7 @@ Card {
             Layout.preferredWidth: Theme.size.usagePercentWidth
             horizontalAlignment: Text.AlignRight
             text: Math.round(row.value * 100) + " %"
-            color: row.tone
+            color: root.subtle ? Theme.colors.textMuted : row.tone
             font.pixelSize: Theme.font.small
             font.weight: Theme.font.weightMedium
         }
@@ -115,11 +142,13 @@ Card {
         id: column
 
         anchors.fill: parent
-        anchors.margins: Theme.spacing.md
-        spacing: Theme.spacing.sm
+        anchors.margins: root.pad
+        anchors.topMargin: root.pad + (root.subtle ? Theme.spacing.sm : 0)
+        spacing: root.subtle ? Theme.spacing.xs : Theme.spacing.sm
 
         RowLayout {
             Layout.fillWidth: true
+            visible: !root.subtle
             spacing: Theme.spacing.sm
 
             Image {

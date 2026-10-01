@@ -115,6 +115,8 @@ night_light_temperature = 4000
 clock_centered = false
 # Claude plan usage (5 h / 7 d) at the bottom; profiles: "default" (~/.claude) and ccacct names.
 claude_usage = true
+# true: grey text under a line instead of a card.
+claude_usage_subtle = false
 claude_usage_only_default = false
 claude_usage_hidden = []
 

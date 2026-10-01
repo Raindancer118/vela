@@ -119,6 +119,9 @@ pub fn settings_css(accents: &[&str]) -> String {
 .vela-settings .vela-page-in-b { animation: vela-page-in-b 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .vela-settings button { transition: background-color 140ms ease, box-shadow 140ms ease, transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 .vela-settings button:active { transform: scale(0.98); }
+.vela-settings switch { transition: background-color 220ms ease, box-shadow 220ms ease; }
+@keyframes vela-switch-on { 0% { transform: scale(1); } 40% { transform: scale(1.22); } 100% { transform: scale(1); } }
+.vela-settings switch:checked > slider { animation: vela-switch-on 380ms cubic-bezier(0.34, 1.56, 0.64, 1); }
 .vela-settings .vela-sidebar-heading { font-size: 0.8em; font-weight: 700; opacity: 0.55; margin: 14px 12px 4px 12px; }
 .vela-settings .vela-theme-chip { padding: 8px; border-radius: 14px; }
 .vela-settings .vela-theme-chip:checked { background: alpha(@accent_bg_color, 0.18); box-shadow: inset 0 0 0 2px @accent_bg_color; }
