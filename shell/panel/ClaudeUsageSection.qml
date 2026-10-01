@@ -36,7 +36,7 @@ Card {
         }
     }
 
-    // Plan as quiet small caps ("PRO": the first letter a pixel larger),
+    // Plan as bold small caps ("PRO": the first letter a pixel larger),
     // right-aligned in its row.
     component PlanBadge: StyledText {
         property string plan
@@ -45,12 +45,12 @@ Card {
         textFormat: Text.RichText
         text: {
             const p = plan.toUpperCase();
-            return p.charAt(0) + "<span style='font-size:" + Theme.font.small + "px'>" + p.slice(1) + "</span>";
+            return "<b>" + p.charAt(0) + "<span style='font-size:" + Theme.font.small + "px'>" + p.slice(1) + "</span></b>";
         }
         color: Theme.withAlpha(Theme.colors.text, 0.5)
         // The first letter is the larger one; the rest has the small size.
         font.pixelSize: Theme.font.small + 1
-        font.weight: Theme.font.weightSemiBold
+        font.weight: Font.Bold
         font.letterSpacing: Theme.font.labelLetterSpacing
     }
 
