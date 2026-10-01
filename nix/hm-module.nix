@@ -59,6 +59,16 @@ in
   };
 
   config = mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = config.wayland.windowManager.hyprland.configType == "lua";
+        message = ''programs.vela needs wayland.windowManager.hyprland.configType = "lua" (Hyprland 0.55+).'';
+      }
+    ];
+
+    # The fonts below are only found with fontconfig on.
+    fonts.fontconfig.enable = lib.mkDefault true;
+
     home.packages = [
       cfg.package
     ]
