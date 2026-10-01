@@ -51,8 +51,8 @@ install -Dm644 contrib/hyprland/vela.lua "$HYPRDIR/vela.lua"
 # Overwrite in place (cp keeps the files) so a running shell notices the
 # change and reloads itself; drop files that no longer exist.
 mkdir -p "$DATADIR/vela/shell"
-(cd shell && find . -type f -name '*.qml' ! -name 'test-*' -exec sh -c 'mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2"' _ "$DATADIR/vela/shell" {} \;)
-(cd "$DATADIR/vela/shell" && find . -type f -name '*.qml' | while read -r f; do [[ -f "$OLDPWD/shell/$f" ]] || rm -f "$f"; done)
+(cd shell && find . -type f \( -name '*.qml' -o -name '*.svg' \) ! -name 'test-*' -exec sh -c 'mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2"' _ "$DATADIR/vela/shell" {} \;)
+(cd "$DATADIR/vela/shell" && find . -type f \( -name '*.qml' -o -name '*.svg' \) | while read -r f; do [[ -f "$OLDPWD/shell/$f" ]] || rm -f "$f"; done)
 command -v qs >/dev/null || warn "Quickshell (qs) not found — the control center (vela shell) needs it"
 systemctl --user daemon-reload 2>/dev/null || true
 gtk-update-icon-cache -q -t "$DATADIR/icons/hicolor" 2>/dev/null || true

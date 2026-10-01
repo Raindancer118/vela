@@ -4,6 +4,7 @@ import Quickshell.Services.Notifications
 import Quickshell.Widgets
 import qs
 import qs.components
+import qs.services
 
 // Notification image, app icon or a generic bell, in a circle.
 Item {
@@ -12,10 +13,13 @@ Item {
     required property Notification notification
     property real size: Theme.size.notificationIcon
 
+    readonly property bool claude: notification ? Notifications.isClaude(notification) : false
     readonly property string source: {
         const n = notification;
         if (!n)
             return "";
+        if (root.claude && n.image === "")
+            return Qt.resolvedUrl("../assets/claude.svg");
         if (n.image !== "")
             return n.image;
         const icon = n.appIcon;

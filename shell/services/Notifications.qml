@@ -25,8 +25,14 @@ Singleton {
     // Ticks while the panel or a popup is visible, for "5 min ago" labels.
     property real now: Date.now()
 
-    function appKey(n: Notification): string {
-        return n.appName || I18n.tr("Unknown");
+    // Claude Code sends no app name, only "Claude Code" as the summary.
+    // Untyped: also called with plain objects in test-claude.qml.
+    function isClaude(n): bool {
+        return /claude/i.test(n.appName) || /claude/i.test(n.desktopEntry ?? "") || n.summary === "Claude Code";
+    }
+
+    function appKey(n): string {
+        return n.appName || (isClaude(n) ? "Claude Code" : I18n.tr("Unknown"));
     }
 
     function timeOf(n: Notification): real {
