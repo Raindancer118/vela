@@ -199,6 +199,7 @@ fn print_components() {
     let mut out = std::io::stdout().lock();
     let _ = match components::manifest_file() {
         Some(f) => writeln!(out, "profile: {} ({})", installed.profile.as_deref().unwrap_or("?"), f.display()),
+        None if vela::nixos::running_nixos() => writeln!(out, "profile: NixOS default, everything but updates (no programs.vela.components)"),
         None => writeln!(out, "profile: full (no selection from install.sh)"),
     };
     for c in Component::ALL {

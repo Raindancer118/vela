@@ -198,6 +198,20 @@ fn lua_float(v: f64) -> String {
     if v.is_finite() { format!("{v:?}") } else { "0.0".into() }
 }
 
+/// Lua that loads vela's generated settings at `path` into the running
+/// Hyprland, but only if it is the file vela.lua itself loads (it records
+/// that in `vela_settings_file`; older vela.lua: the default state path): a
+/// vela started with another XDG_STATE_HOME (tests) must not change it.
+pub fn apply_if_loaded(path: &str) -> String {
+    format!(
+        "local want = vela_settings_file if not want then \
+         local s = os.getenv(\"XDG_STATE_HOME\") if not s or s == \"\" then s = os.getenv(\"HOME\") .. \"/.local/state\" end \
+         want = s .. \"/vela/hyprland.lua\" end \
+         local p = {} if want == p then dofile(p) end",
+        lua_string(path)
+    )
+}
+
 pub fn lua_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -716,6 +730,45 @@ pub fn value_to_json(v: &Value) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
+    /// Runs `apply_if_loaded(path)` in a real Lua with `dofile` stubbed;
+    /// None when no `lua` is installed.
+    fn run_apply(path: &str, prelude: &str, state_home: &str) -> Option<String> {
+        crate::paths::find_executable("lua")?;
+        let code = format!("dofile = function(p) io.write(\"LOADED \" .. p) end {prelude} {}", super::apply_if_loaded(path));
+        let out = std::process::Command::new("lua")
+            .args(["-e", &code])
+            .env("XDG_STATE_HOME", state_home)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        Some(String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+
+    #[test]
+    fn applies_the_file_vela_lua_loaded() {
+        let Some(out) = run_apply("/repo/vela/hyprland.lua", "vela_settings_file = \"/repo/vela/hyprland.lua\"", "/s") else {
+            return;
+        };
+        assert_eq!(out, "LOADED /repo/vela/hyprland.lua");
+    }
+
+    #[test]
+    fn leaves_hyprland_alone_for_another_file() {
+        let Some(out) = run_apply("/tmp/test/hyprland.lua", "vela_settings_file = \"/repo/vela/hyprland.lua\"", "/s") else {
+            return;
+        };
+        assert_eq!(out, "");
+    }
+
+    #[test]
+    fn without_a_recorded_file_applies_the_default_state_path() {
+        let Some(out) = run_apply("/s/vela/hyprland.lua", "", "/s") else {
+            return;
+        };
+        assert_eq!(out, "LOADED /s/vela/hyprland.lua");
+        assert_eq!(run_apply("/repo/vela/hyprland.lua", "", "/s").unwrap(), "");
+    }
+
     use super::*;
 
     const DESCRIPTIONS: &str = r#"[

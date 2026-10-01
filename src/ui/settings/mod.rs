@@ -18,7 +18,9 @@ use crate::components::{Component, Installed};
 use adw::prelude::*;
 use binder::Binder;
 use gtk::{gdk, glib};
+use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 /// Sidebar entries: (section, page id, title, icon). Ids are `SETTINGS_PAGES`.
 const ENTRIES: [(&str, &str, &str, &str); 22] = [
@@ -203,11 +205,13 @@ impl SettingsWindow {
                 b.set_revealed(err.is_some());
             });
         }
+        let toasts = adw::ToastOverlay::new();
+        let nixos_banner = nixos_banner(daemon, &window, &toasts);
         let content_view = adw::ToolbarView::new();
         content_view.add_top_bar(&header);
         content_view.add_top_bar(&banner);
         content_view.add_top_bar(&hypr_banner);
-        let toasts = adw::ToastOverlay::new();
+        content_view.add_top_bar(&nixos_banner);
         toasts.set_child(Some(&stack));
         content_view.set_content(Some(&toasts));
         let content_page = adw::NavigationPage::builder().title(ENTRIES[0].2).child(&content_view).build();
@@ -343,6 +347,64 @@ impl SettingsWindow {
     pub fn present(&self) {
         self.window.present();
     }
+}
+
+/// NixOS: offers to commit and rebuild what vela changed in the repository,
+/// or says that changes stay outside the NixOS configuration.
+fn nixos_banner(daemon: &Rc<Daemon>, window: &adw::ApplicationWindow, toasts: &adw::ToastOverlay) -> adw::Banner {
+    use crate::nixos::{self, Status};
+    let banner = adw::Banner::new("");
+    let mode = match nixos::status() {
+        Status::NotNixos => return banner,
+        Status::Unconfigured => {
+            banner.set_title("NixOS detected: changes are not saved to your NixOS configuration (see README → NixOS)");
+            banner.set_revealed(true);
+            return banner;
+        }
+        Status::Active(mode) => mode,
+    };
+    banner.set_title("Changes not yet applied to NixOS");
+    banner.set_button_label(Some("Apply & rebuild"));
+    let refresh = {
+        let banner = banner.clone();
+        move || banner.set_revealed(nixos::dirty(mode) == Some(true))
+    };
+    refresh();
+    // Saves happen shortly after a change; look again once they're written.
+    let pending: Rc<RefCell<Option<glib::SourceId>>> = Rc::default();
+    let later = {
+        let refresh = refresh.clone();
+        move || {
+            if let Some(id) = pending.borrow_mut().take() {
+                id.remove();
+            }
+            let (refresh, slot) = (refresh.clone(), pending.clone());
+            let id = glib::timeout_add_local_once(Duration::from_millis(1500), move || {
+                slot.borrow_mut().take();
+                refresh();
+            });
+            *pending.borrow_mut() = Some(id);
+        }
+    };
+    {
+        let later = later.clone();
+        daemon.store.subscribe(move |_, _| later());
+    }
+    daemon.hypr.subscribe(move |_| later());
+    // Coming back from the rebuild terminal.
+    window.connect_is_active_notify(move |w| {
+        if w.is_active() {
+            refresh();
+        }
+    });
+    let (store, toasts) = (daemon.store.clone(), toasts.clone());
+    banner.connect_button_clicked(move |_| {
+        let result = nixos::rebuild_spec(mode, &store.get().terminal).and_then(|spec| crate::launch::spawn_detached(&spec, false));
+        if let Err(e) = result {
+            toasts.add_toast(adw::Toast::new(&glib::markup_escape_text(&format!("Rebuild: {e}"))));
+        }
+    });
+    banner
 }
 
 fn install_css() {

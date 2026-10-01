@@ -12,6 +12,9 @@
 #                                   ~/.config/hypr/hyprland.lua (a backup is made)
 #   ./install.sh --no-build         install the binaries in target/release as they are
 #
+# On NixOS it builds with `nix build` (the flake) instead of cargo and leaves
+# out the pacman-based updates; the Home Manager module is the declarative way.
+#
 # Running it again changes the selection: parts no longer selected are removed
 # (settings in ~/.config/vela are always kept).
 set -euo pipefail
@@ -23,6 +26,10 @@ DATADIR="${XDG_DATA_HOME:-$HOME/.local/share}"
 CONFDIR="${XDG_CONFIG_HOME:-$HOME/.config}"
 HYPRDIR="$CONFDIR/hypr"
 MANIFEST="$DATADIR/vela/components.toml"
+NIXOS=0
+grep -qsxE 'ID="?nixos"?' "${VELA_OS_RELEASE:-/etc/os-release}" && NIXOS=1
+# GC root of the package `nix build` made; the installed binaries run from it.
+NIX_PACKAGE="$DATADIR/vela/nix-package"
 
 say() { printf '\033[1;34m::\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*"; }
@@ -43,7 +50,11 @@ while read -r kind name rest; do
 done < <(grep -v '^\s*\(#\|$\)' data/components.txt)
 
 key_of() { printf '%s' "${1//-/_}"; }
-in_profile() { [[ "${COMP_PROFILES[$2]}" == *",$1,"* ]]; }
+# On NixOS no profile has the updates (pacman); --with updates still adds them.
+in_profile() {
+    [[ "${COMP_PROFILES[$2]}" == *",$1,"* ]] || return 1
+    ! { ((NIXOS)) && [[ "$2" == updates ]]; }
+}
 is_component() { [[ -n "${COMP_DESC[$1]:-}" ]]; }
 
 list() {
@@ -72,7 +83,7 @@ while (($#)); do
         --without) WITHOUT+=",${2:?--without needs components}"; shift ;;
         --without=*) WITHOUT+=",${1#*=}" ;;
         --list) list; exit 0 ;;
-        -h | --help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h | --help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "unknown option: $1 (see --help)" ;;
     esac
     shift
@@ -205,18 +216,34 @@ if has claude; then
     command -v claude >/dev/null || [[ -x "$HOME/.local/bin/claude" ]] || warn "Claude Code (claude) not found — Ask Claude will report that"
 fi
 
-if ((BUILD)); then
+# NixOS has no system GTK for a cargo build or the prebuilt binaries: the
+# flake's package brings its own, kept alive by the out-link.
+BUILT=target/release
+if ((NIXOS)); then
+    if ((BUILD)); then
+        [[ -f flake.nix ]] || die "NixOS needs the source tree (git clone) to build with nix"
+        command -v nix >/dev/null || die "nix not found"
+        say "building with nix (flake package)"
+        mkdir -p "$(dirname "$NIX_PACKAGE")"
+        nix --extra-experimental-features 'nix-command flakes' build "path:$PWD#default" --out-link "$NIX_PACKAGE"
+    fi
+    if [[ -x "$NIX_PACKAGE/bin/vela" ]]; then
+        BUILT="$NIX_PACKAGE/bin"
+    else
+        warn "no nix build at $NIX_PACKAGE; installing $BUILT, which may not find GTK on NixOS"
+    fi
+elif ((BUILD)); then
     say "building (release)"
     cargo build --release --locked
 fi
 for b in vela vela-daemon vela-share-picker; do
-    [[ -x "target/release/$b" ]] || die "target/release/$b is missing (build first or drop --no-build)"
+    [[ -x "$BUILT/$b" ]] || die "$BUILT/$b is missing (build first or drop --no-build)"
 done
 
 # ------------------------------------------------------------ core
 say "installing to $PREFIX"
-install -Dm755 target/release/vela "$BINDIR/vela"
-install -Dm755 target/release/vela-daemon "$BINDIR/vela-daemon"
+install -Dm755 "$BUILT/vela" "$BINDIR/vela"
+install -Dm755 "$BUILT/vela-daemon" "$BINDIR/vela-daemon"
 for icon in data/icons/*.svg; do
     install -Dm644 "$icon" "$DATADIR/icons/hicolor/scalable/apps/$(basename "$icon")"
 done
@@ -292,7 +319,7 @@ fi
 # configured. xdph reads its config only at start.
 XDPH="$HYPRDIR/xdph.conf"
 if has share-picker; then
-    install -Dm755 target/release/vela-share-picker "$BINDIR/vela-share-picker"
+    install -Dm755 "$BUILT/vela-share-picker" "$BINDIR/vela-share-picker"
     if grep -qs 'custom_picker_binary' "$XDPH" && ! grep -qs 'vela-share-picker' "$XDPH"; then
         warn "$XDPH already sets another share picker; vela's: custom_picker_binary = $BINDIR/vela-share-picker"
     elif ! grep -qs "custom_picker_binary = $BINDIR/vela-share-picker" "$XDPH"; then
@@ -329,6 +356,9 @@ LINE='dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup()'
 if [[ -f "$HYPRDIR/hyprland.lua" ]]; then
     if grep -qF 'hypr/vela.lua' "$HYPRDIR/hyprland.lua"; then
         say "hyprland.lua already loads vela.lua"
+    elif [[ "$(readlink -f "$HYPRDIR/hyprland.lua")" == /nix/store/* ]]; then
+        say "hyprland.lua comes from Home Manager; add to wayland.windowManager.hyprland.extraConfig:"
+        echo "    $LINE"
     elif ((EDIT_HYPR)); then
         cp "$HYPRDIR/hyprland.lua" "$HYPRDIR/hyprland.lua.bak-vela-$(date +%s)"
         printf '\n-- vela launcher: tap Super to open\n%s\n' "$LINE" >>"$HYPRDIR/hyprland.lua"

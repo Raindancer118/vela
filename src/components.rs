@@ -2,7 +2,9 @@
 //!
 //! The catalog (data/components.txt) is shared with install.sh, which writes
 //! the selection to `<data dir>/vela/components.toml`. Without that file
-//! (package install, running from the source tree) everything is installed.
+//! (package install, running from the source tree) everything is installed;
+//! on NixOS everything but the pacman-based updates. The Home Manager module
+//! writes the file from `programs.vela.components`.
 
 use crate::paths;
 use std::path::PathBuf;
@@ -153,6 +155,15 @@ impl Installed {
         }
     }
 
+    /// Without a (readable) components.toml.
+    pub fn fallback(nixos: bool) -> Installed {
+        let mut i = Installed::all();
+        if nixos {
+            i.on.retain(|c| *c != Component::Updates);
+        }
+        i
+    }
+
     pub fn has(&self, c: Component) -> bool {
         self.on.contains(&c)
     }
@@ -187,12 +198,13 @@ pub fn manifest_file() -> Option<PathBuf> {
 }
 
 pub fn load() -> Installed {
-    let Some(path) = manifest_file() else { return Installed::all() };
+    let fallback = || Installed::fallback(crate::nixos::running_nixos());
+    let Some(path) = manifest_file() else { return fallback() };
     match std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| Installed::parse(&t)) {
         Ok(i) => i,
         Err(e) => {
-            log::warn!("{}: {e}; treating every component as installed", path.display());
-            Installed::all()
+            log::warn!("{}: {e}; using the default components", path.display());
+            fallback()
         }
     }
 }
@@ -266,5 +278,15 @@ mod tests {
     fn no_manifest_means_everything() {
         assert!(Installed::all().is_full());
         assert_eq!(Installed::default(), Installed::all());
+        assert_eq!(Installed::fallback(false), Installed::all());
+    }
+
+    #[test]
+    fn no_manifest_on_nixos_means_everything_but_updates() {
+        // Updates run pacman; NixOS updates through nixos-rebuild.
+        let nixos = Installed::fallback(true);
+        assert!(!nixos.has(Component::Updates));
+        assert!(Component::ALL.iter().filter(|c| **c != Component::Updates).all(|c| nixos.has(*c)));
+        assert_eq!(nixos.profile, None);
     }
 }

@@ -291,10 +291,11 @@ pub fn system(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
     p
 }
 
-/// What install.sh installed; changing it means running it again.
+/// What install.sh (on NixOS: the Home Manager module) installed.
 fn components_group() -> adw::PreferencesGroup {
     use crate::components::{self, Component};
     let installed = components::installed();
+    let nixos = crate::nixos::running_nixos();
     let profile = match installed.profile.as_deref() {
         Some("custom") => "Picked by hand".to_string(),
         Some(p) => components::catalog()
@@ -302,9 +303,15 @@ fn components_group() -> adw::PreferencesGroup {
             .iter()
             .find(|(n, _)| *n == p)
             .map_or_else(|| p.to_string(), |(_, d)| d.to_string()),
+        None if nixos => "NixOS default: everything but updates".to_string(),
         None => "Everything (no selection from install.sh)".to_string(),
     };
-    let g = group("Components", "Run ./install.sh again to add or remove parts of vela.");
+    let how = if nixos {
+        "Set programs.vela.components in your Home Manager configuration to add or remove parts of vela."
+    } else {
+        "Run ./install.sh again to add or remove parts of vela."
+    };
+    let g = group("Components", how);
     g.add(&adw::ActionRow::builder().title("Profile").subtitle(profile).build());
     for c in Component::ALL {
         let (title, desc) = c.description().split_once(": ").unwrap_or((c.id(), c.description()));

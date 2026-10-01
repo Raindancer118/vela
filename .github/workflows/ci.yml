@@ -33,3 +33,11 @@ jobs:
         run: |
           sed -i -E 's/^#(de_DE|en_US|fr_FR)\.UTF-8/\1.UTF-8/' /etc/locale.gen && locale-gen
           scripts/shell-test.sh target/release/vela
+
+  nix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - name: Flake package and Home Manager module
+        run: scripts/nix-test.sh

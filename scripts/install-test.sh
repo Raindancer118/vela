@@ -125,6 +125,33 @@ check "uninstall: selection gone" test ! -e "$DATA/vela/components.toml"
 check "uninstall: config kept" test -f "$XDG_CONFIG_HOME/vela/config.toml"
 check "uninstall: hyprland.lua kept" test -f "$HOME/.config/hypr/hyprland.lua"
 
+# NixOS: built with nix (a fake one here), no pacman updates by default.
+printf 'NAME=NixOS\nID=nixos\n' >"$tmp/os-release-nixos"
+mkdir -p "$tmp/nixfake"
+cat >"$tmp/nixfake/nix" <<EOF
+#!/bin/sh
+echo "nix \$*" >>"$log"
+while [ \$# -gt 0 ]; do [ "\$1" = --out-link ] && link="\$2"; shift; done
+mkdir -p "$tmp/store/bin"
+for b in vela vela-daemon vela-share-picker; do printf '#!/bin/sh\necho nix-%s\n' "\$b" >"$tmp/store/bin/\$b"; chmod +x "$tmp/store/bin/\$b"; done
+ln -sfn "$tmp/store" "\$link"
+EOF
+chmod +x "$tmp/nixfake/nix"
+nixos() { VELA_OS_RELEASE="$tmp/os-release-nixos" PATH="$tmp/nixfake:$PATH" "$@"; }
+echo "--- nixos install.sh" >>"$log"
+nixos ./install.sh --profile full -y >>"$tmp/out.log" 2>&1 || { echo "FAIL: nixos: install.sh exited non-zero"; fails=$((fails + 1)); }
+check "nixos: built with nix" grep -q "^nix .*build path:.*#default --out-link $DATA/vela/nix-package" "$log"
+check "nixos: no cargo build" no grep -q "building (release)" "$tmp/out.log"
+check "nixos: binary from the nix package" grep -q nix-vela "$BIN/vela"
+check "nixos: full without updates" key updates false
+check "nixos: full keeps the rest" key share_picker true
+check "nixos: profile stays full" grep -qx 'profile = "full"' "$DATA/vela/components.toml"
+nixos ./install.sh --no-build --with updates -y >>"$tmp/out.log" 2>&1
+check "nixos: --with updates adds them" key updates true
+check "nixos: --no-build reuses the nix package" grep -q nix-vela "$BIN/vela"
+./uninstall.sh >>"$tmp/out.log" 2>&1
+check "nixos: uninstall drops the gc root" test ! -e "$DATA/vela/nix-package"
+
 if ((fails)); then
     echo "--- output"
     cat "$tmp/out.log"

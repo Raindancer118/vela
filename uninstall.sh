@@ -24,6 +24,8 @@ rm -f "$PREFIX/bin/vela" "$PREFIX/bin/vela-daemon" "$PREFIX/bin/vela-share-picke
     "$HYPRDIR/vela.lua"
 rm -rf "$DATADIR/vela/shell"
 rm -f "$DATADIR/vela/components.toml"
+# NixOS: GC root of the nix-built package (install.sh).
+rm -f "$DATADIR/vela/nix-package"
 rmdir "$DATADIR/vela" 2>/dev/null || true
 if command -v claude >/dev/null; then
     env -u CLAUDE_CONFIG_DIR claude mcp remove --scope user vela >/dev/null 2>&1 || true

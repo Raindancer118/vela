@@ -68,6 +68,9 @@ local defaults = {
     -- Apply the Hyprland settings made in vela (Settings → Hyprland). They
     -- override hyprland.lua, so call setup() at its end.
     settings = true,
+    -- Lua file with those settings; nil = $XDG_STATE_HOME/vela/hyprland.lua.
+    -- The NixOS Home Manager module points it into your repository.
+    settings_file = nil,
 }
 
 function M.setup(opts)
@@ -201,9 +204,14 @@ function M.setup(opts)
     end
 
     if o.settings then
-        local state = os.getenv("XDG_STATE_HOME")
-        if not state or state == "" then state = os.getenv("HOME") .. "/.local/state" end
-        local generated = state .. "/vela/hyprland.lua"
+        local generated = o.settings_file
+        if not generated then
+            local state = os.getenv("XDG_STATE_HOME")
+            if not state or state == "" then state = os.getenv("HOME") .. "/.local/state" end
+            generated = state .. "/vela/hyprland.lua"
+        end
+        -- The daemon applies a rewritten file live only if it is this one.
+        vela_settings_file = generated
         if exists(generated) then
             local ok, err = pcall(dofile, generated)
             if not ok then print("vela: " .. tostring(err)) end
