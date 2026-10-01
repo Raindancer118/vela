@@ -158,11 +158,11 @@ Singleton {
         readonly property int iconButton: 40
         readonly property int pillButton: 36
         readonly property int listRow: 56
-        readonly property int switchWidth: 52
-        readonly property int switchHeight: 32
-        readonly property int switchKnobOn: 24
-        readonly property int switchKnobOff: 16
-        readonly property int switchKnobInset: 4
+        // libadwaita switch geometry.
+        readonly property int switchWidth: 46
+        readonly property int switchHeight: 26
+        readonly property int switchKnob: 20
+        readonly property int switchKnobInset: 3
         readonly property int notificationWidth: 400
         readonly property int notificationIcon: 40
         readonly property int notificationIconCompact: 24

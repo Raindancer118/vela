@@ -110,7 +110,7 @@ popup_timeout_secs = 5
 popup_max_visible = 4
 critical_popups_stay = true
 group_collapsed_count = 2
-# One line per notification; expands on click (panel) or hover (popup).
+# One small row per app in the panel; expands on click or when the pointer rests on it.
 compact_notifications = true
 workspace_osd = true
 night_light_temperature = 4000

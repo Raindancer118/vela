@@ -114,8 +114,8 @@ pub struct Panel {
     pub critical_popups_stay: bool,
     /// Notifications shown per app before "Show more".
     pub group_collapsed_count: u32,
-    /// One line per notification (icon, title and text); expands on click
-    /// in the panel and on hover as a popup.
+    /// One small row per app in the panel; expands on click or when the
+    /// pointer rests on it. Popups always show in full.
     pub compact_notifications: bool,
     /// Workspace dots at the top when switching workspaces.
     pub workspace_osd: bool,

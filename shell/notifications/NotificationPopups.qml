@@ -86,11 +86,6 @@ PanelWindow {
                 id: hover
             }
 
-            HoverDwell {
-                id: dwell
-
-                hovered: hover.hovered
-            }
 
             Timer {
                 // expireTimeout is the raw D-Bus value in milliseconds.
@@ -104,8 +99,8 @@ PanelWindow {
 
                 anchors.fill: parent
                 notification: card.modelData
-                // Compact popups unfold when the pointer rests on them.
-                expanded: dwell.dwelled
+                // Popups are meant to be read: never compact.
+                allowCompact: false
                 onClicked: Notifications.activate(card.modelData)
             }
         }

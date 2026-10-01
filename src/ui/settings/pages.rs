@@ -802,7 +802,7 @@ pub fn notifications(b: &Binder) -> adw::PreferencesPage {
     let style = group("Style", "");
     style.add(&b.switch(
         "Compact",
-        "One line per notification: click it in the panel or hover the popup to see everything",
+        "One small row per app in the panel; click it or rest the pointer on it to see everything. Popups stay full size.",
         |c| c.panel.compact_notifications,
         |c, v| c.panel.compact_notifications = v,
     ));

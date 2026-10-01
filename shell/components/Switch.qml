@@ -1,7 +1,9 @@
 import QtQuick
 import qs
 
-// Material 3 style switch.
+// Switch in the libadwaita style of vela's settings window: pill track
+// (grey when off, accent when on) and a white knob of the same size in
+// both states.
 Rectangle {
     id: root
 
@@ -13,9 +15,7 @@ Rectangle {
     implicitHeight: Theme.size.switchHeight
     radius: height / 2
     opacity: enabled ? 1 : Theme.opacity.disabled
-    color: checked ? Theme.colors.primary : Theme.colors.surfaceHighest
-    border.width: checked ? 0 : 2
-    border.color: Theme.colors.textMuted
+    color: checked ? Theme.colors.primary : Theme.withAlpha(Theme.colors.text, 0.15)
 
     Behavior on color {
         ColorAnim {}
@@ -27,26 +27,28 @@ Rectangle {
         onClicked: root.toggled()
     }
 
+    // Soft shadow under the knob.
+    Rectangle {
+        x: knob.x
+        y: knob.y + 1
+        width: knob.width
+        height: knob.height
+        radius: knob.radius
+        scale: knob.scale
+        color: Qt.rgba(0, 0, 0, 0.22)
+    }
+
     Rectangle {
         id: knob
 
-        property real knob: root.checked ? Theme.size.switchKnobOn : Theme.size.switchKnobOff
-
-        width: knob
-        height: knob
-        radius: knob / 2
+        width: Theme.size.switchKnob
+        height: width
+        radius: width / 2
         anchors.verticalCenter: parent.verticalCenter
-        // The unchecked knob is smaller; keep its center where it would be.
-        x: root.checked ? root.width - knob - Theme.size.switchKnobInset : (root.height - knob) / 2
-        color: root.checked ? Theme.colors.textOnPrimary : Theme.colors.textMuted
+        x: root.checked ? root.width - width - Theme.size.switchKnobInset : Theme.size.switchKnobInset
+        color: "#ffffff"
 
         Behavior on x {
-            SpringAnim {
-                duration: Theme.anim.normal
-            }
-        }
-
-        Behavior on knob {
             SpringAnim {
                 duration: Theme.anim.normal
             }
