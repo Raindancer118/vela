@@ -18,6 +18,7 @@ pub mod launch;
 pub mod mcp;
 pub mod paths;
 pub mod search;
+pub mod search_terms;
 pub mod shell;
 pub mod theme;
 pub mod ui;

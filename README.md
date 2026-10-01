@@ -138,7 +138,9 @@ and changed right there. Describe a change instead (“smaller gaps between
 windows”) and press **Ctrl+Enter**: Claude Code starts with that request and
 makes it through `vela mcp`, an MCP server with tools to search and set
 Hyprland options, animations, monitors and vela's own settings. `install.sh`
-registers it (`claude mcp add --scope user vela -- vela mcp`).
+registers it (`claude mcp add --scope user vela -- vela mcp`) in the default
+profile and every ccacct profile. The search understands German too
+(“Abstand zwischen Fenstern” finds *Gaps between windows*).
 
 ## Usage
 

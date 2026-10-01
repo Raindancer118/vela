@@ -5,6 +5,7 @@
 //! Free text can go to Claude (Ctrl+Enter), which changes it through the
 //! vela MCP server.
 
+use crate::search_terms;
 use crate::ui::daemon::Daemon;
 use adw::prelude::*;
 use gtk::glib;
@@ -84,14 +85,15 @@ fn walk(w: &gtk::Widget, ctx: &mut Vec<String>, out: &mut Vec<(adw::PreferencesR
 }
 
 /// How well a row matches; None if it doesn't. Lower is better.
-fn score(words: &[String], title: &str, hay: &str) -> Option<u8> {
-    if words.is_empty() || !words.iter().all(|w| hay.contains(w.as_str())) {
+/// `groups` from `search_terms::groups` (German words mapped to English).
+fn score(groups: &[Vec<String>], title: &str, hay: &str) -> Option<u8> {
+    if !search_terms::matches(groups, hay) {
         return None;
     }
     let t = title.to_lowercase();
-    Some(if t.starts_with(words[0].as_str()) {
+    Some(if groups[0].iter().any(|a| t.starts_with(a.as_str())) {
         0
-    } else if words.iter().all(|w| t.contains(w.as_str())) {
+    } else if search_terms::matches(groups, &t) {
         1
     } else {
         2
@@ -299,10 +301,10 @@ impl Search {
 
     fn run(self: &Rc<Self>, text: &str) {
         self.restore();
-        let words: Vec<String> = text.to_lowercase().split_whitespace().map(str::to_owned).collect();
-        if words.is_empty() {
+        if text.trim().is_empty() {
             return;
         }
+        let groups = search_terms::groups(text);
         self.index();
         let items = self.items.borrow();
         let mut hits: Vec<(u8, usize, adw::PreferencesRow)> = Vec::new();
@@ -316,7 +318,7 @@ impl Search {
                 row.widget_name().replace([':', '_', '.', '-'], " ")
             )
             .to_lowercase();
-            if let Some(sc) = score(&words, &title, &hay) {
+            if let Some(sc) = score(&groups, &title, &hay) {
                 hits.push((sc, i, row));
             }
         }
@@ -326,12 +328,23 @@ impl Search {
         hits.sort_by_key(|(sc, i, _)| (*sc, *i));
         hits.truncate(MAX_RESULTS);
 
-        let wants_claude = words.len() >= 3 || hits.is_empty();
+        // A sentence reads like a request: Claude first.
+        let wants_claude = text.split_whitespace().count() >= 3 || hits.is_empty();
         if wants_claude {
             self.results.append(&self.claude_card(text));
         }
-        // Back in page order, grouped by where they live.
-        hits.sort_by_key(|(_, i, _)| *i);
+        // Grouped by where they live; the group with the best hit first,
+        // inside a group the page order.
+        let group_of = |i: usize| {
+            let it = &items.as_ref().unwrap()[i];
+            format!("{}\u{1f}{}", it.page, it.context.join(" › "))
+        };
+        let mut best: std::collections::HashMap<String, (u8, usize)> = std::collections::HashMap::new();
+        for (sc, i, _) in &hits {
+            let e = best.entry(group_of(*i)).or_insert((*sc, *i));
+            *e = (*e).min((*sc, *i));
+        }
+        hits.sort_by_key(|(_, i, _)| (best[&group_of(*i)], *i));
         // Positions before anything moves: removing a row shifts the next.
         let places: Vec<(i32, bool)> = hits.iter().map(|(_, _, r)| (r.index(), r.is_visible())).collect();
         let mut current: Option<(String, gtk::ListBox)> = None;
@@ -441,13 +454,18 @@ mod tests {
 
     #[test]
     fn titles_rank_before_descriptions() {
-        let w = |s: &str| s.split_whitespace().map(str::to_owned).collect::<Vec<_>>();
-        assert_eq!(score(&w("blur"), "Blurriness", "blurriness radius of the blur"), Some(0));
-        assert_eq!(score(&w("gaps windows"), "Gaps between windows", "gaps between windows"), Some(0));
-        assert_eq!(score(&w("windows"), "Gaps between windows", "gaps between windows"), Some(1));
-        assert_eq!(score(&w("radius"), "Blurriness", "blurriness radius of the blur"), Some(2));
-        assert_eq!(score(&w("radius nope"), "Blurriness", "blurriness radius"), None);
-        assert_eq!(score(&[], "x", "x"), None);
+        let g = search_terms::groups;
+        assert_eq!(score(&g("blur"), "Blurriness", "blurriness radius of the blur"), Some(0));
+        assert_eq!(score(&g("gaps windows"), "Gaps between windows", "gaps between windows"), Some(0));
+        assert_eq!(score(&g("windows"), "Gaps between windows", "gaps between windows"), Some(1));
+        assert_eq!(score(&g("radius"), "Blurriness", "blurriness radius of the blur"), Some(2));
+        assert_eq!(score(&g("radius nope"), "Blurriness", "blurriness radius"), None);
+        assert_eq!(score(&g(""), "x", "x"), None);
+        // German: "Abstand" → gap, "Fenstern" → window.
+        assert_eq!(
+            score(&g("Abstand zwischen Fenstern"), "Gaps between windows", "gaps between windows space"),
+            Some(0)
+        );
     }
 
     #[test]

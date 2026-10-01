@@ -23,7 +23,12 @@ rm -f "$PREFIX/bin/vela" "$PREFIX/bin/vela-daemon" \
     "$CONFDIR/systemd/user/vela.service" \
     "$HYPRDIR/vela.lua"
 rm -rf "$DATADIR/vela/shell"
-command -v claude >/dev/null && claude mcp remove --scope user vela >/dev/null 2>&1 || true
+if command -v claude >/dev/null; then
+    env -u CLAUDE_CONFIG_DIR claude mcp remove --scope user vela >/dev/null 2>&1 || true
+    for d in "$HOME"/.claude-accounts/*/; do
+        [[ -f "$d.claude.json" ]] && env CLAUDE_CONFIG_DIR="${d%/}" claude mcp remove --scope user vela >/dev/null 2>&1 || true
+    done
+fi
 systemctl --user daemon-reload 2>/dev/null || true
 
 if [[ -f "$HYPRDIR/hyprland.lua" ]] && grep -qF 'hypr/vela.lua' "$HYPRDIR/hyprland.lua"; then
