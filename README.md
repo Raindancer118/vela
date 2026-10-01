@@ -178,6 +178,7 @@ overwriting an unparsable file, vela backs it up as `config.toml.broken-<time>`.
 | | `tile_size`, `icon_size`, `spacing`, `border_radius`, `surface_opacity`, `font_scale` | |
 | | `columns` | fixed column count, `0` = derived from width |
 | | `show_labels` | app names under the icons |
+| | `tile_background`, `tile_outline` | surface behind each grid tile; accent ring around the selected one |
 | | `animations`, `animation_speed` | motion on/off; speed factor (2 = twice as fast) |
 | | `backdrop`, `backdrop_dim` | blur everything else on the launcher's monitor while it is open; darkening 0–0.8 (blur strength = Hyprland's `decoration.blur`) |
 | `apps` | `grid` | `pinned`, `pinned_then_all`, `all` |

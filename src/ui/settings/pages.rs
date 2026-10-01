@@ -364,6 +364,18 @@ fn grid_group(b: &Binder) -> adw::PreferencesGroup {
         |c| c.appearance.show_labels,
         |c, v| c.appearance.show_labels = v,
     ));
+    grid.add(&b.switch(
+        "Tile background",
+        "Off: the icons sit directly on the launcher",
+        |c| c.appearance.tile_background,
+        |c, v| c.appearance.tile_background = v,
+    ));
+    grid.add(&b.switch(
+        "Outline the selected tile",
+        "An accent-coloured ring in addition to the highlight",
+        |c| c.appearance.tile_outline,
+        |c, v| c.appearance.tile_outline = v,
+    ));
     grid
 }
 

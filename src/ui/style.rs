@@ -27,6 +27,12 @@ pub fn launcher_css(cfg: &Config) -> String {
     let border_base = rgba(p.tint, 1.0);
     let claude = CLAUDE_ORANGE;
     let font = a.font_scale;
+    let tile_rest = if a.tile_background { tile_bg.clone() } else { "transparent".into() };
+    let tile_shadow = if a.tile_outline {
+        format!("inset 0 0 0 1px alpha({accent}, 0.55)")
+    } else {
+        "none".into()
+    };
     let spacing = a.spacing;
     let backdrop_dim = crate::theme::backdrop_layer_alpha(a.backdrop_dim, a.backdrop_strength);
 
@@ -71,12 +77,12 @@ window.vela-backdrop, window.vela-backdrop.background {{ background: rgba(0, 0, 
 .vela-launcher list.vela-results {{ margin: 6px 10px; }}
 .vela-launcher scrolledwindow, .vela-launcher scrolledwindow > viewport {{ background: transparent; }}
 .vela-launcher button.vela-tile {{
-  background: {tile_bg}; border: none; box-shadow: none; outline: none;
+  background: {tile_rest}; border: none; box-shadow: none; outline: none;
   border-radius: {inner_radius}px; padding: 6px; color: {fg};
   transition: background 90ms ease-out;
 }}
 .vela-launcher button.vela-tile:hover {{ background: {tile_hover}; }}
-.vela-launcher button.vela-tile.selected {{ background: alpha({accent}, 0.26); box-shadow: none; }}
+.vela-launcher button.vela-tile.selected {{ background: alpha({accent}, 0.26); box-shadow: {tile_shadow}; }}
 .vela-launcher .vela-tile-label {{ font-size: 0.86em; font-weight: 500; }}
 .vela-launcher grid.vela-grid {{ margin: 8px 10px 12px 10px; }}
 .vela-launcher list.vela-results {{ background: transparent; }}
@@ -173,6 +179,11 @@ fn motion_css(cfg: &Config) -> String {
         return ".vela-launcher * { transition: none; animation: none; }\n".into();
     };
     let accent = &cfg.appearance.accent;
+    let ring = if cfg.appearance.tile_outline {
+        format!("inset 0 0 0 1px alpha({accent}, 0.55), ")
+    } else {
+        String::new()
+    };
     let mut css = String::new();
     // Two identical keyframe sets: switching between them on every show
     // restarts the animations (GTK only restarts when the name changes).
@@ -198,7 +209,7 @@ fn motion_css(cfg: &Config) -> String {
 .vela-launcher list.vela-results > row.new {{ animation: vela-row-in {row}ms {EASE_OUT} backwards; }}
 .vela-launcher button.vela-tile {{ transition: background 120ms ease-out, box-shadow 160ms ease-out, transform 220ms {EASE_OUT}; }}
 .vela-launcher button.vela-tile:hover {{ transform: translateY(-1px); }}
-.vela-launcher button.vela-tile.selected {{ transform: translateY(-2px) scale(1.02); box-shadow: 0 6px 18px alpha({accent}, 0.18); }}
+.vela-launcher button.vela-tile.selected {{ transform: translateY(-2px) scale(1.02); box-shadow: {ring}0 6px 18px alpha({accent}, 0.18); }}
 .vela-launcher list.vela-results > row {{ transition: background 120ms ease-out, box-shadow 160ms ease-out; }}
 .vela-launcher row:selected .vela-claude-icon {{ animation: vela-glow 2400ms ease-in-out infinite; }}
 @keyframes vela-pop {{ 0% {{ transform: scale(0.55) rotate(-40deg); opacity: 0.2; }} 70% {{ transform: scale(1.12) rotate(6deg); opacity: 1; }} 100% {{ transform: none; }} }}
@@ -236,7 +247,28 @@ mod tests {
         assert!(css.contains("rgba(24,24,30,0.500)"));
         assert!(css.contains("border-radius: 30px"));
         assert!(css.contains("alpha(#ff0000, 0.26)"));
-        assert!(!css.contains("inset 0 0 0 1px alpha(#ff0000, 0.55), 0 6px"), "no ring around the selected tile");
+        assert!(
+            !css.contains("inset 0 0 0 1px alpha(#ff0000, 0.55), 0 6px"),
+            "no ring around the selected tile by default"
+        );
+        cfg.appearance.tile_outline = true;
+        assert!(
+            launcher_css(&cfg).contains("inset 0 0 0 1px alpha(#ff0000, 0.55), 0 6px"),
+            "ring when switched on"
+        );
+        assert!(!launcher_css(&cfg).contains(", none"), "valid shadow values");
+
+        let mut cfg = Config::default();
+        let tile_rule = |css: &str| {
+            css.lines()
+                .skip_while(|l| !l.starts_with(".vela-launcher button.vela-tile {"))
+                .nth(1)
+                .unwrap_or("")
+                .to_owned()
+        };
+        assert!(!tile_rule(&launcher_css(&cfg)).contains("background: transparent"));
+        cfg.appearance.tile_background = false;
+        assert!(tile_rule(&launcher_css(&cfg)).contains("background: transparent"), "tiles without a background");
     }
 
     #[test]

@@ -81,6 +81,10 @@ pub struct Appearance {
     /// Opacity of tiles, rows and the search field surface (0.0–1.0).
     pub surface_opacity: f64,
     pub show_labels: bool,
+    /// Accent ring around the selected grid tile.
+    pub tile_outline: bool,
+    /// Surface behind each grid tile; off = icons float on the panel.
+    pub tile_background: bool,
     pub font_scale: f64,
     /// Open/close, grid and result animations.
     pub animations: bool,
@@ -313,6 +317,8 @@ impl Default for Appearance {
             border_radius: 22,
             surface_opacity: 0.06,
             show_labels: true,
+            tile_outline: false,
+            tile_background: true,
             font_scale: 1.0,
             animations: true,
             animation_speed: 1.0,
