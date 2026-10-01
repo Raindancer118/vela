@@ -227,9 +227,10 @@ pub fn outcome(installing: Option<&(String, PathBuf)>, running: &str, finished: 
     }
 }
 
-/// NixOS with Home Manager: update the flake input in the repository that
-/// holds the state directory, then rebuild. Run in a terminal.
-pub const NIX_UPDATE_SCRIPT: &str = r#"cd "$(git rev-parse --show-toplevel)" && nix flake update vela && "$@"; s=$?; echo; if [ "$s" -eq 0 ]; then echo "vela: updated"; else echo "vela: update failed ($s)"; fi; printf 'Press Enter to close '; read -r _"#;
+/// NixOS with Home Manager: update the flake input, then rebuild. Run in a
+/// terminal in the state directory; no cd to the repository root, nix finds
+/// flake.nix upwards itself (it may sit in a subdirectory of the repository).
+pub const NIX_UPDATE_SCRIPT: &str = r#"nix flake update vela && "$@"; s=$?; echo; if [ "$s" -eq 0 ]; then echo "vela: updated"; else echo "vela: update failed ($s)"; fi; printf 'Press Enter to close '; read -r _"#;
 
 /// The line under "vela <version>" in Settings → System.
 pub fn describe(status: &Status, checking: bool, step: Option<&(usize, usize, String)>, how: &How) -> String {
@@ -279,6 +280,35 @@ mod tests {
         s.failed = Some(("Installing failed: x".into(), "/l".into()));
         assert_eq!(describe(&s, false, None, &script), "Installing failed: x");
         assert_eq!(describe(&s, false, Some(&(1, 3, "Unpacking".into())), &script), "Unpacking… (2/3)");
+    }
+
+    /// The flake may sit in a subdirectory of the repository: nix must run in
+    /// the state directory and find flake.nix upwards from there itself.
+    #[test]
+    fn the_nix_update_runs_in_the_state_directory() {
+        let root = std::env::temp_dir().join(format!("vela-nix-update-{}", std::process::id()));
+        let state = root.join("repo/nixos");
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::create_dir_all(&bin).unwrap();
+        let git = std::process::Command::new("git").args(["init", "-q"]).current_dir(root.join("repo")).status().unwrap();
+        assert!(git.success());
+        let nix = bin.join("nix");
+        std::fs::write(&nix, format!("#!/bin/sh\npwd > '{}'\n", root.join("nix-cwd").display())).unwrap();
+        std::fs::set_permissions(&nix, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default());
+        let out = std::process::Command::new("sh")
+            .args(["-c", NIX_UPDATE_SCRIPT, "sh", "true"])
+            .current_dir(&state)
+            .env("PATH", path)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        let cwd = std::fs::read_to_string(root.join("nix-cwd")).unwrap();
+        let (cwd, state) = (std::path::Path::new(cwd.trim()).canonicalize().unwrap(), state.canonicalize().unwrap());
+        std::fs::remove_dir_all(&root).ok();
+        assert!(String::from_utf8_lossy(&out.stdout).contains("vela: updated"));
+        assert_eq!(cwd, state);
     }
 
     const LATEST: &str = r#"{"tag_name":"0.36.0","assets":[
