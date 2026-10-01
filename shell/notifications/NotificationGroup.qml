@@ -19,9 +19,21 @@ Card {
     readonly property var items: Notifications.list.filter(n => Notifications.appKey(n) === app)
     readonly property int collapsedCount: Config.groupCollapsedCount
     property bool expanded: false
-    // Compact: one mini row (icon, app, count) until clicked open.
-    property bool open: false
+    // Compact: one mini row (icon, app, count) until clicked open, or while
+    // the pointer rests on it.
+    property bool clickedOpen: false
+    readonly property bool open: clickedOpen || dwell.dwelled
     readonly property bool mini: Config.compactNotifications && !open
+
+    HoverHandler {
+        id: groupHover
+    }
+
+    HoverDwell {
+        id: dwell
+
+        hovered: groupHover.hovered
+    }
     readonly property var shown: expanded ? items : items.slice(0, collapsedCount)
 
     // Grows and shrinks smoothly when notifications come, go or "Show more"
@@ -103,7 +115,7 @@ Card {
 
             Clickable {
                 radius: Theme.radius.card
-                onClicked: root.open = true
+                onClicked: root.clickedOpen = true
             }
 
             RowLayout {
@@ -181,7 +193,7 @@ Card {
                 icon: "unfold_less"
                 iconSize: Theme.icon.small
                 iconColor: Theme.colors.textMuted
-                onClicked: root.open = false
+                onClicked: root.clickedOpen = false
             }
 
             IconButton {

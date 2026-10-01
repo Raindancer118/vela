@@ -24,6 +24,9 @@ Singleton {
     readonly property bool claudeUsageSubtle: vp.claudeUsageSubtle
     readonly property bool compactNotifications: vp.compactNotifications
 
+    // Compact notifications unfold after the pointer rests this long (ms).
+    readonly property int hoverExpandDelay: 600
+
     readonly property int popupTimeout: vp.popupTimeoutMs
     // Upper bound for app-requested timeouts (ms).
     readonly property int popupMaxTimeout: 30000

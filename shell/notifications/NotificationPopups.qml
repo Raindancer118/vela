@@ -86,6 +86,12 @@ PanelWindow {
                 id: hover
             }
 
+            HoverDwell {
+                id: dwell
+
+                hovered: hover.hovered
+            }
+
             Timer {
                 // expireTimeout is the raw D-Bus value in milliseconds.
                 interval: card.modelData?.expireTimeout > 0 ? Math.min(card.modelData.expireTimeout, Config.popupMaxTimeout) : Config.popupTimeout
@@ -98,8 +104,8 @@ PanelWindow {
 
                 anchors.fill: parent
                 notification: card.modelData
-                // Compact popups show everything while hovered.
-                expanded: hover.hovered
+                // Compact popups unfold when the pointer rests on them.
+                expanded: dwell.dwelled
                 onClicked: Notifications.activate(card.modelData)
             }
         }
