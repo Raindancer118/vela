@@ -17,6 +17,7 @@ pub mod idle;
 pub mod ipc;
 pub mod launch;
 pub mod mcp;
+pub mod nixos;
 pub mod paths;
 pub mod search;
 pub mod search_terms;
