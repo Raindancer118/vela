@@ -54,7 +54,7 @@ ColumnLayout {
             implicitHeight: Theme.size.pillButton
             implicitWidth: batteryRow.implicitWidth + 2 * Theme.spacing.md
             radius: height / 2
-            color: Theme.colors.surfaceHigh
+            color: Theme.colors.chip
 
             RowLayout {
                 id: batteryRow

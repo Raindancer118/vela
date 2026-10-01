@@ -1,8 +1,9 @@
 import QtQuick
+import QtQuick.Layouts
 import qs
 
-// Wide pill slider: the filled part is light and always at least as wide as
-// the bar is high, so the icon at its start stays readable on it.
+// Slider like GTK's in the vela settings: an icon button, a thin track with
+// the accent fill and a light round knob, the value on the right.
 Item {
     id: root
 
@@ -20,98 +21,143 @@ Item {
     signal iconClicked
 
     function valueAt(x: real): real {
-        const span = width - height;
-        return span <= 0 ? 0 : Math.max(0, Math.min(1, (x - height / 2) / span));
+        const span = track.width - Theme.size.sliderKnob;
+        return span <= 0 ? 0 : Math.max(0, Math.min(1, (x - Theme.size.sliderKnob / 2) / span));
     }
 
     implicitHeight: Theme.size.sliderHeight
     implicitWidth: Theme.size.controlWidth
 
-    Rectangle {
+    RowLayout {
         anchors.fill: parent
-        radius: height / 2
-        color: Theme.colors.surfaceHigh
-    }
+        spacing: Theme.spacing.sm
 
-    Rectangle {
-        id: fill
+        Rectangle {
+            id: iconBox
 
-        height: parent.height
-        width: root.height + root.shownValue * (root.width - root.height)
-        radius: height / 2
-        color: root.dimmed ? Theme.colors.primaryMuted : Theme.colors.primary
+            Layout.preferredWidth: Theme.size.iconButton
+            Layout.preferredHeight: Theme.size.iconButton
+            radius: height / 2
+            color: "transparent"
 
-        Behavior on width {
-            enabled: !root.dragging
+            Clickable {
+                enabled: root.iconInteractive
+                radius: iconBox.radius
+                onClicked: root.iconClicked()
+            }
 
-            Anim {
-                duration: Theme.anim.fast
+            MaterialIcon {
+                anchors.centerIn: parent
+                icon: root.icon
+                color: root.dimmed ? Theme.colors.textMuted : Theme.colors.text
             }
         }
 
-        Behavior on color {
-            ColorAnim {}
+        Item {
+            id: track
+
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            Rectangle {
+                id: groove
+
+                anchors.verticalCenter: parent.verticalCenter
+                x: Theme.size.sliderKnob / 2
+                width: parent.width - Theme.size.sliderKnob
+                height: Theme.size.sliderTrack
+                radius: height / 2
+                color: Theme.colors.surfaceHighest
+            }
+
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                x: groove.x
+                width: knob.x + knob.width / 2 - groove.x
+                height: Theme.size.sliderTrack
+                radius: height / 2
+                color: root.dimmed ? Theme.colors.primaryMuted : Theme.colors.primary
+
+                Behavior on color {
+                    ColorAnim {}
+                }
+            }
+
+            // Soft shadow under the knob.
+            Rectangle {
+                x: knob.x
+                y: knob.y + 1
+                width: knob.width
+                height: knob.height
+                radius: width / 2
+                color: Qt.rgba(0, 0, 0, Theme.va.light ? 0.18 : 0.35)
+            }
+
+            Rectangle {
+                id: knob
+
+                anchors.verticalCenter: parent.verticalCenter
+                x: root.shownValue * (track.width - width)
+                width: Theme.size.sliderKnob
+                height: Theme.size.sliderKnob
+                radius: width / 2
+                color: Theme.colors.knob
+                border.width: Theme.size.border
+                border.color: Qt.rgba(0, 0, 0, 0.12)
+                scale: root.dragging ? 1.1 : dragArea.containsMouse ? 1.05 : 1
+
+                Behavior on x {
+                    enabled: !root.dragging
+
+                    Anim {
+                        duration: Theme.anim.fast
+                    }
+                }
+
+                Behavior on scale {
+                    Anim {
+                        duration: Theme.anim.fast
+                    }
+                }
+            }
+
+            MouseArea {
+                id: dragArea
+
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                preventStealing: true
+                onPressed: mouse => {
+                    root.dragValue = root.valueAt(mouse.x);
+                    root.moved(root.dragValue);
+                }
+                onPositionChanged: mouse => {
+                    if (!pressed)
+                        return;
+                    root.dragValue = root.valueAt(mouse.x);
+                    root.moved(root.dragValue);
+                }
+                onWheel: wheel => {
+                    const steps = wheel.angleDelta.y / 120;
+                    // Values above 100% (set elsewhere) are not pulled down by scrolling up.
+                    if (steps > 0 && root.value >= 1)
+                        return;
+                    root.moved(Math.max(0, Math.min(1, root.value + steps * root.wheelStep)));
+                }
+            }
         }
-    }
 
-    MouseArea {
-        id: dragArea
-
-        anchors.fill: parent
-        cursorShape: Qt.PointingHandCursor
-        preventStealing: true
-        onPressed: mouse => {
-            root.dragValue = root.valueAt(mouse.x);
-            root.moved(root.dragValue);
+        StyledText {
+            visible: root.showValue
+            Layout.preferredWidth: Theme.size.usagePercentWidth
+            horizontalAlignment: Text.AlignRight
+            text: Math.round(root.shownValue * 100) + " %"
+            color: Theme.colors.textMuted
+            font.pixelSize: Theme.font.small
+            font.features: ({
+                    "tnum": 1
+                })
         }
-        onPositionChanged: mouse => {
-            if (!pressed)
-                return;
-            root.dragValue = root.valueAt(mouse.x);
-            root.moved(root.dragValue);
-        }
-        onWheel: wheel => {
-            const steps = wheel.angleDelta.y / 120;
-            // Values above 100% (set elsewhere) are not pulled down by scrolling up.
-            if (steps > 0 && root.value >= 1)
-                return;
-            root.moved(Math.max(0, Math.min(1, root.value + steps * root.wheelStep)));
-        }
-    }
-
-    Rectangle {
-        id: iconBox
-
-        width: root.height
-        height: root.height
-        radius: height / 2
-        color: "transparent"
-
-        Clickable {
-            enabled: root.iconInteractive
-            radius: iconBox.radius
-            inverted: true
-            onClicked: root.iconClicked()
-        }
-
-        MaterialIcon {
-            anchors.centerIn: parent
-            icon: root.icon
-            size: root.height > Theme.size.sliderHeightCompact ? Theme.icon.normal : Theme.icon.small
-            fill: root.dimmed ? 0 : 1
-            color: Theme.colors.textOnPrimary
-        }
-    }
-
-    StyledText {
-        visible: root.showValue
-        anchors.right: parent.right
-        anchors.rightMargin: Theme.spacing.lg
-        anchors.verticalCenter: parent.verticalCenter
-        text: Math.round(root.shownValue * 100) + "%"
-        // Readable on both halves: sits on the track until the fill reaches it.
-        color: fill.width > root.width - width - Theme.spacing.lg ? Theme.colors.textOnPrimary : Theme.colors.textMuted
-        font.pixelSize: Theme.font.small
-        font.weight: Theme.font.weightMedium
     }
 }

@@ -25,6 +25,46 @@ pub const SHELL_COLOR_KEYS: [&str; 11] = [
     "errorSurface",
 ];
 
+/// Family from a GTK font name like `'Noto Sans Bold 10'` (gsettings form).
+pub fn font_family(name: &str) -> Option<String> {
+    const STYLES: [&str; 12] = [
+        "Bold",
+        "Italic",
+        "Oblique",
+        "Regular",
+        "Medium",
+        "Light",
+        "Thin",
+        "Heavy",
+        "Black",
+        "Semi-Bold",
+        "Book",
+        "Condensed",
+    ];
+    let mut words: Vec<&str> = name.trim().trim_matches('\'').split_whitespace().collect();
+    while words
+        .last()
+        .is_some_and(|w| w.parse::<f64>().is_ok() || STYLES.iter().any(|s| s.eq_ignore_ascii_case(w)))
+    {
+        words.pop();
+    }
+    (!words.is_empty()).then(|| words.join(" "))
+}
+
+/// The font GTK (and so the launcher and settings) uses; asked once.
+fn system_font() -> String {
+    static FONT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    FONT.get_or_init(|| {
+        std::process::Command::new("gsettings")
+            .args(["get", "org.gnome.desktop.interface", "font-name"])
+            .output()
+            .ok()
+            .and_then(|o| font_family(&String::from_utf8_lossy(&o.stdout)))
+            .unwrap_or_else(|| "Adwaita Sans".into())
+    })
+    .clone()
+}
+
 /// One JSON line with everything the control center needs.
 pub fn shell_json(cfg: &Config) -> String {
     let a = &cfg.appearance;
@@ -64,6 +104,7 @@ pub fn shell_json(cfg: &Config) -> String {
             "surfaceOpacity": a.surface_opacity,
             "animationScale": animation_scale,
             "backdropDim": a.backdrop_dim,
+            "fontFamily": system_font(),
         },
         "panel": {
             "width": pn.width,
@@ -166,6 +207,15 @@ pub fn shell_dir_candidates(exe: Option<&Path>) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn font_family_drops_size_and_style() {
+        assert_eq!(font_family("'Noto Sans  10'").as_deref(), Some("Noto Sans"));
+        assert_eq!(font_family("'Adwaita Sans 11'").as_deref(), Some("Adwaita Sans"));
+        assert_eq!(font_family("'Cantarell Bold Italic 11.5'").as_deref(), Some("Cantarell"));
+        assert_eq!(font_family("''"), None);
+    }
+
     use super::*;
     use crate::config::{Config, Theme};
     use serde_json::Value;

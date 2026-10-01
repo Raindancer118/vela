@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import qs
+import qs.components
 import qs.notifications
 
 Rectangle {
@@ -29,11 +30,19 @@ Rectangle {
             Layout.fillWidth: true
         }
 
+        Divider {
+            Layout.fillWidth: true
+        }
+
         SlidersSection {
             Layout.fillWidth: true
         }
 
         QuickSettingsGrid {
+            Layout.fillWidth: true
+        }
+
+        Divider {
             Layout.fillWidth: true
         }
 

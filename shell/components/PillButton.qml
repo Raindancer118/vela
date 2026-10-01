@@ -2,9 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import qs
 
-// Text button with an optional leading icon.
-// style: "filled" (primary), "tonal" (dark surface), "text" (transparent),
-// "danger" (error color).
+// Text button with an optional leading icon, shaped like GTK's buttons.
+// style: "filled" (accent selection), "tonal" (tile surface), "text"
+// (flat, accent text), "danger" (error).
 Rectangle {
     id: root
 
@@ -15,7 +15,7 @@ Rectangle {
     readonly property color contentColor: {
         switch (style) {
         case "filled":
-            return Theme.colors.textOnPrimary;
+            return Theme.colors.text;
         case "danger":
             return Theme.colors.textOnError;
         case "text":
@@ -29,20 +29,22 @@ Rectangle {
 
     implicitHeight: Theme.size.pillButton
     implicitWidth: row.implicitWidth + 2 * Theme.spacing.lg
-    radius: height / 2
+    radius: Theme.radius.small
     opacity: enabled ? 1 : Theme.opacity.disabled
     color: {
         switch (style) {
         case "filled":
-            return Theme.colors.primary;
+            return Theme.colors.selected;
         case "danger":
             return Theme.colors.error;
         case "text":
             return "transparent";
         default:
-            return Theme.colors.surfaceHighest;
+            return Theme.colors.tile;
         }
     }
+    border.width: style === "filled" ? Theme.size.border : 0
+    border.color: Theme.colors.selectedRing
 
     Behavior on color {
         ColorAnim {}
@@ -50,7 +52,7 @@ Rectangle {
 
     Clickable {
         radius: root.radius
-        inverted: root.style === "filled" || root.style === "danger"
+        inverted: root.style === "danger"
         onClicked: root.clicked()
     }
 

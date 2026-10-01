@@ -51,19 +51,18 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: Theme.spacing.sm
 
-        StyledText {
+        SectionHeader {
             text: I18n.tr("Notifications")
-            font.pixelSize: Theme.font.title
-            font.weight: Theme.font.weightMedium
         }
 
         Rectangle {
             opacity: Notifications.count > 0 && root.clearing.length === 0 ? 1 : 0
             visible: opacity > 0
-            implicitHeight: Theme.icon.normal
+            implicitHeight: countText.implicitHeight + 4
             implicitWidth: Math.max(implicitHeight, countText.implicitWidth + 2 * Theme.spacing.sm)
             radius: height / 2
-            color: Theme.colors.primary
+            // Like the launcher's result badges.
+            color: Theme.colors.tile
 
             Behavior on opacity {
                 Anim {}
@@ -80,8 +79,8 @@ ColumnLayout {
 
                 anchors.centerIn: parent
                 text: Notifications.count
-                color: Theme.colors.textOnPrimary
-                font.pixelSize: Theme.font.small
+                color: Theme.colors.textMuted
+                font.pixelSize: Math.round(Theme.font.small * 0.92)
                 font.weight: Theme.font.weightSemiBold
             }
         }

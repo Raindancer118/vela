@@ -37,7 +37,8 @@ Singleton {
             opacity: 0.86,
             surfaceOpacity: 0.06,
             animationScale: 1,
-            backdropDim: 0.18
+            backdropDim: 0.18,
+            fontFamily: "Adwaita Sans"
         })
     property var panel: ({
             width: 420,

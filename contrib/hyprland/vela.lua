@@ -42,6 +42,11 @@ local defaults = {
     -- Run hypridle with vela's [idle] settings (`vela idle`). Don't also
     -- start hypridle yourself.
     idle = true,
+    -- Shortcut for the control center, e.g. "SUPER + T": a tap toggles it,
+    -- holding it shows the panel only until the keys are released.
+    panel_peek = nil,
+    -- Held at least this long (ms), releasing closes the panel again.
+    peek_ms = 280,
     -- Apply the Hyprland settings made in vela (Settings → Hyprland). They
     -- override hyprland.lua, so call setup() at its end.
     settings = true,
@@ -143,6 +148,28 @@ function M.setup(opts)
             hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP XDG_SESSION_TYPE DISPLAY"
                 .. " && systemctl --user restart vela.service 2>/dev/null || " .. bin .. " daemon")
         end)
+    end
+
+    if o.panel_peek then
+        -- Compositor-side key events (they come before binds and reach us
+        -- whatever has the focus, also while the panel has it).
+        local last_key, peek_key, peeking, long, ptimer = nil, nil, false, false, nil
+        hl.on("input.keyboard.key", function(keycode, _, state)
+            if state == 1 then
+                last_key = keycode
+            elseif state == 0 and peeking and (keycode == peek_key or is_super[keycode]) then
+                peeking = false
+                if ptimer then ptimer:set_enabled(false) end
+                ptimer = nil
+                if long then hl.exec_cmd(bin .. " panel close") end
+            end
+        end)
+        hl.bind(o.panel_peek, function()
+            if peeking then return end
+            peeking, long, peek_key = true, false, last_key
+            hl.exec_cmd(bin .. " panel toggle")
+            ptimer = hl.timer(function() long = true end, { timeout = o.peek_ms, type = "oneshot" })
+        end, { description = "vela: control center (hold to peek)" })
     end
 
     if o.settings then

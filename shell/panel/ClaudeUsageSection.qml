@@ -167,8 +167,9 @@ Card {
 
                 MaterialIcon {
                     opacity: reset.text !== "" ? 1 : 0
-                    icon: "restart_alt"
-                    size: Theme.icon.small * 0.8
+                    // Resets at: a circular arrow, not the restart (power) icon.
+                    icon: "refresh"
+                    size: Theme.icon.small
                     color: Theme.colors.textMuted
                 }
 

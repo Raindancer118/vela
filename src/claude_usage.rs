@@ -13,6 +13,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const ENDPOINT: &str = "https://api.anthropic.com/api/oauth/usage";
+const PROFILE_ENDPOINT: &str = "https://api.anthropic.com/api/oauth/profile";
+/// The plan rarely changes: asked this often per account (and again sooner
+/// after a failed request).
+pub const PROFILE_INTERVAL_MS: i64 = 6 * 3_600_000;
+pub const PROFILE_RETRY_MS: i64 = 15 * 60_000;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Window {
@@ -96,18 +101,47 @@ pub fn read_token(credentials: &str, now_ms: i64) -> Result<String, &'static str
     Ok(token.to_owned())
 }
 
-/// Display name of the account's plan from `.credentials.json`.
+/// Display name of the account's plan from `.credentials.json` (written at
+/// login, so it can lag behind: see `plan_from_profile`).
 pub fn plan_of(credentials: &str) -> Option<String> {
     let v: Value = serde_json::from_str(credentials).ok()?;
     let oauth = v.get("claudeAiOauth")?;
     let kind = oauth.get("subscriptionType").and_then(Value::as_str).filter(|s| !s.is_empty())?;
     let tier = oauth.get("rateLimitTier").and_then(Value::as_str).unwrap_or("");
+    Some(plan_name(kind, tier))
+}
+
+/// The plan as Anthropic has it now, from `/api/oauth/profile`: the
+/// organisation's type and rate-limit tier (a team seat upgraded to Max
+/// shows as Max there long before the local credentials notice).
+pub fn plan_from_profile(body: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(body).ok()?;
+    let org = v.get("organization");
+    let tier = org.and_then(|o| o.get("rate_limit_tier")).and_then(Value::as_str).unwrap_or("");
+    let kind = match org.and_then(|o| o.get("organization_type")).and_then(Value::as_str) {
+        Some(t) if !t.is_empty() => t.strip_prefix("claude_").unwrap_or(t).to_owned(),
+        _ => {
+            let acc = v.get("account")?;
+            let flag = |k: &str| acc.get(k).and_then(Value::as_bool).unwrap_or(false);
+            if flag("has_claude_max") {
+                "max".into()
+            } else if flag("has_claude_pro") {
+                "pro".into()
+            } else {
+                return None;
+            }
+        }
+    };
+    Some(plan_name(&kind, tier))
+}
+
+fn plan_name(kind: &str, tier: &str) -> String {
     // "…_max_20x" → "Max 20×"; any Max-like tier without a number → "Max".
     let max = || match tier.rsplit('_').next().and_then(|t| t.strip_suffix('x')) {
         Some(n) if n.chars().all(|c| c.is_ascii_digit()) && !n.is_empty() => format!("Max {n}×"),
         _ => "Max".into(),
     };
-    Some(match kind {
+    match kind {
         "pro" => "Pro".into(),
         // Team seats show as what they amount to: standard ≈ Pro, premium ≈ Max.
         "team" if tier.contains("premium") || tier.contains("max") => max(),
@@ -120,7 +154,7 @@ pub fn plan_of(credentials: &str) -> Option<String> {
             let mut c = words.chars();
             c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
         }
-    })
+    }
 }
 
 /// Claude Code profiles: `~/.claude` ("default") and every ccacct profile in
@@ -171,11 +205,20 @@ impl FetchError {
 
 /// The usage request with curl; the token only travels through its stdin.
 pub fn fetch(token: &str) -> Result<String, FetchError> {
+    get(ENDPOINT, token)
+}
+
+/// The profile request (the current plan).
+pub fn fetch_profile(token: &str) -> Result<String, FetchError> {
+    get(PROFILE_ENDPOINT, token)
+}
+
+fn get(url: &str, token: &str) -> Result<String, FetchError> {
     let mut child = Command::new("curl")
         .args(["-q", "--silent", "--config", "-", "--max-time", "10"])
         .args(["--write-out", "\n%{http_code} %header{retry-after}"])
         .args(["--header", "anthropic-beta: oauth-2025-04-20", "--header", "Accept: application/json"])
-        .args(["--user-agent", "vela-claude-usage", ENDPOINT])
+        .args(["--user-agent", "vela-claude-usage", url])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -211,12 +254,18 @@ pub const MAX_INTERVAL_MS: i64 = 15 * 60_000;
 /// the panel applies the same limit (services/ClaudeUsage.qml).
 pub const MAX_AGE_MS: i64 = 5 * 60_000;
 
+/// Asks the profile endpoint with a token.
+pub type ProfileFetch = Box<dyn FnMut(&str) -> Result<String, FetchError> + Send>;
+
 /// (5-hour, 7-day) windows of one answer.
 type Windows = (Option<Window>, Option<Window>);
 
 #[derive(Default)]
 struct AccountState {
     plan: Option<String>,
+    /// From the profile endpoint; wins over the credentials' plan.
+    live_plan: Option<String>,
+    profile_next_at: i64,
     /// Last successful windows and when they were fetched.
     last_ok: Option<(Windows, i64)>,
     reason: Option<String>,
@@ -232,6 +281,8 @@ struct AccountState {
 pub struct Poller {
     accounts: std::collections::BTreeMap<String, AccountState>,
     order: Vec<String>,
+    /// Asks for the current plan; None (tests) keeps the credentials' plan.
+    pub profile: Option<ProfileFetch>,
 }
 
 impl Poller {
@@ -252,10 +303,21 @@ impl Poller {
                 continue;
             }
             let creds = std::fs::read_to_string(dir.join(".credentials.json")).ok();
-            let plan = creds.as_deref().and_then(plan_of);
+            let token = creds.clone().ok_or("no-credentials").and_then(|c| read_token(&c, now_ms));
+            if let (Some(ask), Ok(t)) = (self.profile.as_mut(), &token)
+                && now_ms >= acc.profile_next_at
+            {
+                match ask(t).ok().as_deref().and_then(plan_from_profile) {
+                    Some(p) => {
+                        acc.live_plan = Some(p);
+                        acc.profile_next_at = now_ms + PROFILE_INTERVAL_MS;
+                    }
+                    None => acc.profile_next_at = now_ms + PROFILE_RETRY_MS,
+                }
+            }
+            let plan = acc.live_plan.clone().or_else(|| creds.as_deref().and_then(plan_of));
             changed |= plan != acc.plan;
             acc.plan = plan;
-            let token = creds.ok_or("no-credentials").and_then(|c| read_token(&c, now_ms));
             let interval = acc.interval_ms.max(MIN_INTERVAL_MS);
             match token {
                 // No request: look again soon (Claude Code may log in or refresh).
@@ -323,7 +385,10 @@ pub fn spawn_poller() {
     std::thread::Builder::new()
         .name("claude-usage".into())
         .spawn(|| {
-            let mut poller = Poller::default();
+            let mut poller = Poller {
+                profile: Some(Box::new(fetch_profile)),
+                ..Poller::default()
+            };
             loop {
                 let cfg = std::fs::read_to_string(crate::paths::config_file())
                     .ok()
@@ -361,10 +426,13 @@ pub fn report(home: &Path, panel: &Panel, now_ms: i64) -> String {
         .into_iter()
         .map(|(name, dir)| {
             let creds = std::fs::read_to_string(dir.join(".credentials.json")).ok();
-            let plan = creds.as_deref().and_then(plan_of);
-            let result = creds
+            let token = creds
+                .clone()
                 .ok_or_else(|| "no-credentials".to_owned())
-                .and_then(|c| read_token(&c, now_ms).map_err(str::to_owned))
+                .and_then(|c| read_token(&c, now_ms).map_err(str::to_owned));
+            let live = token.as_ref().ok().and_then(|t| fetch_profile(t).ok()).as_deref().and_then(plan_from_profile);
+            let plan = live.or_else(|| creds.as_deref().and_then(plan_of));
+            let result = token
                 .and_then(|t| fetch(&t).map_err(|e| e.reason))
                 .and_then(|body| parse_usage(&body).ok_or_else(|| "no-data".to_owned()));
             match result {
@@ -445,6 +513,46 @@ mod tests {
         assert_eq!(names(&panel), vec!["default", "work"]);
         panel.claude_usage_only_default = true;
         assert_eq!(names(&panel), vec!["default", "work"], "only-default is a display filter in the panel");
+    }
+
+    #[test]
+    fn plan_from_the_profile_endpoint() {
+        let team_max = r#"{"account":{"has_claude_max":false,"has_claude_pro":true},
+            "organization":{"organization_type":"claude_team","rate_limit_tier":"default_claude_max_5x","seat_tier":"team_tier_1"}}"#;
+        assert_eq!(plan_from_profile(team_max).as_deref(), Some("Max 5×"), "upgraded team seat");
+        let pro = r#"{"organization":{"organization_type":"claude_pro","rate_limit_tier":"default_claude_ai"}}"#;
+        assert_eq!(plan_from_profile(pro).as_deref(), Some("Pro"));
+        let max = r#"{"organization":{"organization_type":"claude_max","rate_limit_tier":"default_claude_max_20x"}}"#;
+        assert_eq!(plan_from_profile(max).as_deref(), Some("Max 20×"));
+        let flags_only = r#"{"account":{"has_claude_max":true}}"#;
+        assert_eq!(plan_from_profile(flags_only).as_deref(), Some("Max"));
+        assert_eq!(plan_from_profile(r#"{"account":{}}"#), None);
+        assert_eq!(plan_from_profile("<html>"), None);
+    }
+
+    #[test]
+    fn poller_prefers_the_live_plan_and_asks_rarely() {
+        let home = tempfile::tempdir().unwrap();
+        let h = home.path();
+        creds(&h.join(".claude"), i64::MAX / 2);
+        let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let a = asked.clone();
+        let mut p = Poller {
+            profile: Some(Box::new(move |_| {
+                a.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(r#"{"organization":{"organization_type":"claude_team","rate_limit_tier":"default_claude_max_5x"}}"#.into())
+            })),
+            ..Poller::default()
+        };
+        let panel = Panel::default();
+        let mut ok = |_: &str| -> Result<String, FetchError> { Ok(BODY.into()) };
+        p.tick(h, &panel, 0, &mut ok);
+        let snap: Value = serde_json::from_str(&p.snapshot(1)).unwrap();
+        assert_eq!(snap["accounts"][0]["plan"], "Max 5×", "live plan over the credentials' Pro");
+        p.tick(h, &panel, MIN_INTERVAL_MS, &mut ok);
+        assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1, "not again before PROFILE_INTERVAL_MS");
+        p.tick(h, &panel, PROFILE_INTERVAL_MS, &mut ok);
+        assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 
     #[test]

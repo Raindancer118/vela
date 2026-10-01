@@ -2,8 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import qs
 
-// Quick-settings tile: clicking the round icon toggles, clicking the rest
-// opens the detail view (or toggles when there is none).
+// Quick-settings tile in the launcher's look: a tile surface, and when on
+// the accent selection with its thin ring. Clicking the icon chip toggles,
+// the rest opens the detail view (or toggles when there is none).
 Rectangle {
     id: root
 
@@ -13,75 +14,88 @@ Rectangle {
     property bool active: false
     property bool hasDetail: false
 
-    readonly property color contentColor: active ? Theme.colors.textOnPrimary : Theme.colors.text
-
     signal toggled
     signal detailRequested
 
     implicitHeight: Theme.size.tileHeight
     implicitWidth: Theme.size.controlWidth
-    radius: height / 2
+    // A tall notification list must not squeeze the tiles.
+    Layout.minimumHeight: Theme.size.tileHeight
+    radius: Theme.radius.card
     opacity: enabled ? 1 : Theme.opacity.disabled
-    color: active ? Theme.colors.primary : Theme.colors.surfaceHigh
+    color: active ? Theme.colors.selected : body.containsMouse ? Theme.colors.tileHover : Theme.colors.tile
+    border.width: Theme.size.border
+    border.color: active ? Theme.colors.selectedRing : "transparent"
 
     Behavior on color {
         ColorAnim {}
     }
 
-    Clickable {
-        radius: root.radius
-        inverted: root.active
+    Behavior on border.color {
+        ColorAnim {}
+    }
+
+    MouseArea {
+        id: body
+
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
         onClicked: root.hasDetail ? root.detailRequested() : root.toggled()
     }
 
+    // Centred on the tile's middle, whatever height the grid gives it.
     RowLayout {
-        anchors.fill: parent
-        anchors.margins: (Theme.size.tileHeight - Theme.size.tileIcon) / 2
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.leftMargin: Theme.spacing.md
         anchors.rightMargin: Theme.spacing.md
-        spacing: Theme.spacing.sm
+        spacing: Theme.spacing.md
 
         Rectangle {
-            id: iconCircle
+            id: chip
 
             implicitWidth: Theme.size.tileIcon
             implicitHeight: Theme.size.tileIcon
-            radius: width / 2
-            color: root.active ? Theme.colors.tileIconActive : Theme.colors.tileIcon
+            radius: Theme.radius.small
+            color: root.active ? Theme.colors.accentChip : Theme.colors.chip
 
             Behavior on color {
                 ColorAnim {}
             }
 
             Clickable {
-                radius: iconCircle.radius
-                inverted: root.active
+                radius: chip.radius
                 onClicked: root.toggled()
             }
 
             MaterialIcon {
                 anchors.centerIn: parent
                 icon: root.icon
-                fill: root.active ? 1 : 0
-                color: root.contentColor
+                color: root.active ? Theme.colors.primary : Theme.colors.text
+
+                Behavior on color {
+                    ColorAnim {}
+                }
             }
         }
 
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 0
+            spacing: 1
 
             StyledText {
                 Layout.fillWidth: true
                 text: root.title
-                color: root.contentColor
-                font.weight: Theme.font.weightMedium
+                font.weight: Theme.font.weightSemiBold
             }
 
             SwapText {
                 Layout.fillWidth: true
                 visible: value !== ""
                 value: root.subtitle
-                color: root.active ? Theme.colors.textOnPrimaryMuted : Theme.colors.textMuted
+                color: Theme.colors.textMuted
                 font.pixelSize: Theme.font.small
             }
         }
@@ -90,7 +104,7 @@ Rectangle {
             visible: root.hasDetail
             icon: "chevron_right"
             size: Theme.icon.small
-            color: root.active ? Theme.colors.textOnPrimaryMuted : Theme.colors.textMuted
+            color: Theme.colors.textMuted
         }
     }
 }

@@ -46,9 +46,21 @@ Singleton {
         readonly property color hoverOnPrimary: Qt.rgba(0, 0, 0, 0.08)
         readonly property color pressedOnPrimary: Qt.rgba(0, 0, 0, 0.14)
 
-        // Icon circle inside a toggle tile.
-        readonly property color tileIcon: surfaceHighest
-        readonly property color tileIconActive: Qt.rgba(0, 0, 0, 0.1)
+        // vela's own surfaces (same values as the launcher CSS): tiles and
+        // rows, their hover, the accent selection with its ring, small chips.
+        readonly property color tile: surface
+        readonly property color tileHover: root.withAlpha(tint, surfaceBase + 0.06)
+        readonly property color selected: root.withAlpha(primary, 0.26)
+        readonly property color selectedRing: root.withAlpha(primary, 0.45)
+        readonly property color chip: root.withAlpha(tint, 0.07)
+        readonly property color accentChip: root.withAlpha(primary, 0.16)
+        readonly property color divider: root.withAlpha(tint, 0.10)
+        // Slider knob, light like GTK's in both schemes.
+        readonly property color knob: root.va.light ? "#ffffff" : "#f2f2f6"
+
+        // Icon chip inside a toggle tile.
+        readonly property color tileIcon: chip
+        readonly property color tileIconActive: accentChip
         readonly property color textOnPrimaryMuted: root.withAlpha(textOnPrimary, 0.7)
 
         // Claude usage bars: plenty left, getting close, nearly used up.
@@ -63,10 +75,11 @@ Singleton {
         readonly property color dotOccupied: root.withAlpha(text, 0.6)
     }
 
+    // Panel as the launcher; tiles and rows like its inner radius (0.6).
     readonly property QtObject radius: QtObject {
         readonly property int panel: root.va.radius
-        readonly property int card: Math.max(0, root.va.radius - 4)
-        readonly property int small: Math.round(root.va.radius * 0.55)
+        readonly property int card: Math.round(root.va.radius * 0.6)
+        readonly property int small: Math.round(root.va.radius * 0.4)
     }
 
     readonly property QtObject spacing: QtObject {
@@ -78,11 +91,14 @@ Singleton {
     }
 
     readonly property QtObject font: QtObject {
-        readonly property string family: "Rubik"
+        // GTK's font, like the launcher and the settings.
+        readonly property string family: root.va.fontFamily || "Adwaita Sans"
         readonly property string iconFamily: "Material Symbols Rounded"
 
         readonly property real scale: root.va.fontScale
         readonly property int small: Math.round(12 * scale)
+        // Uppercase section headings (launcher: 0.78em).
+        readonly property int section: Math.round(11 * scale)
         readonly property int body: Math.round(14 * scale)
         readonly property int title: Math.round(16 * scale)
         readonly property int large: Math.round(20 * scale)
@@ -96,9 +112,10 @@ Singleton {
     }
 
     readonly property QtObject icon: QtObject {
-        readonly property int small: 18
-        readonly property int normal: 22
-        readonly property int large: 28
+        // GTK's symbolic sizes.
+        readonly property int small: 14
+        readonly property int normal: 16
+        readonly property int large: 22
         readonly property int huge: 48
 
         // Material Symbols variable-font axes.
@@ -153,12 +170,14 @@ Singleton {
         readonly property int panelWidth: VelaConfig.panel.width
         readonly property int panelPadding: 16
         readonly property int detailWidth: 380
-        readonly property int tileHeight: 64
-        readonly property int tileIcon: 40
-        readonly property int sliderHeight: 44
+        readonly property int tileHeight: 58
+        readonly property int tileIcon: 34
+        readonly property int sliderHeight: 40
         readonly property int sliderHeightCompact: 34
-        readonly property int iconButton: 40
-        readonly property int pillButton: 36
+        readonly property int sliderTrack: 4
+        readonly property int sliderKnob: 18
+        readonly property int iconButton: 34
+        readonly property int pillButton: 32
         readonly property int listRow: 56
         // libadwaita switch geometry.
         readonly property int switchWidth: 46

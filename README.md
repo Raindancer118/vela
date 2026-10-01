@@ -289,6 +289,8 @@ dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup({
     shell     = true,         -- start the control center
     idle      = true,         -- run hypridle with vela's settings
     settings  = true,         -- apply the Hyprland settings made in vela
+    panel_peek = nil,         -- e.g. "SUPER + T": tap toggles the control center,
+                              -- holding shows it until you let go (peek_ms = 280)
     binary    = nil,          -- path to `vela`, found automatically
 })
 ```
