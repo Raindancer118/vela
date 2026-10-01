@@ -19,12 +19,19 @@ Singleton {
 
     // [{ name, session: { utilization, resetsAt } | null, week: … }]
     property var accounts: []
+    // Filtered by the current settings right away (the fetch for a newly
+    // shown account follows in the background).
+    readonly property var shown: select(accounts, Config.claudeUsageOnlyDefault, Config.claudeUsageHidden)
     property var raw: null
     property real lastAttempt: 0
     property real now: Date.now()
     readonly property bool loading: proc.running
 
     readonly property string cachePath: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/vela/claude-usage.json"
+
+    function select(list: var, onlyDefault: bool, hidden: var): var {
+        return list.filter(a => (!onlyDefault || a.name === "default") && !(hidden ?? []).includes(a.name));
+    }
 
     function level(u: real): string {
         if (u >= 0.8)

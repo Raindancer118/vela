@@ -10,7 +10,7 @@ import qs.services
 Card {
     id: root
 
-    readonly property var accounts: ClaudeUsage.accounts
+    readonly property var accounts: ClaudeUsage.shown
     readonly property bool subtle: Config.claudeUsageSubtle
     readonly property real pad: subtle ? 0 : Theme.spacing.md
 

@@ -81,6 +81,8 @@ pub fn shell_json(cfg: &Config) -> String {
             "clockCentered": pn.clock_centered,
             "claudeUsage": pn.claude_usage,
             "claudeUsageSubtle": pn.claude_usage_subtle,
+            "claudeUsageOnlyDefault": pn.claude_usage_only_default,
+            "claudeUsageHidden": pn.claude_usage_hidden,
         },
     })
     .to_string()
@@ -206,6 +208,8 @@ mod tests {
         assert_eq!(j["panel"]["claudeUsage"], true);
         assert_eq!(j["panel"]["claudeUsageSubtle"], false);
         assert_eq!(j["panel"]["compactNotifications"], true);
+        assert_eq!(j["panel"]["claudeUsageOnlyDefault"], false);
+        assert_eq!(j["panel"]["claudeUsageHidden"], serde_json::json!([]));
         assert_eq!(j["idle"]["suspend"], true);
         assert_eq!(j["idle"]["suspendAfterMin"], 30.0);
         assert_eq!(j["panel"]["backdropLayers"], 1);

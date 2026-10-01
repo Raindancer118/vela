@@ -54,7 +54,9 @@ Singleton {
             nightLightTemperature: 4000,
             clockCentered: false,
             claudeUsage: true,
-            claudeUsageSubtle: false
+            claudeUsageSubtle: false,
+            claudeUsageOnlyDefault: false,
+            claudeUsageHidden: []
         })
 
     function apply(line: string): void {

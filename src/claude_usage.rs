@@ -146,13 +146,11 @@ pub fn profiles(home: &Path) -> Vec<(String, PathBuf)> {
     out
 }
 
-/// The profiles to show according to the panel settings.
+/// The profiles to fetch: all but the hidden ones. "Only the default
+/// account" is applied by the panel itself, so switching it shows the
+/// others again at once instead of after a new request.
 pub fn select(profiles: Vec<(String, PathBuf)>, panel: &Panel) -> Vec<(String, PathBuf)> {
-    profiles
-        .into_iter()
-        .filter(|(name, _)| !panel.claude_usage_only_default || name == "default")
-        .filter(|(name, _)| !panel.claude_usage_hidden.contains(name))
-        .collect()
+    profiles.into_iter().filter(|(name, _)| !panel.claude_usage_hidden.contains(name)).collect()
 }
 
 fn fetch(token: &str) -> Result<String, String> {
@@ -285,7 +283,7 @@ mod tests {
         panel.claude_usage_hidden = vec!["fachschaft".into()];
         assert_eq!(names(&panel), vec!["default", "work"]);
         panel.claude_usage_only_default = true;
-        assert_eq!(names(&panel), vec!["default"]);
+        assert_eq!(names(&panel), vec!["default", "work"], "only-default is a display filter in the panel");
     }
 
     #[test]
