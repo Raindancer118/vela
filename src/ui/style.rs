@@ -76,7 +76,7 @@ window.vela-backdrop, window.vela-backdrop.background {{ background: rgba(0, 0, 
   transition: background 90ms ease-out;
 }}
 .vela-launcher button.vela-tile:hover {{ background: {tile_hover}; }}
-.vela-launcher button.vela-tile.selected {{ background: alpha({accent}, 0.26); box-shadow: inset 0 0 0 1px alpha({accent}, 0.55); }}
+.vela-launcher button.vela-tile.selected {{ background: alpha({accent}, 0.26); box-shadow: none; }}
 .vela-launcher .vela-tile-label {{ font-size: 0.86em; font-weight: 500; }}
 .vela-launcher grid.vela-grid {{ margin: 8px 10px 12px 10px; }}
 .vela-launcher list.vela-results {{ background: transparent; }}
@@ -198,7 +198,7 @@ fn motion_css(cfg: &Config) -> String {
 .vela-launcher list.vela-results > row.new {{ animation: vela-row-in {row}ms {EASE_OUT} backwards; }}
 .vela-launcher button.vela-tile {{ transition: background 120ms ease-out, box-shadow 160ms ease-out, transform 220ms {EASE_OUT}; }}
 .vela-launcher button.vela-tile:hover {{ transform: translateY(-1px); }}
-.vela-launcher button.vela-tile.selected {{ transform: translateY(-2px) scale(1.02); box-shadow: inset 0 0 0 1px alpha({accent}, 0.55), 0 6px 18px alpha({accent}, 0.18); }}
+.vela-launcher button.vela-tile.selected {{ transform: translateY(-2px) scale(1.02); box-shadow: 0 6px 18px alpha({accent}, 0.18); }}
 .vela-launcher list.vela-results > row {{ transition: background 120ms ease-out, box-shadow 160ms ease-out; }}
 .vela-launcher row:selected .vela-claude-icon {{ animation: vela-glow 2400ms ease-in-out infinite; }}
 @keyframes vela-pop {{ 0% {{ transform: scale(0.55) rotate(-40deg); opacity: 0.2; }} 70% {{ transform: scale(1.12) rotate(6deg); opacity: 1; }} 100% {{ transform: none; }} }}
@@ -236,6 +236,7 @@ mod tests {
         assert!(css.contains("rgba(24,24,30,0.500)"));
         assert!(css.contains("border-radius: 30px"));
         assert!(css.contains("alpha(#ff0000, 0.26)"));
+        assert!(!css.contains("inset 0 0 0 1px alpha(#ff0000, 0.55), 0 6px"), "no ring around the selected tile");
     }
 
     #[test]
