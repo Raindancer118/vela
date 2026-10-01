@@ -126,6 +126,17 @@ impl Catalog {
         }
     }
 
+    /// How many of `grid()`'s entries are the pinned ones, when pinned and
+    /// other applications are both shown (the grid draws a line between).
+    pub fn grid_pinned_count(&self, cfg: &AppsConfig) -> Option<usize> {
+        use crate::config::GridSource;
+        if cfg.grid != GridSource::PinnedThenAll {
+            return None;
+        }
+        let pinned = cfg.pinned.iter().filter(|k| self.get(k).is_some()).count();
+        (pinned > 0 && pinned < self.grid(cfg).len()).then_some(pinned)
+    }
+
     /// Launchable, pinnable entries sorted by name (for the settings UI).
     pub fn pinnable(&self) -> Vec<&Entry> {
         let mut v: Vec<&Entry> = self.entries.iter().filter(|e| !e.is_action).collect();
@@ -205,6 +216,19 @@ mod tests {
         conf.pinned.clear();
         let keys: Vec<_> = c.grid(&conf).iter().map(|e| e.key.clone()).collect();
         assert_eq!(keys, vec!["a.desktop", "b.desktop", "custom:term"]);
+    }
+
+    #[test]
+    fn pinned_part_of_the_grid() {
+        let mut conf = cfg();
+        let c = Catalog::build(&apps(), &conf);
+        assert_eq!(c.grid_pinned_count(&conf), None, "only pinned: no divider");
+        conf.grid = GridSource::PinnedThenAll;
+        assert_eq!(c.grid_pinned_count(&conf), Some(2), "b + custom:term, then a");
+        conf.pinned.clear();
+        assert_eq!(c.grid_pinned_count(&conf), None, "nothing pinned: no divider");
+        conf.grid = GridSource::All;
+        assert_eq!(c.grid_pinned_count(&conf), None);
     }
 
     #[test]

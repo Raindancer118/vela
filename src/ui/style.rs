@@ -85,6 +85,7 @@ window.vela-backdrop, window.vela-backdrop.background {{ background: rgba(0, 0, 
 .vela-launcher button.vela-tile.selected {{ background: alpha({accent}, 0.26); box-shadow: {tile_shadow}; }}
 .vela-launcher .vela-tile-label {{ font-size: 0.86em; font-weight: 500; }}
 .vela-launcher grid.vela-grid {{ margin: 8px 10px 12px 10px; }}
+.vela-launcher .vela-grid-divider {{ min-height: 1px; margin: 4px 8px; background-image: linear-gradient(to right, alpha({border_base}, 0), {border} 18%, {border} 82%, alpha({border_base}, 0)); }}
 .vela-launcher list.vela-results {{ background: transparent; }}
 .vela-launcher list.vela-results > row {{
   border-radius: {inner_radius}px; padding: 7px 10px; margin: 1px 0; color: {fg}; background: transparent; outline: none;

@@ -91,21 +91,52 @@ pub fn launch_side(key: gdk::Key, mods: gdk::ModifierType, grid_mode: bool) -> O
     }
 }
 
-/// Next selection index for an arrow key in a grid of `n` items.
-pub fn grid_move(sel: usize, n: usize, cols: usize, key: gdk::Key) -> usize {
+/// Row of the line between pinned and other applications.
+pub fn divider_row(pinned: usize, cols: usize) -> usize {
+    pinned.div_ceil(cols.max(1))
+}
+
+/// (column, row) of each of `n` tiles. With `split`, the tiles from that
+/// index on start on a new row below a divider row.
+pub fn grid_cells(n: usize, cols: usize, split: Option<usize>) -> Vec<(usize, usize)> {
+    let cols = cols.max(1);
+    (0..n)
+        .map(|i| match split {
+            Some(s) if i >= s => ((i - s) % cols, divider_row(s, cols) + 1 + (i - s) / cols),
+            _ => (i % cols, i / cols),
+        })
+        .collect()
+}
+
+/// Next selection for an arrow key. Left/right walk the tiles in order;
+/// up/down go to the nearest column of the next row that has tiles.
+pub fn cell_move(sel: usize, cells: &[(usize, usize)], key: gdk::Key) -> usize {
+    let n = cells.len();
     if n == 0 {
         return 0;
     }
-    let cols = cols.max(1);
+    let sel = sel.min(n - 1);
+    let (col, row) = cells[sel];
+    let in_row = |r: usize| {
+        cells
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.1 == r)
+            .min_by_key(|(_, c)| c.0.abs_diff(col))
+            .map(|(i, _)| i)
+    };
     match key {
         gdk::Key::Right => (sel + 1).min(n - 1),
         gdk::Key::Left => sel.saturating_sub(1),
-        gdk::Key::Down if sel + cols < n => sel + cols,
-        // Down from the second-to-last row into a shorter last row.
-        gdk::Key::Down if sel / cols < (n - 1) / cols => n - 1,
-        gdk::Key::Up if sel >= cols => sel - cols,
+        gdk::Key::Down => cells.iter().map(|c| c.1).filter(|&r| r > row).min().and_then(in_row).unwrap_or(sel),
+        gdk::Key::Up => cells.iter().map(|c| c.1).filter(|&r| r < row).max().and_then(in_row).unwrap_or(sel),
         _ => sel,
     }
+}
+
+/// Next selection index for an arrow key in a grid of `n` items.
+pub fn grid_move(sel: usize, n: usize, cols: usize, key: gdk::Key) -> usize {
+    cell_move(sel, &grid_cells(n, cols, None), key)
 }
 
 #[derive(Default)]
@@ -135,6 +166,8 @@ pub struct Launcher {
     tiles: RefCell<Vec<(gtk::Button, String)>>,
     grid_sel: Cell<usize>,
     columns: Cell<usize>,
+    /// Grid position of each tile (a divider row may sit in between).
+    grid_cells: RefCell<Vec<(usize, usize)>>,
     items: RefCell<Vec<Item>>,
     state: RefCell<SearchState>,
     generation: Cell<u64>,
@@ -310,6 +343,7 @@ impl Launcher {
             tiles: RefCell::default(),
             grid_sel: Cell::new(0),
             columns: Cell::new(1),
+            grid_cells: RefCell::default(),
             items: RefCell::default(),
             state: RefCell::default(),
             generation: Cell::new(0),
@@ -687,6 +721,8 @@ impl Launcher {
         let entries: Vec<&Entry> = catalog.grid(&cfg.apps);
         let cols = grid_columns(&cfg);
         self.columns.set(cols);
+        let split = catalog.grid_pinned_count(&cfg.apps);
+        let cells = grid_cells(entries.len(), cols, split);
 
         let grid = gtk::Grid::builder()
             .column_spacing(cfg.appearance.spacing as i32)
@@ -699,9 +735,16 @@ impl Launcher {
         for (i, e) in entries.iter().enumerate() {
             let tile = self.make_tile(e, &cfg);
             tile.add_css_class(&format!("vela-d{}", i.min(style::MAX_STAGGER)));
-            grid.attach(&tile, (i % cols) as i32, (i / cols) as i32, 1, 1);
+            let (c, r) = cells[i];
+            grid.attach(&tile, c as i32, r as i32, 1, 1);
             tiles.push((tile, e.key.clone()));
         }
+        // Line between pinned and all other applications.
+        if let Some(pinned) = split {
+            let line = gtk::Box::builder().css_classes(["vela-grid-divider"]).hexpand(true).build();
+            grid.attach(&line, 0, divider_row(pinned, cols) as i32, cols as i32, 1);
+        }
+        *self.grid_cells.borrow_mut() = cells;
         self.grid_scroller.set_child(Some(&grid));
         *self.tiles.borrow_mut() = tiles;
         let n = self.tiles.borrow().len();
@@ -1061,8 +1104,8 @@ impl Launcher {
                 Stop
             }
             gdk::Key::Up | gdk::Key::Down | gdk::Key::Left | gdk::Key::Right if grid_mode => {
-                let n = self.tiles.borrow().len();
-                self.grid_sel.set(grid_move(self.grid_sel.get(), n, self.columns.get(), key));
+                let next = cell_move(self.grid_sel.get(), &self.grid_cells.borrow(), key);
+                self.grid_sel.set(next);
                 self.refresh_grid_selection();
                 Stop
             }
@@ -1241,5 +1284,30 @@ mod tests {
         assert_eq!(grid_move(4, 7, 3, Key::Up), 1);
         assert_eq!(grid_move(1, 7, 3, Key::Up), 1);
         assert_eq!(grid_move(0, 0, 3, Key::Down), 0);
+    }
+
+    #[test]
+    fn grid_with_divider_starts_the_rest_on_a_new_row() {
+        // 4 pinned in 3 columns, divider row, then 5 more.
+        let cells = grid_cells(9, 3, Some(4));
+        assert_eq!(cells[..4], [(0, 0), (1, 0), (2, 0), (0, 1)]);
+        assert_eq!(divider_row(4, 3), 2);
+        assert_eq!(cells[4..], [(0, 3), (1, 3), (2, 3), (0, 4), (1, 4)]);
+        assert_eq!(grid_cells(4, 3, None), vec![(0, 0), (1, 0), (2, 0), (0, 1)]);
+        // A split at a full row: no empty row besides the divider.
+        assert_eq!(grid_cells(5, 3, Some(3))[3], (0, 2));
+    }
+
+    #[test]
+    fn arrow_keys_jump_over_the_divider() {
+        use gdk::Key;
+        let cells = grid_cells(9, 3, Some(4));
+        // From the last pinned row down into the first row after the line.
+        assert_eq!(cell_move(3, &cells, Key::Down), 4);
+        assert_eq!(cell_move(1, &cells, Key::Down), 3, "nearest column in a shorter row");
+        assert_eq!(cell_move(5, &cells, Key::Up), 3, "back over the line, nearest column");
+        assert_eq!(cell_move(4, &cells, Key::Up), 3);
+        assert_eq!(cell_move(3, &cells, Key::Right), 4, "left/right run through in order");
+        assert_eq!(cell_move(8, &cells, Key::Down), 8);
     }
 }
