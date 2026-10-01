@@ -11,7 +11,19 @@ use std::time::Duration;
 
 /// Pages of the settings window (`vela settings <page>`).
 /// `general` is the launcher page (kept for compatibility).
-pub const SETTINGS_PAGES: [&str; 9] = ["general", "apps", "search", "claude", "panel", "notifications", "power", "appearance", "system"];
+pub const SETTINGS_PAGES: [&str; 11] = [
+    "general",
+    "apps",
+    "search",
+    "claude",
+    "panel",
+    "notifications",
+    "power",
+    "hypr-windows",
+    "hypr-effects",
+    "appearance",
+    "system",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {

@@ -99,6 +99,13 @@ dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup()
 5. **Idle**: starts `vela idle` (`idle = false` to skip), which runs hypridle
    with a config generated from `[idle]` and restarts it when that changes.
    Don't also start hypridle yourself.
+6. **Hyprland settings** made in vela (Settings → Hyprland: gaps, borders,
+   blur, shadows, …; `settings = false` to skip). vela applies a change live
+   with `hyprctl eval` and keeps it in `~/.config/vela/hyprland.toml`;
+   `setup()` loads the Lua generated from it
+   (`~/.local/state/vela/hyprland.lua`), so call it at the **end** of
+   hyprland.lua. Only options changed in vela are overridden; ↶ next to an
+   option drops the override and reloads the config.
 
 Options (all optional):
 
@@ -109,6 +116,7 @@ dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup({
     blur      = true,
     autostart = true,
     shell     = true,         -- start the control center
+    settings  = true,         -- apply the Hyprland settings made in vela
     binary    = nil,          -- path to `vela`, found automatically
 })
 ```

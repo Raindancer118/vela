@@ -13,9 +13,13 @@ fn socket_path() -> Option<PathBuf> {
 }
 
 fn request(cmd: &str) -> Option<String> {
+    request_timeout(cmd, 250)
+}
+
+fn request_timeout(cmd: &str, ms: u64) -> Option<String> {
     let mut stream = UnixStream::connect(socket_path()?).ok()?;
-    stream.set_read_timeout(Some(Duration::from_millis(250))).ok()?;
-    stream.set_write_timeout(Some(Duration::from_millis(250))).ok()?;
+    stream.set_read_timeout(Some(Duration::from_millis(ms))).ok()?;
+    stream.set_write_timeout(Some(Duration::from_millis(ms))).ok()?;
     stream.write_all(cmd.as_bytes()).ok()?;
     let mut out = String::new();
     stream.read_to_string(&mut out).ok()?;
@@ -133,6 +137,47 @@ pub fn focus_monitor(name: &str) -> bool {
     request(&format!("dispatch hl.dsp.focus({{ monitor = \"{name}\" }})")).is_some_and(|r| r.trim() == "ok")
 }
 
+/// Runs Lua code in Hyprland (`hyprctl eval`), one request per snippet
+/// (batches split on `;`, which strings may contain). The error is
+/// Hyprland's message for the first snippet that failed.
+pub fn eval(snippets: &[String]) -> Result<(), String> {
+    let mut first_err = None;
+    for code in snippets {
+        let out = request_timeout(&format!("eval {code}"), 1000).ok_or_else(|| "Hyprland is not reachable".to_owned())?;
+        let out = out.trim();
+        if out != "ok" && first_err.is_none() {
+            first_err = Some(out.strip_prefix("error: ").unwrap_or(out).to_owned());
+        }
+    }
+    first_err.map_or(Ok(()), Err)
+}
+
+/// Re-reads hyprland.lua (and with it vela's overrides), monitors untouched.
+pub fn reload_config() -> bool {
+    request_timeout("reload config-only", 3000).is_some_and(|r| r.trim() == "ok")
+}
+
+/// Every option Hyprland describes, with its current value.
+pub fn options() -> Option<(Vec<crate::hyprconf::OptionInfo>, std::collections::BTreeMap<String, crate::hyprconf::Value>)> {
+    let descriptions = request_timeout("j/descriptions", 2000)?;
+    let names: Vec<String> = serde_json::from_str::<Vec<serde_json::Value>>(&descriptions)
+        .ok()?
+        .iter()
+        .map(|d| d.get("name").and_then(|n| n.as_str()).unwrap_or_default().to_owned())
+        .collect();
+    let batch = format!("[[BATCH]]{}", names.iter().map(|n| format!("j/getoption {n}")).collect::<Vec<_>>().join(";"));
+    let got = request_timeout(&batch, 2000).unwrap_or_default();
+    Some(crate::hyprconf::catalogue(&descriptions, &crate::hyprconf::split_batch(&got, names.len())))
+}
+
+/// Current value of one option.
+pub fn option_value(info: &crate::hyprconf::OptionInfo) -> Option<crate::hyprconf::Value> {
+    let out = request(&format!("j/getoption {}", info.name))?;
+    let j: serde_json::Value = serde_json::from_str(&out).ok()?;
+    let (_, v) = j.as_object()?.iter().find(|(k, _)| *k != "option" && *k != "set")?;
+    crate::hyprconf::value_from_json(info.kind, v)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,5 +257,24 @@ mod tests {
             {"name":"left","x":0,"y":1080,"width":1920,"height":1080,"scale":1,"transform":0,"mirrorOf":"none"}
         ]"#;
         assert_eq!(neighbor(&parse_monitors(json), "main", Side::Left), Some("left"));
+    }
+}
+
+/// Needs a running Hyprland: `cargo test -- --ignored live_`.
+#[cfg(test)]
+mod live {
+    #[test]
+    #[ignore]
+    fn live_every_current_value_roundtrips_through_generated_lua() {
+        let (infos, current) = super::options().expect("Hyprland reachable");
+        assert!(infos.len() > 300, "only {} options", infos.len());
+        let mut failed = Vec::new();
+        for info in infos.iter().filter(|i| !i.name.starts_with("debug:")) {
+            let Some(v) = current.get(&info.name) else { continue };
+            if let Err(e) = super::eval(&[crate::hyprconf::eval_code(&info.name, v)]) {
+                failed.push(format!("{} = {}: {e}", info.name, v.to_lua()));
+            }
+        }
+        assert!(failed.is_empty(), "{}", failed.join("\n"));
     }
 }

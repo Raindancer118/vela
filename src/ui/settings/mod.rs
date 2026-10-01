@@ -4,6 +4,8 @@
 
 mod apps_page;
 mod binder;
+mod hypr_pages;
+mod hypr_rows;
 mod pages;
 
 use super::daemon::Daemon;
@@ -14,7 +16,7 @@ use gtk::{gdk, glib};
 use std::rc::Rc;
 
 /// Sidebar entries: (section, page id, title, icon). Ids are `SETTINGS_PAGES`.
-const ENTRIES: [(&str, &str, &str, &str); 9] = [
+const ENTRIES: [(&str, &str, &str, &str); 11] = [
     ("Launcher", "general", "Launcher", "system-search-symbolic"),
     ("Launcher", "apps", "Applications", "view-grid-symbolic"),
     ("Launcher", "search", "Search", "edit-find-symbolic"),
@@ -22,6 +24,8 @@ const ENTRIES: [(&str, &str, &str, &str); 9] = [
     ("Control center", "panel", "Panel", "view-dual-symbolic"),
     ("Control center", "notifications", "Notifications", "notifications-symbolic"),
     ("Control center", "power", "Power & idle", "system-shutdown-symbolic"),
+    ("Hyprland", "hypr-windows", "Windows & gaps", "vela-windows-symbolic"),
+    ("Hyprland", "hypr-effects", "Blur & effects", "vela-blur-symbolic"),
     ("Everywhere", "appearance", "Appearance", "applications-graphics-symbolic"),
     ("Everywhere", "system", "System", "preferences-system-symbolic"),
 ];
@@ -50,6 +54,8 @@ impl SettingsWindow {
             .build();
         window.add_css_class("vela-settings");
         let binder = Binder::new(daemon.store.clone());
+        daemon.hypr.ensure_loaded();
+        let hypr = hypr_rows::Rows::new(daemon.hypr.clone());
 
         // Old page fades out quickly while the new one rises in (CSS page-in),
         // like StoneIntelligence's area switch.
@@ -66,6 +72,8 @@ impl SettingsWindow {
                 "panel" => pages::panel(&binder).upcast(),
                 "notifications" => pages::notifications(&binder).upcast(),
                 "power" => pages::power(&binder).upcast(),
+                "hypr-windows" => hypr_pages::windows(&hypr).upcast(),
+                "hypr-effects" => hypr_pages::effects(&hypr).upcast(),
                 "appearance" => pages::appearance(&binder).upcast(),
                 _ => pages::system(daemon, &binder).upcast(),
             };
@@ -127,9 +135,18 @@ impl SettingsWindow {
         daemon.store.subscribe_errors(set_banner);
         let store = daemon.store.clone();
         banner.connect_button_clicked(move |_| store.reload_from_disk());
+        let hypr_banner = adw::Banner::new("");
+        {
+            let b = hypr_banner.clone();
+            daemon.hypr.subscribe_errors(move |err| {
+                b.set_title(&glib::markup_escape_text(err.unwrap_or("")));
+                b.set_revealed(err.is_some());
+            });
+        }
         let content_view = adw::ToolbarView::new();
         content_view.add_top_bar(&header);
         content_view.add_top_bar(&banner);
+        content_view.add_top_bar(&hypr_banner);
         content_view.set_content(Some(&stack));
         let content_page = adw::NavigationPage::builder().title(ENTRIES[0].2).child(&content_view).build();
 

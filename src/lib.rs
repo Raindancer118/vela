@@ -8,6 +8,7 @@ pub mod apps;
 pub mod claude_usage;
 pub mod config;
 pub mod history;
+pub mod hyprconf;
 pub mod hyprland;
 pub mod idle;
 pub mod ipc;

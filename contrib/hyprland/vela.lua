@@ -42,6 +42,9 @@ local defaults = {
     -- Run hypridle with vela's [idle] settings (`vela idle`). Don't also
     -- start hypridle yourself.
     idle = true,
+    -- Apply the Hyprland settings made in vela (Settings → Hyprland). They
+    -- override hyprland.lua, so call setup() at its end.
+    settings = true,
 }
 
 function M.setup(opts)
@@ -140,6 +143,16 @@ function M.setup(opts)
             hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP XDG_SESSION_TYPE DISPLAY"
                 .. " && systemctl --user restart vela.service 2>/dev/null || " .. bin .. " daemon")
         end)
+    end
+
+    if o.settings then
+        local state = os.getenv("XDG_STATE_HOME")
+        if not state or state == "" then state = os.getenv("HOME") .. "/.local/state" end
+        local generated = state .. "/vela/hyprland.lua"
+        if exists(generated) then
+            local ok, err = pcall(dofile, generated)
+            if not ok then print("vela: " .. tostring(err)) end
+        end
     end
 
     return M

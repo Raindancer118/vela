@@ -2,6 +2,7 @@
 //! the search engine, the launcher overlay and the settings window, and
 //! reacts to IPC commands.
 
+use super::hypr_store::HyprStore;
 use super::icons;
 use super::launcher::{Launcher, Request};
 use super::settings::SettingsWindow;
@@ -26,6 +27,7 @@ type CatalogListener = Box<dyn Fn(&Arc<Catalog>)>;
 pub struct Daemon {
     pub app: adw::Application,
     pub store: ConfigStore,
+    pub hypr: HyprStore,
     pub launcher: Rc<Launcher>,
     pub engine: Engine,
     pub catalog: RefCell<Arc<Catalog>>,
@@ -99,6 +101,8 @@ impl Daemon {
     fn new(app: &adw::Application) -> Rc<Daemon> {
         let store = ConfigStore::load(paths::config_file());
         store.watch();
+        let hypr = HyprStore::load();
+        hypr.watch();
         let config = store.get();
         let (upd_tx, upd_rx) = async_channel::unbounded();
         let engine = Engine::new(upd_tx);
@@ -113,6 +117,7 @@ impl Daemon {
         let d = Rc::new(Daemon {
             app: app.clone(),
             store: store.clone(),
+            hypr,
             launcher: launcher.clone(),
             engine,
             catalog: RefCell::new(Arc::new(Catalog::default())),
