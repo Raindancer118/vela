@@ -86,6 +86,48 @@ shot() {
     echo "  $1"
 }
 
+# launcher <name> <query>: the launcher as a settings preview (never takes
+# the keyboard), on $MON, nearly opaque so little of the desktop shows.
+launcher() {
+    python3 - "$T/config/vela/config.toml" "$MON" <<'PY'
+import re, subprocess, sys, json
+path, mon = sys.argv[1], sys.argv[2]
+desc = next((m["description"] for m in json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"])) if m["name"] == mon), "")
+t = open(path).read()
+t = re.sub(r'(?m)^main_monitor = .*$', f'main_monitor = "desc:{desc}"', t)
+t = re.sub(r'(?m)^opacity = .*$', 'opacity = 0.94', t, count=1)
+t = re.sub(r'(?m)^backdrop = .*$', 'backdrop = false', t)
+# Pinned apps with their names: the README shouldn't show placeholder icons.
+t = re.sub(r'(?m)^grid = .*$', 'grid = "pinned"', t)
+t = re.sub(r'(?m)^show_labels = .*$', 'show_labels = true', t)
+open(path, "w").write(t)
+PY
+    VELA_LAUNCHER_SHOT="$2" XDG_CONFIG_HOME="$T/config" XDG_STATE_HOME="$T/state" setsid ./target/debug/vela-daemon >"$T/log" 2>&1 &
+    pid=$!
+    sleep 3.2
+    local geom
+    geom=$(hyprctl layers -j | python3 -c "
+import json,sys
+for mon in json.load(sys.stdin).values():
+    for lv in mon['levels'].values():
+        for l in lv:
+            if l['namespace'] == 'vela' and l['pid'] == $pid:
+                print(f\"{l['x']},{l['y']} {l['w']}x{l['h']}\")")
+    grim -g "$geom" "$OUT/$1.png"
+    kill "$pid"
+    wait "$pid" 2>/dev/null || true
+    pid=""
+    echo "  $1"
+}
+
+if [[ "${LAUNCHER:-0}" == 1 ]]; then
+    hyprctl monitors -j | python3 -c "import json,sys;print(next(m['scale'] for m in json.load(sys.stdin) if m['name']=='$MON'))" >"$OUT/scale"
+    launcher launcher-grid ""
+    launcher launcher-apps "term"
+    launcher launcher-claude "Explain RSA to me"
+    exit 0
+fi
+
 if [[ "${DEMO:-0}" == 1 ]]; then
     # Frames of someone typing into the settings search.
     rm -f "$OUT"/demo-*.png

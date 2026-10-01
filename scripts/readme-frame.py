@@ -116,20 +116,25 @@ def bento():
     return canvas
 
 
+def launcher_panel(name):
+    """A launcher shot without the transparent margin around the panel
+    (18 logical px, where the desktop shows through)."""
+    img = Image.open(SHOTS / f"{name}.png").convert("RGB")
+    scale = float((SHOTS / "scale").read_text()) if (SHOTS / "scale").exists() else 1.0
+    inset = round(18 * scale) + 1
+    return img.crop((inset, inset, img.width - inset, img.height - inset))
+
+
 def launcher_strip():
-    """The three launcher states from docs/screenshot.jpg as a fanned deck:
-    the grid, file results, Ask Claude, each a little lower and further right."""
-    src = Image.open(ROOT / "docs" / "screenshot.jpg").convert("RGB")
-    s = src.width / 1000
-    # Inset a few pixels so the wallpaper behind the rounded panel corners stays out.
-    parts = [(144, 74, 858, 386), (144, 524, 858, 866), (144, 944, 858, 1106)]
-    crops = [src.crop(tuple(round(v * s) for v in p)) for p in parts]
+    """Grid, app results and Ask Claude as a fanned deck, each a little
+    lower and further right than the one before."""
+    crops = [launcher_panel(n) for n in ("launcher-grid", "launcher-apps", "launcher-claude")]
     pad, dx, dy = 70, 300, 150
-    W = pad * 2 + crops[0].width + dx * 2
+    W = pad * 2 + max(c.width + i * dx for i, c in enumerate(crops))
     H = pad * 2 + max(c.height + i * dy for i, c in enumerate(crops))
     canvas = backdrop(W, H, seed=5).convert("RGBA")
     for i, c in enumerate(crops):
-        place(canvas, c, pad + i * dx, pad + i * dy, r=20)
+        place(canvas, c, pad + i * dx, pad + i * dy, r=25)
     return canvas
 
 

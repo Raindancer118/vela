@@ -76,6 +76,15 @@ pub fn run(opts: Options) -> glib::ExitCode {
         // system's colour scheme.
         icons::install_bundled();
         let daemon = Daemon::new(app);
+        // Test hook (README screenshots): show the launcher as a preview,
+        // which never takes the keyboard, with this query.
+        if let Ok(q) = std::env::var("VELA_LAUNCHER_SHOT") {
+            let d = daemon.clone();
+            glib::timeout_add_local_once(Duration::from_millis(900), move || {
+                d.launcher.show(true);
+                d.launcher.set_query(&q);
+            });
+        }
         if let Some(rx) = cmd_rx.borrow_mut().take() {
             let d = daemon.clone();
             glib::spawn_future_local(async move {

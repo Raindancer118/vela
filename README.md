@@ -1,7 +1,5 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/hero-dark.svg">
-  <img alt="vela — launcher, control center and every Hyprland setting" src="docs/readme/hero-light.svg" width="100%">
-</picture>
+<img alt="vela — launcher, control center and every Hyprland setting" src="docs/readme/hero-light.svg#gh-light-mode-only" width="100%">
+<img alt="vela — launcher, control center and every Hyprland setting" src="docs/readme/hero-dark.svg#gh-dark-mode-only" width="100%">
 
 <p align="center">
   <a href="https://github.com/Raindancer118/vela/releases"><img alt="release" src="https://img.shields.io/github/v/release/Raindancer118/vela?style=for-the-badge&labelColor=0d1330&color=7aa2f7&label=release"></a>
@@ -28,10 +26,8 @@
 <br>
 
 <a id="the-launcher"></a>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/h-launcher-dark.svg">
-  <img alt="The launcher" src="docs/readme/h-launcher-light.svg" width="100%">
-</picture>
+<img alt="The launcher" src="docs/readme/h-launcher-light.svg#gh-light-mode-only" width="100%">
+<img alt="The launcher" src="docs/readme/h-launcher-dark.svg#gh-dark-mode-only" width="100%">
 
 <img alt="The launcher: app grid, file results and Ask Claude" src="docs/readme/launcher.png" width="100%">
 
@@ -87,10 +83,8 @@ logo: <kbd>Enter</kbd> goes to Claude.
 <br>
 
 <a id="the-control-center"></a>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/h-center-dark.svg">
-  <img alt="The control center" src="docs/readme/h-center-light.svg" width="100%">
-</picture>
+<img alt="The control center" src="docs/readme/h-center-light.svg#gh-light-mode-only" width="100%">
+<img alt="The control center" src="docs/readme/h-center-dark.svg#gh-dark-mode-only" width="100%">
 
 `vela shell` runs a control center built on Quickshell, in the same theme,
 colours and motion as the launcher:
@@ -117,10 +111,8 @@ colours and motion as the launcher:
 <br>
 
 <a id="hyprland-without-the-config-file"></a>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/h-hyprland-dark.svg">
-  <img alt="Hyprland, without the config file" src="docs/readme/h-hyprland-light.svg" width="100%">
-</picture>
+<img alt="Hyprland, without the config file" src="docs/readme/h-hyprland-light.svg#gh-light-mode-only" width="100%">
+<img alt="Hyprland, without the config file" src="docs/readme/h-hyprland-dark.svg#gh-dark-mode-only" width="100%">
 
 The settings open on a single search field. Type what you are looking for, in
 English or German, and the settings appear right below it, ready to use: no
@@ -178,10 +170,8 @@ screen the moment you make it.
 <br>
 
 <a id="just-say-it"></a>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/h-claude-dark.svg">
-  <img alt="Just say it" src="docs/readme/h-claude-light.svg" width="100%">
-</picture>
+<img alt="Just say it" src="docs/readme/h-claude-light.svg#gh-light-mode-only" width="100%">
+<img alt="Just say it" src="docs/readme/h-claude-dark.svg#gh-dark-mode-only" width="100%">
 
 <table>
 <tr>
@@ -230,10 +220,8 @@ in every ccacct profile (`~/.claude-accounts/*`).
 <br>
 
 <a id="get-it"></a>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/h-install-dark.svg">
-  <img alt="Get it" src="docs/readme/h-install-light.svg" width="100%">
-</picture>
+<img alt="Get it" src="docs/readme/h-install-light.svg#gh-light-mode-only" width="100%">
+<img alt="Get it" src="docs/readme/h-install-dark.svg#gh-dark-mode-only" width="100%">
 
 On Arch Linux, with Hyprland 0.55 or newer (Lua config):
 
@@ -315,10 +303,8 @@ need the Lua config.
 <br>
 
 <a id="under-the-hood"></a>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/h-inside-dark.svg">
-  <img alt="Under the hood" src="docs/readme/h-inside-light.svg" width="100%">
-</picture>
+<img alt="Under the hood" src="docs/readme/h-inside-light.svg#gh-light-mode-only" width="100%">
+<img alt="Under the hood" src="docs/readme/h-inside-dark.svg#gh-dark-mode-only" width="100%">
 
 ```mermaid
 flowchart LR

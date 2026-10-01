@@ -591,6 +591,12 @@ impl Launcher {
         self.window.set_margin(Edge::Top, (height * pct / 100 - PANEL_MARGIN).max(0));
     }
 
+    /// Puts text into the search field (test hook for screenshots).
+    pub fn set_query(&self, text: &str) {
+        self.entry.set_text(text);
+        self.entry.set_position(-1);
+    }
+
     pub fn show(&self, preview: bool) {
         self.preview.set(preview);
         if self.layer {
