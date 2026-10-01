@@ -683,10 +683,63 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
     ));
     p.add(&behaviour);
 
+    p.add(&claude_usage_group(b));
+
     let actions = group("", "");
     actions.add(&open_control_center_row());
     p.add(&actions);
     p
+}
+
+/// Section switch, "only ~/.claude" and one switch per Claude Code profile.
+fn claude_usage_group(b: &Binder) -> adw::PreferencesGroup {
+    let g = group(
+        "Claude usage",
+        "5-hour and 7-day limits at the bottom of the panel, per Claude Code profile (~/.claude and ccacct profiles). Uses the unofficial endpoint behind Claude Code's /usage.",
+    );
+    g.add(&b.switch("Show Claude usage", "", |c| c.panel.claude_usage, |c, v| c.panel.claude_usage = v));
+    g.add(&b.switch(
+        "Only the default account",
+        "Just the profile in ~/.claude",
+        |c| c.panel.claude_usage_only_default,
+        |c, v| c.panel.claude_usage_only_default = v,
+    ));
+    let mut rows = Vec::new();
+    for (name, dir) in crate::claude_usage::profiles(&paths::home_dir()) {
+        let row = adw::SwitchRow::builder().title(&name).subtitle(paths::display_path(&dir)).build();
+        let (b2, n) = (b.clone(), name.clone());
+        row.connect_active_notify(move |r| {
+            let (show, n) = (r.is_active(), n.clone());
+            b2.write(move |c| {
+                c.panel.claude_usage_hidden.retain(|h| *h != n);
+                if !show {
+                    c.panel.claude_usage_hidden.push(n);
+                }
+            });
+        });
+        g.add(&row);
+        rows.push((name, row.downgrade()));
+    }
+    let sync = move |c: &Config| {
+        for (name, w) in &rows {
+            if let Some(r) = w.upgrade() {
+                r.set_active(!c.panel.claude_usage_hidden.contains(name));
+                r.set_sensitive(c.panel.claude_usage && (name == "default" || !c.panel.claude_usage_only_default));
+            }
+        }
+    };
+    let sync = Rc::new(sync);
+    sync(&b.store.get());
+    {
+        let sync = sync.clone();
+        b.on_refresh(move |c| sync(c));
+    }
+    b.store.subscribe(move |old, new| {
+        if old.panel != new.panel {
+            sync(new);
+        }
+    });
+    g
 }
 
 pub fn notifications(b: &Binder) -> adw::PreferencesPage {

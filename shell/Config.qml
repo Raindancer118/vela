@@ -20,6 +20,7 @@ Singleton {
     readonly property real panelBackdropLayerAlpha: vp.backdropLayerAlpha
     readonly property bool workspaceOsd: vp.workspaceOsd
     readonly property bool clockCentered: vp.clockCentered
+    readonly property bool claudeUsage: vp.claudeUsage
 
     readonly property int popupTimeout: vp.popupTimeoutMs
     // Upper bound for app-requested timeouts (ms).

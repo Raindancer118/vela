@@ -5,6 +5,7 @@
 //! `ui` contains everything GTK.
 
 pub mod apps;
+pub mod claude_usage;
 pub mod config;
 pub mod history;
 pub mod hyprland;

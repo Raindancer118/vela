@@ -113,6 +113,10 @@ group_collapsed_count = 2
 workspace_osd = true
 night_light_temperature = 4000
 clock_centered = false
+# Claude plan usage (5 h / 7 d) at the bottom; profiles: "default" (~/.claude) and ccacct names.
+claude_usage = true
+claude_usage_only_default = false
+claude_usage_hidden = []
 
 # While you're away (`vela idle` runs hypridle with these). Minutes without input.
 [idle]

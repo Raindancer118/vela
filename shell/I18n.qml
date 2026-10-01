@@ -92,6 +92,8 @@ Singleton {
                 "Confirm": "Bestätigen",
                 "Muted": "Stumm",
                 "Power mode": "Energiemodus",
+                "Default": "Standard",
+                "7 d": "7 T",
                 "Not available": "Nicht verfügbar",
                 "Longer battery life, less performance": "Längere Akkulaufzeit, weniger Leistung",
                 "Normal performance and power use": "Normale Leistung und normaler Verbrauch",

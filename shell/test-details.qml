@@ -14,9 +14,9 @@ ShellRoot {
     }
 
     Component.onCompleted: {
-        const names = ["WifiDetail", "BluetoothDetail", "AudioDetail", "PowerDetail"];
+        const names = ["details/WifiDetail", "details/BluetoothDetail", "details/AudioDetail", "details/PowerDetail", "panel/ClaudeUsageSection"];
         const failed = names.filter(n => {
-            const c = Qt.createComponent("details/" + n + ".qml");
+            const c = Qt.createComponent(n + ".qml");
             const o = c.status === Component.Ready ? c.createObject(host) : null;
             if (!o)
                 console.log(n + ": " + c.errorString());

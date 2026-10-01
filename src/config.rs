@@ -120,6 +120,12 @@ pub struct Panel {
     pub night_light_temperature: u32,
     /// Clock and date centred at the top of the panel instead of on the left.
     pub clock_centered: bool,
+    /// Claude plan usage at the bottom of the panel.
+    pub claude_usage: bool,
+    /// Only the profile in ~/.claude, not the ccacct ones.
+    pub claude_usage_only_default: bool,
+    /// Profile names (`default`, ccacct names) that are not shown or fetched.
+    pub claude_usage_hidden: Vec<String>,
 }
 
 impl Default for Panel {
@@ -136,6 +142,9 @@ impl Default for Panel {
             workspace_osd: true,
             night_light_temperature: 4000,
             clock_centered: false,
+            claude_usage: true,
+            claude_usage_only_default: false,
+            claude_usage_hidden: Vec::new(),
         }
     }
 }
@@ -683,6 +692,7 @@ mod tests {
         assert!(p.critical_popups_stay && p.workspace_osd);
         assert_eq!(p.night_light_temperature, 4000);
         assert!(!p.clock_centered, "clock on the left by default");
+        assert!(p.claude_usage && !p.claude_usage_only_default && p.claude_usage_hidden.is_empty());
         let cfg = Config::from_toml("[panel]\nbackdrop = true\n").unwrap();
         assert!(cfg.panel.backdrop);
         assert!(!cfg.appearance.backdrop, "launcher and panel backdrop are independent");

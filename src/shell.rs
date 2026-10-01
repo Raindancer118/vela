@@ -74,6 +74,7 @@ pub fn shell_json(cfg: &Config) -> String {
             "workspaceOsd": pn.workspace_osd,
             "nightLightTemperature": pn.night_light_temperature,
             "clockCentered": pn.clock_centered,
+            "claudeUsage": pn.claude_usage,
         },
     })
     .to_string()
@@ -196,6 +197,7 @@ mod tests {
         assert_eq!(j["panel"]["backdrop"], true);
         assert_eq!(j["panel"]["popupTimeoutMs"], 5000);
         assert_eq!(j["panel"]["clockCentered"], true);
+        assert_eq!(j["panel"]["claudeUsage"], true);
         assert_eq!(j["panel"]["backdropLayers"], 1);
         cfg.panel.backdrop_strength = 3;
         let j = json(&cfg);

@@ -62,7 +62,7 @@ out="$(timeout 20 qs -p shell/test-power.qml 2>&1 | grep -E "PASS|FAIL" || true)
 echo "$out"
 [[ "$out" == *PASS* ]] || fail "power mode"
 
-for t in highlight details claude; do
+for t in highlight details claude usage; do
     echo ":: $t"
     out="$(timeout 20 qs -p shell/test-$t.qml 2>&1 | grep -E "PASS|FAIL" || true)"
     echo "$out"

@@ -41,5 +41,9 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
         }
+
+        ClaudeUsageSection {
+            Layout.fillWidth: true
+        }
     }
 }

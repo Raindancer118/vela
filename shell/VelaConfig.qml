@@ -47,7 +47,8 @@ Singleton {
             groupCollapsedCount: 2,
             workspaceOsd: true,
             nightLightTemperature: 4000,
-            clockCentered: false
+            clockCentered: false,
+            claudeUsage: true
         })
 
     function apply(line: string): void {

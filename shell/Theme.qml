@@ -51,6 +51,11 @@ Singleton {
         readonly property color tileIconActive: Qt.rgba(0, 0, 0, 0.1)
         readonly property color textOnPrimaryMuted: root.withAlpha(textOnPrimary, 0.7)
 
+        // Claude usage bars: plenty left, getting close, nearly used up.
+        readonly property color usageLow: root.va.light ? "#2e7d32" : "#9ece6a"
+        readonly property color usageMid: root.va.light ? "#b26a00" : "#e0af68"
+        readonly property color usageHigh: error
+
         // Workspace OSD dots.
         readonly property color dotEmpty: root.withAlpha(text, 0.22)
         readonly property color dotOccupied: root.withAlpha(text, 0.6)
@@ -168,6 +173,11 @@ Singleton {
         readonly property real notificationIconInset: 0.15
         readonly property real notificationGlyphScale: 0.55
         readonly property int dragDismissThreshold: 120
+
+        readonly property int usageBarHeight: 6
+        readonly property int usageLabelWidth: 28
+        readonly property int usagePercentWidth: 40
+        readonly property int usageResetWidth: 76
 
         readonly property int osdTopMargin: 14
         readonly property int osdPadding: 10
