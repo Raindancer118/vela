@@ -81,4 +81,17 @@ GridLayout {
         active: Notifications.dnd
         onToggled: Notifications.toggleDnd()
     }
+
+    ToggleTile {
+        Layout.fillWidth: true
+        Layout.columnSpan: 2
+        visible: Config.updatesTile
+        icon: SystemUpdates.icon(SystemUpdates.status)
+        title: I18n.tr("Updates")
+        subtitle: SystemUpdates.subtitle(SystemUpdates.status)
+        active: SystemUpdates.highlighted(SystemUpdates.status)
+        hasDetail: true
+        onToggled: SystemUpdates.openSettings()
+        onDetailRequested: SystemUpdates.openSettings()
+    }
 }

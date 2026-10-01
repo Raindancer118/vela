@@ -18,6 +18,31 @@ pub struct Config {
     pub panel: Panel,
     /// Dimming, locking, screen off and suspend while away (`vela idle`).
     pub idle: Idle,
+    /// System updates (Settings → Updates).
+    pub updates: Updates,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Updates {
+    /// Look for pending updates this often in the background; 0 = never.
+    pub check_interval_hours: u32,
+    /// AUR packages through paru or yay.
+    pub aur: bool,
+    pub flatpak: bool,
+    /// Hyprland workspace the "Fix with Claude" terminal opens on, silently.
+    pub claude_workspace: String,
+}
+
+impl Default for Updates {
+    fn default() -> Self {
+        Updates {
+            check_interval_hours: 6,
+            aur: true,
+            flatpak: true,
+            claude_workspace: "special:minimized".into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -133,6 +158,8 @@ pub struct Panel {
     pub claude_usage_only_default: bool,
     /// Profile names (`default`, ccacct names) that are not shown or fetched.
     pub claude_usage_hidden: Vec<String>,
+    /// Pending system updates as a tile (opens Settings → Updates).
+    pub updates_tile: bool,
 }
 
 impl Default for Panel {
@@ -154,6 +181,7 @@ impl Default for Panel {
             claude_usage_subtle: false,
             claude_usage_only_default: false,
             claude_usage_hidden: Vec::new(),
+            updates_tile: true,
         }
     }
 }
@@ -538,6 +566,10 @@ impl Config {
             *m = finite_or(*m, 5.0).clamp(0.5, 720.0);
         }
 
+        let u = &mut self.updates;
+        u.check_interval_hours = u.check_interval_hours.min(24 * 30);
+        u.claude_workspace = u.claude_workspace.trim().to_owned();
+
         if self.claude.executable.trim().is_empty() {
             self.claude.executable = Claude::default().executable;
         }
@@ -656,6 +688,19 @@ mod tests {
         assert_eq!(cfg.general.main_monitor, "", "no main monitor = follow focus");
         let cfg = Config::from_toml("[general]\nmain_monitor = \"desc:HP Inc. HP E243i 6CM8191WP7\"\n").unwrap();
         assert_eq!(cfg.general.main_monitor, "desc:HP Inc. HP E243i 6CM8191WP7");
+    }
+
+    #[test]
+    fn updates_section() {
+        let cfg = Config::from_toml("[updates]\naur = false\ncheck_interval_hours = 99999\nclaude_workspace = \"  special:fix \"\n").unwrap();
+        assert!(!cfg.updates.aur);
+        assert!(cfg.updates.flatpak);
+        assert_eq!(cfg.updates.check_interval_hours, 720);
+        assert_eq!(cfg.updates.claude_workspace, "special:fix");
+        assert!(cfg.panel.updates_tile);
+        let mut cfg = Config::default();
+        cfg.set_value("updates.check_interval_hours", "0").unwrap();
+        assert_eq!(cfg.updates.check_interval_hours, 0);
     }
 
     #[test]

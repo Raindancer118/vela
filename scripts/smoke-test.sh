@@ -14,6 +14,13 @@ export VELA_SOCKET="$tmp/vela.sock" RUST_LOG=vela=info
 export VELA_NO_CLAUDE_USAGE=1
 # The settings search borrows rows from every page; this runs it once.
 export VELA_SETTINGS_SEARCH="blur gaps" VELA_SETTINGS_DIALOG=shortcut
+# Settings → Updates runs "update everything" against fake package tools.
+mkdir -p "$tmp/bin"
+printf '#!/bin/sh\necho "zlib 1-1 -> 1-2"\n' >"$tmp/bin/checkupdates"
+printf '#!/bin/sh\n[ "$1" = -A ] && shift\nexec "$@"\n' >"$tmp/bin/sudo"
+printf '#!/bin/sh\necho "fake pacman $*"\n' >"$tmp/bin/pacman"
+chmod +x "$tmp/bin/"*
+export PATH="$tmp/bin:$PATH" VELA_UPDATES_RUN=full
 weston_pid=""
 cleanup() {
     [[ -n "${daemon_pid:-}" ]] && kill "$daemon_pid" 2>/dev/null || true
@@ -40,14 +47,21 @@ for _ in $(seq 100); do "$BIN" status 2>/dev/null && break; sleep 0.1; done
 # The socket is bound before GTK starts; wait for the UI side to be ready.
 for _ in $(seq 100); do grep -q "found .* applications" "$tmp/daemon.log" 2>/dev/null && break; sleep 0.1; done
 [[ -f "$XDG_CONFIG_HOME/vela/config.toml" ]] || fail "default config was not created"
+"$BIN" set updates.aur false && "$BIN" set updates.flatpak false || fail "vela set"
 
-for cmd in show hide toggle toggle "settings" "settings claude" "settings home" "settings hypr-windows" "settings hypr-effects" "settings hypr-animations" "settings hypr-input" "settings hypr-monitors" "settings hypr-shortcuts" "settings hypr-rules" "settings hypr-autostart" "settings hypr-layouts" "settings hypr-behaviour" "settings hypr-all" reload show; do
+for cmd in show hide toggle toggle "settings" "settings claude" "settings home" "settings hypr-windows" "settings hypr-effects" "settings hypr-animations" "settings hypr-input" "settings hypr-monitors" "settings hypr-shortcuts" "settings hypr-rules" "settings hypr-autostart" "settings hypr-layouts" "settings hypr-behaviour" "settings hypr-all" "settings updates" "updates check" reload show; do
     # shellcheck disable=SC2086
     "$BIN" $cmd || fail "command '$cmd' failed"
     sleep 0.2
     kill -0 "$daemon_pid" 2>/dev/null || fail "daemon died after '$cmd'"
 done
 grep -q "found .* applications" "$tmp/daemon.log" || fail "application scan did not finish"
+
+status="$XDG_CACHE_HOME/vela/updates.json"
+for _ in $(seq 100); do grep -qs '"running":null' "$status" && grep -qs "fake pacman" "$XDG_STATE_HOME"/vela/updates/*.log && break; sleep 0.1; done
+grep -qs -- "fake pacman -Syu --noconfirm" "$XDG_STATE_HOME"/vela/updates/*.log || fail "update run did not happen"
+grep -qs '"failed":null' "$status" || fail "update run failed: $(cat "$status")"
+"$BIN" updates list | grep -q '"zlib"' || fail "vela updates list"
 
 "$BIN" quit || fail "quit failed"
 for _ in $(seq 50); do kill -0 "$daemon_pid" 2>/dev/null || break; sleep 0.1; done

@@ -7,6 +7,7 @@ use super::icons;
 use super::launcher::{Launcher, Request};
 use super::settings::SettingsWindow;
 use super::store::ConfigStore;
+use super::updates::Updates;
 use crate::apps::catalog::{Catalog, SETTINGS_KEY, Target};
 use crate::apps::index::{self, App, ScanOptions};
 use crate::history::{self, History};
@@ -34,6 +35,7 @@ pub struct Daemon {
     scanned: RefCell<Arc<Vec<App>>>,
     history: RefCell<History>,
     pub index_status: RefCell<Option<IndexStatus>>,
+    pub updates: Rc<Updates>,
     settings: RefCell<Option<Rc<SettingsWindow>>>,
     status_listeners: RefCell<Vec<StatusListener>>,
     catalog_listeners: RefCell<Vec<CatalogListener>>,
@@ -122,6 +124,7 @@ impl Daemon {
         let launcher = Launcher::new(app, config.clone());
         let use_scope = launch::systemd_scope_available();
         log::info!("systemd scopes for launched apps: {}", if use_scope { "available" } else { "unavailable" });
+        let updates = Updates::new(store.clone(), use_scope);
 
         let d = Rc::new(Daemon {
             app: app.clone(),
@@ -133,12 +136,20 @@ impl Daemon {
             scanned: RefCell::new(Arc::new(Vec::new())),
             history: RefCell::new(history),
             index_status: RefCell::default(),
+            updates: updates.clone(),
             settings: RefCell::default(),
             status_listeners: RefCell::default(),
             catalog_listeners: RefCell::default(),
             app_monitors: RefCell::default(),
             rescan_pending: RefCell::default(),
             use_scope,
+        });
+
+        let weak = Rc::downgrade(&d);
+        updates.set_open_page(move || {
+            if let Some(d) = weak.upgrade() {
+                d.open_settings_page(Some("updates"));
+            }
         });
 
         let weak = Rc::downgrade(&d);
@@ -204,6 +215,7 @@ impl Daemon {
                 self.app.quit();
             }
             Command::Ping => {}
+            Command::UpdateCheck => self.updates.check(),
         }
         if matches!(cmd, Command::Toggle | Command::Show) && self.launcher.is_visible() {
             self.engine.refresh_index_if_older(Duration::from_secs(60));

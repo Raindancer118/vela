@@ -123,6 +123,8 @@ claude_usage = true
 claude_usage_subtle = false
 claude_usage_only_default = false
 claude_usage_hidden = []
+# Tile with the pending system updates.
+updates_tile = true
 
 # While you're away (`vela idle` runs hypridle with these). Minutes without input.
 [idle]
@@ -136,3 +138,12 @@ screen_off_after_min = 5.5
 suspend = true
 suspend_after_min = 30.0
 lock_before_sleep = true
+
+[updates]
+# Look for pending updates this often (hours); 0 = never.
+check_interval_hours = 6
+aur = true
+flatpak = true
+# "Fix with Claude" opens its terminal here without switching to it;
+# "" = a normal window.
+claude_workspace = "special:minimized"

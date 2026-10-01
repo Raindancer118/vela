@@ -58,7 +58,8 @@ Singleton {
             claudeUsage: true,
             claudeUsageSubtle: false,
             claudeUsageOnlyDefault: false,
-            claudeUsageHidden: []
+            claudeUsageHidden: [],
+            updatesTile: true
         })
 
     function apply(line: string): void {

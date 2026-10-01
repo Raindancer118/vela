@@ -6,3 +6,4 @@ pub mod marker;
 pub mod settings;
 pub mod store;
 pub mod style;
+pub mod updates;

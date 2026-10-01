@@ -24,3 +24,4 @@ pub mod sharepick;
 pub mod shell;
 pub mod theme;
 pub mod ui;
+pub mod update;

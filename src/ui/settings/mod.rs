@@ -10,6 +10,7 @@ mod hypr_pages;
 mod hypr_rows;
 mod pages;
 mod search_page;
+mod updates_page;
 
 use super::daemon::Daemon;
 use super::marker::Marker;
@@ -19,7 +20,7 @@ use gtk::{gdk, glib};
 use std::rc::Rc;
 
 /// Sidebar entries: (section, page id, title, icon). Ids are `SETTINGS_PAGES`.
-const ENTRIES: [(&str, &str, &str, &str); 21] = [
+const ENTRIES: [(&str, &str, &str, &str); 22] = [
     ("", "home", "Search", "system-search-symbolic"),
     ("Launcher", "general", "Launcher", "system-search-symbolic"),
     ("Launcher", "apps", "Applications", "view-grid-symbolic"),
@@ -40,6 +41,7 @@ const ENTRIES: [(&str, &str, &str, &str); 21] = [
     ("Hyprland", "hypr-behaviour", "Behaviour", "vela-behaviour-symbolic"),
     ("Hyprland", "hypr-all", "All options", "vela-all-options-symbolic"),
     ("Everywhere", "appearance", "Appearance", "applications-graphics-symbolic"),
+    ("Everywhere", "updates", "Updates", "vela-updates-symbolic"),
     ("Everywhere", "system", "System", "preferences-system-symbolic"),
 ];
 
@@ -104,6 +106,7 @@ impl SettingsWindow {
                     p.upcast()
                 }
                 "appearance" => pages::appearance(&binder).upcast(),
+                "updates" => updates_page::build(daemon, &binder).upcast(),
                 _ => pages::system(daemon, &binder).upcast(),
             };
             home.add_page(id, title, &page);

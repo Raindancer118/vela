@@ -226,6 +226,11 @@ pub fn binds() -> Option<Vec<Bind>> {
     Some(parse_binds(&request_timeout("j/binds", 1000)?))
 }
 
+/// `j/clients` as Hyprland sends it.
+pub fn clients_json() -> Option<String> {
+    request_timeout("j/clients", 1000)
+}
+
 /// Window classes and titles that are open now (to build a rule from).
 pub fn open_windows() -> Vec<(String, String)> {
     let Some(json) = request_timeout("j/clients", 1000) else { return Vec::new() };

@@ -11,7 +11,7 @@ use std::time::Duration;
 
 /// Pages of the settings window (`vela settings <page>`).
 /// `general` is the launcher page (kept for compatibility).
-pub const SETTINGS_PAGES: [&str; 21] = [
+pub const SETTINGS_PAGES: [&str; 22] = [
     "home",
     "general",
     "apps",
@@ -32,6 +32,7 @@ pub const SETTINGS_PAGES: [&str; 21] = [
     "hypr-behaviour",
     "hypr-all",
     "appearance",
+    "updates",
     "system",
 ];
 
@@ -45,6 +46,8 @@ pub enum Command {
     Reload,
     Quit,
     Ping,
+    /// Look for pending system updates now.
+    UpdateCheck,
 }
 
 impl Command {
@@ -64,6 +67,7 @@ impl Command {
             Command::Reload => "reload",
             Command::Quit => "quit",
             Command::Ping => "ping",
+            Command::UpdateCheck => "update-check",
         }
     }
 
@@ -80,6 +84,7 @@ impl Command {
             "reload" => Command::Reload,
             "quit" => Command::Quit,
             "ping" => Command::Ping,
+            "update-check" => Command::UpdateCheck,
             _ => return None,
         })
     }
@@ -192,6 +197,8 @@ mod tests {
             Command::Reload,
             Command::Quit,
             Command::Ping,
+            Command::UpdateCheck,
+            Command::Settings(Some("updates")),
         ] {
             assert_eq!(Command::parse(&c.to_line()), Some(c));
         }

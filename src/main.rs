@@ -31,7 +31,7 @@ enum Cmd {
     /// Hide the launcher.
     Hide,
     /// Open the settings window, optionally on a page
-    /// (general, apps, search, claude, panel, notifications, power, appearance, system).
+    /// (general, apps, search, claude, panel, notifications, power, appearance, updates, system).
     Settings {
         #[arg(value_parser = clap::builder::PossibleValuesParser::new(ipc::SETTINGS_PAGES))]
         page: Option<String>,
@@ -74,6 +74,13 @@ enum Cmd {
         /// Preselect "remember this choice" (xdph: allow_token_by_default).
         #[arg(long)]
         allow_token: bool,
+    },
+    /// System updates: `check` asks the daemon to look for updates now,
+    /// `list` prints what is pending as JSON, `watch` prints the daemon's
+    /// update state whenever it changes (used by the control center).
+    Updates {
+        #[arg(default_value = "list", value_parser = ["check", "list", "watch"])]
+        action: String,
     },
     /// Print the control center settings as JSON (used by the shell).
     ShellConfig {
@@ -144,7 +151,20 @@ fn main() -> ExitCode {
             let exe = std::env::current_exe().unwrap_or_else(|_| "vela".into());
             return share_picker(&exe, allow_token);
         }
-        Cmd::ClaudeUsage { watch: true, .. } => return watch_usage(),
+        Cmd::ClaudeUsage { watch: true, .. } => return watch_json(&vela::claude_usage::cache_file()),
+        Cmd::Updates { action } => match action.as_str() {
+            "check" => Command::UpdateCheck,
+            "watch" => return watch_json(&vela::update::status_file()),
+            _ => {
+                let cfg = std::fs::read_to_string(paths::config_file())
+                    .ok()
+                    .and_then(|t| config::Config::from_toml(&t).ok())
+                    .unwrap_or_default();
+                let (pending, errors) = vela::update::check(&vela::update::Tools::detect(&cfg.updates));
+                println!("{}", serde_json::json!({ "pending": pending, "errors": errors }));
+                return if errors.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE };
+            }
+        },
         Cmd::ClaudeUsage { list, .. } => {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -301,18 +321,18 @@ impl Lifecycle {
     }
 }
 
-fn watch_usage() -> ExitCode {
+/// Prints a JSON file (one line) whenever it changes.
+fn watch_json(file: &std::path::Path) -> ExitCode {
     use std::io::Write;
     let life = Lifecycle::start(true);
-    let file = vela::claude_usage::cache_file();
     let mut stamp = None;
     let mut out = std::io::stdout();
     loop {
-        let now = std::fs::metadata(&file).ok().and_then(|m| m.modified().ok());
+        let now = std::fs::metadata(file).ok().and_then(|m| m.modified().ok());
         if now.is_some() && now != stamp {
             stamp = now;
             // Re-serialized: the panel reads one JSON document per line.
-            if let Some(line) = std::fs::read_to_string(&file)
+            if let Some(line) = std::fs::read_to_string(file)
                 .ok()
                 .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
                 && writeln!(out, "{line}").and_then(|()| out.flush()).is_err()

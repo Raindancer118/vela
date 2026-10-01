@@ -131,6 +131,9 @@ pub fn settings_css(accents: &[&str]) -> String {
 .vela-settings entry.vela-home-search, .vela-settings .vela-home-search { min-height: 46px; font-size: 1.12em; border-radius: 14px; padding: 0 14px; }
 .vela-settings .vela-claude-mark { color: #d97757; }
 .vela-settings .vela-claude-card { box-shadow: inset 0 0 0 1px alpha(#d97757, 0.45), 0 0 16px alpha(#d97757, 0.12); }
+.vela-settings button.vela-claude-button { background: #d97757; color: white; padding: 6px 16px; }
+.vela-settings button.vela-claude-button:hover { background: shade(#d97757, 1.08); }
+.vela-settings .vela-source-badge { padding: 2px 8px; border-radius: 99px; background: alpha(@window_fg_color, 0.08); }
 .vela-settings .vela-monitor-canvas { background: alpha(@window_fg_color, 0.04); border-radius: 12px; padding: 16px; }
 .vela-settings .vela-monitor-tile { background: alpha(@accent_bg_color, 0.22); border-radius: 8px; box-shadow: inset 0 0 0 1px alpha(@accent_bg_color, 0.6); transition: background-color 140ms ease; }
 .vela-settings .vela-monitor-tile:hover { background: alpha(@accent_bg_color, 0.32); }

@@ -105,6 +105,7 @@ same accent selection, sliders and boxed lists.
 
 - **Claude usage**: 5-hour and weekly limits of every Claude Code profile, with the plan as Anthropic has it now and the reset time
 - **Workspace dots** when you switch workspaces
+- **Updates**: a tile with what is pending (repositories, AUR, Flatpak) that opens Settings → Updates
 - **Screen-share picker** for xdg-desktop-portal-hyprland: screens as they stand on your desk, windows and a region, all with live previews
 - **Tap or hold** a shortcut (`panel_peek`, e.g. <kbd>Super</kbd>+<kbd>T</kbd>): a tap keeps it open, holding shows it until you let go
 - Speaks your language (German above)
@@ -159,6 +160,12 @@ screen the moment you make it.
 </td>
 </tr>
 </table>
+
+**Updates** · update everything (pacman/paru or yay, Flatpak), only refresh
+the package database, or tick single apps; the output runs live below. When
+something fails, **Fix with Claude** opens Claude Code with the error and the
+log in a terminal on your minimized windows (`special:minimized`, no focus
+stolen) and it repairs the update there; *Show* brings it over.
 
 > [!TIP]
 > Your `hyprland.lua` is never rewritten. vela keeps what you change in
@@ -408,6 +415,9 @@ reloads it, reports errors in the settings and keeps the last valid settings
 | | `workspace_osd`, `night_light_temperature`, `clock_centered` | |
 | | `claude_usage`, `claude_usage_subtle`, `claude_usage_only_default`, `claude_usage_hidden` | Claude plan usage at the bottom of the panel |
 | `idle` | `dim`, `lock`, `screen_off`, `suspend` (+ `*_after_min`), `lock_before_sleep` | what `vela idle` runs hypridle with |
+| `updates` | `check_interval_hours` (0 = never), `aur`, `flatpak` | background checks and sources |
+| | `claude_workspace` | where "Fix with Claude" opens, silently; empty = a normal window |
+| | `panel.updates_tile` | the tile in the control center |
 | `terminal` | `executable`, `exec_args` | default `kitty`; arguments before the command |
 
 From scripts: `vela set idle.suspend false` (checked against type and range).
@@ -426,10 +436,11 @@ vela show | hide
 vela settings [page]      home, general, apps, search, claude, panel, notifications, power,
                           hypr-windows, hypr-effects, hypr-animations, hypr-input, hypr-monitors,
                           hypr-shortcuts, hypr-rules, hypr-autostart, hypr-layouts,
-                          hypr-behaviour, hypr-all, appearance, system
+                          hypr-behaviour, hypr-all, appearance, updates, system
 vela set <section.key> <value>
 vela reload               re-read config, apps and file index
 vela shell | panel [toggle|open|close] | idle
+vela updates [list|check|watch]   pending updates as JSON | let the daemon look now | state for the panel
 vela mcp                  MCP server for Claude Code (stdio)
 vela quit | status | default-config
 ```
