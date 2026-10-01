@@ -19,6 +19,10 @@ Singleton {
 
     // [{ name, session: { utilization, resetsAt } | null, week: … }]
     property var accounts: []
+    // The last answer as it came (all statuses), for hasNew().
+    property var lastAnswer: null
+    property string lastHidden: ""
+
     // Filtered by the current settings right away (the fetch for a newly
     // shown account follows in the background).
     readonly property var shown: select(accounts, Config.claudeUsageOnlyDefault, Config.claudeUsageHidden)
@@ -28,6 +32,14 @@ Singleton {
     readonly property bool loading: proc.running
 
     readonly property string cachePath: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/vela/claude-usage.json"
+
+    // A logged-in profile the last answer didn't mention at all. Accounts that
+    // came back unavailable (expired, rate limited) count as known: refetching
+    // them on every open is what gets the endpoint to answer HTTP 429.
+    function hasNew(names: var, lastAnswer: var): bool {
+        const known = (lastAnswer?.accounts ?? []).map(a => a.name);
+        return names.some(n => !known.includes(n));
+    }
 
     function select(list: var, onlyDefault: bool, hidden: var): var {
         return list.filter(a => (!onlyDefault || a.name === "default") && !(hidden ?? []).includes(a.name));
@@ -91,12 +103,16 @@ Singleton {
         }
     }
 
-    // Accounts hidden or shown in the settings: fetch the new selection.
+    // An account shown again needs numbers; other settings changes (only
+    // the default account, style) are applied without a request.
     Connections {
         target: VelaConfig
 
         function onPanelChanged(): void {
-            if (root.raw !== null) {
+            const hidden = JSON.stringify(Config.claudeUsageHidden ?? []);
+            const changed = hidden !== root.lastHidden;
+            root.lastHidden = hidden;
+            if (changed && root.raw !== null) {
                 root.lastAttempt = 0;
                 root.refresh();
             }
@@ -129,6 +145,7 @@ Singleton {
                 } catch (e) {
                     return;
                 }
+                root.lastAnswer = fresh;
                 const merged = root.merge(root.raw, fresh, Date.now());
                 root.accounts = merged;
                 root.raw = { fetchedAt: fresh.fetchedAt, accounts: merged };
@@ -149,10 +166,7 @@ Singleton {
                 } catch (e) {
                     return;
                 }
-                // Only new names count: expired accounts stay listed from the
-                // cache for a while and must not cause a request every time.
-                const shown = root.accounts.map(a => a.name);
-                if (names.some(n => !shown.includes(n))) {
+                if (root.hasNew(names, root.lastAnswer)) {
                     root.lastAttempt = 0;
                     root.refresh();
                 }

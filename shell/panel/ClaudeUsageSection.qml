@@ -36,25 +36,20 @@ Card {
         }
     }
 
-    // Plan name as a small accent pill ("Pro", "Max 20×", "Team").
-    component PlanBadge: Rectangle {
+    // Plan as quiet small caps ("PRO": the first letter a touch larger).
+    component PlanBadge: StyledText {
         property string plan
 
         visible: plan !== ""
-        implicitWidth: planText.implicitWidth + 2 * Theme.spacing.sm
-        implicitHeight: planText.implicitHeight + Theme.spacing.xs
-        radius: height / 2
-        color: Theme.withAlpha(Theme.colors.primary, 0.18)
-
-        StyledText {
-            id: planText
-
-            anchors.centerIn: parent
-            text: parent.plan
-            color: Theme.colors.primary
-            font.pixelSize: Theme.font.small
-            font.weight: Theme.font.weightSemiBold
+        textFormat: Text.RichText
+        text: {
+            const p = plan.toUpperCase();
+            return p.charAt(0) + "<span style='font-size:" + Math.round(font.pixelSize * 0.82) + "px'>" + p.slice(1) + "</span>";
         }
+        color: Theme.withAlpha(Theme.colors.text, 0.5)
+        font.pixelSize: Theme.font.small
+        font.weight: Theme.font.weightSemiBold
+        font.letterSpacing: Theme.font.labelLetterSpacing
     }
 
     component UsageRow: RowLayout {
@@ -159,12 +154,14 @@ Card {
             }
 
             StyledText {
+                Layout.alignment: Qt.AlignBaseline
                 text: "Claude"
                 font.weight: Theme.font.weightMedium
             }
 
             // One account: its plan next to the title.
             PlanBadge {
+                Layout.alignment: Qt.AlignBaseline
                 plan: root.accounts.length === 1 ? (root.accounts[0].plan ?? "") : ""
             }
 
@@ -189,6 +186,7 @@ Card {
                     spacing: Theme.spacing.sm
 
                     StyledText {
+                        Layout.alignment: Qt.AlignBaseline
                         text: account.modelData.name === "default" ? I18n.tr("Default") : account.modelData.name
                         color: Theme.colors.textMuted
                         font.pixelSize: Theme.font.small
@@ -196,6 +194,7 @@ Card {
                     }
 
                     PlanBadge {
+                        Layout.alignment: Qt.AlignBaseline
                         plan: account.modelData.plan ?? ""
                     }
                 }

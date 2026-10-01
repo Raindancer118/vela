@@ -23,9 +23,13 @@ ShellRoot {
             merged.map(a => a.name + ":" + a.session.utilization),
             ClaudeUsage.merge(old, fresh, now + 2 * 3600000).map(a => a.name),
             ClaudeUsage.select([{ name: "default" }, { name: "a" }, { name: "b" }], false, ["a"]).map(a => a.name),
-            ClaudeUsage.select([{ name: "default" }, { name: "a" }], true, []).map(a => a.name)
+            ClaudeUsage.select([{ name: "default" }, { name: "a" }], true, []).map(a => a.name),
+            // Known = in the last answer, even if unavailable (e.g. HTTP 429).
+            ClaudeUsage.hasNew(["default", "a"], { accounts: [{ name: "default", status: "ok" }, { name: "a", status: "unavailable" }] }),
+            ClaudeUsage.hasNew(["default", "b"], { accounts: [{ name: "default", status: "ok" }] }),
+            ClaudeUsage.hasNew(["default"], null)
         ];
-        const expected = ["low", "mid", "mid", "high", "high", true, true, "", true, ["a:0.25", "b:0.9"], ["a"], ["default", "b"], ["default"]];
+        const expected = ["low", "mid", "mid", "high", "high", true, true, "", true, ["a:0.25", "b:0.9"], ["a"], ["default", "b"], ["default"], false, true, true];
         const pass = JSON.stringify(got) === JSON.stringify(expected);
         console.log((pass ? "PASS " : "FAIL ") + JSON.stringify(got) + (pass ? "" : "\n  expected " + JSON.stringify(expected)));
         Qt.callLater(Qt.quit);
