@@ -5,6 +5,7 @@
 //! config, so the value from hyprland.lua comes back.
 
 use crate::config::write_atomic;
+use crate::hypranim::{Anim, AnimState};
 use crate::hyprconf::{OptionInfo, Overrides, Value};
 use crate::{hyprland, paths};
 use gtk::gio;
@@ -26,8 +27,11 @@ struct Inner {
     overrides: RefCell<Overrides>,
     infos: RefCell<BTreeMap<String, OptionInfo>>,
     current: RefCell<BTreeMap<String, Value>>,
+    anims: RefCell<BTreeMap<String, AnimState>>,
+    curves: RefCell<Vec<String>>,
     loaded: Cell<bool>,
     pending_apply: RefCell<BTreeMap<String, Value>>,
+    pending_anims: RefCell<BTreeMap<String, Anim>>,
     apply_source: RefCell<Option<glib::SourceId>>,
     save_source: RefCell<Option<glib::SourceId>>,
     last_written: RefCell<String>,
@@ -63,8 +67,11 @@ impl HyprStore {
             overrides: RefCell::new(overrides),
             infos: RefCell::default(),
             current: RefCell::default(),
+            anims: RefCell::default(),
+            curves: RefCell::default(),
             loaded: Cell::new(false),
             pending_apply: RefCell::default(),
+            pending_anims: RefCell::default(),
             apply_source: RefCell::default(),
             save_source: RefCell::default(),
             last_written: RefCell::new(text),
@@ -112,7 +119,54 @@ impl HyprStore {
             current.insert(k.clone(), v.clone());
         }
         *self.0.current.borrow_mut() = current;
+        if let Some((mut anims, mut curves)) = hyprland::animations() {
+            for (leaf, a) in self.0.pending_anims.borrow().iter() {
+                anims.insert(
+                    leaf.clone(),
+                    AnimState {
+                        overridden: true,
+                        anim: a.clone(),
+                    },
+                );
+            }
+            for c in crate::hypranim::vela_curve_names() {
+                if !curves.contains(&c) {
+                    curves.push(c);
+                }
+            }
+            *self.0.anims.borrow_mut() = anims;
+            *self.0.curves.borrow_mut() = curves;
+        }
         self.0.loaded.set(true);
+    }
+
+    /// What an animation does now (its own settings or inherited ones).
+    pub fn anim(&self, leaf: &str) -> Option<Anim> {
+        crate::hypranim::effective(&self.0.anims.borrow(), leaf)
+    }
+
+    /// Bezier names and `spring:<name>` springs Hyprland knows.
+    pub fn curves(&self) -> Vec<String> {
+        self.0.curves.borrow().clone()
+    }
+
+    pub fn set_anim(&self, leaf: &str, anim: Anim) {
+        if self.anim(leaf).as_ref() == Some(&anim) && self.0.overrides.borrow().animations.contains_key(leaf) {
+            return;
+        }
+        self.0.anims.borrow_mut().insert(
+            leaf.to_owned(),
+            AnimState {
+                overridden: true,
+                anim: anim.clone(),
+            },
+        );
+        self.0.overrides.borrow_mut().animations.insert(leaf.to_owned(), anim.clone());
+        self.0.pending_anims.borrow_mut().insert(leaf.to_owned(), anim);
+        self.schedule_apply();
+        self.schedule_save();
+        // Children without own settings change too.
+        self.notify(Some(&format!("anim:{leaf}")));
     }
 
     pub fn available(&self) -> bool {
@@ -131,13 +185,19 @@ impl HyprStore {
         self.0.current.borrow().get(name).cloned()
     }
 
+    /// `name` is an option or `anim:<leaf>`.
     pub fn is_overridden(&self, name: &str) -> bool {
-        self.0.overrides.borrow().options.contains_key(name)
+        let o = self.0.overrides.borrow();
+        match name.strip_prefix("anim:") {
+            Some(leaf) => o.animations.contains_key(leaf),
+            None => o.options.contains_key(name),
+        }
     }
 
-    /// Option names with an override, for "reset all".
+    /// Everything vela overrides (options and `anim:<leaf>`), for "reset all".
     pub fn overridden(&self) -> Vec<String> {
-        self.0.overrides.borrow().options.keys().cloned().collect()
+        let o = self.0.overrides.borrow();
+        o.options.keys().cloned().chain(o.animations.keys().map(|l| format!("anim:{l}"))).collect()
     }
 
     pub fn remembered(&self, key: &str) -> Option<i64> {
@@ -214,7 +274,13 @@ impl HyprStore {
 
     fn apply_now(&self) {
         let pending = std::mem::take(&mut *self.0.pending_apply.borrow_mut());
-        let code: Vec<String> = pending.iter().map(|(n, v)| crate::hyprconf::eval_code(n, v)).collect();
+        let anims = std::mem::take(&mut *self.0.pending_anims.borrow_mut());
+        let mut code: Vec<String> = pending.iter().map(|(n, v)| crate::hyprconf::eval_code(n, v)).collect();
+        if !anims.is_empty() {
+            // A reload of hyprland.lua without vela.lua would drop vela's curves.
+            code.extend(crate::hypranim::curves_lua());
+        }
+        code.extend(anims.iter().map(|(leaf, a)| a.eval_code(leaf)));
         match hyprland::eval(&code) {
             Ok(()) => self.set_error(None),
             Err(e) => {
@@ -229,13 +295,26 @@ impl HyprStore {
     pub fn reset(&self, names: &[String]) {
         let removed = {
             let mut o = self.0.overrides.borrow_mut();
-            names.iter().filter(|n| o.options.remove(n.as_str()).is_some()).count()
+            names
+                .iter()
+                .filter(|n| match n.strip_prefix("anim:") {
+                    Some(leaf) => o.animations.remove(leaf).is_some(),
+                    None => o.options.remove(n.as_str()).is_some(),
+                })
+                .count()
         };
         if removed == 0 {
             return;
         }
         for n in names {
-            self.0.pending_apply.borrow_mut().remove(n);
+            match n.strip_prefix("anim:") {
+                Some(leaf) => {
+                    self.0.pending_anims.borrow_mut().remove(leaf);
+                }
+                None => {
+                    self.0.pending_apply.borrow_mut().remove(n);
+                }
+            }
         }
         self.save_now();
         if !hyprland::reload_config() {

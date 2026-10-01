@@ -16,7 +16,7 @@ use gtk::{gdk, glib};
 use std::rc::Rc;
 
 /// Sidebar entries: (section, page id, title, icon). Ids are `SETTINGS_PAGES`.
-const ENTRIES: [(&str, &str, &str, &str); 11] = [
+const ENTRIES: [(&str, &str, &str, &str); 15] = [
     ("Launcher", "general", "Launcher", "system-search-symbolic"),
     ("Launcher", "apps", "Applications", "view-grid-symbolic"),
     ("Launcher", "search", "Search", "edit-find-symbolic"),
@@ -26,6 +26,10 @@ const ENTRIES: [(&str, &str, &str, &str); 11] = [
     ("Control center", "power", "Power & idle", "system-shutdown-symbolic"),
     ("Hyprland", "hypr-windows", "Windows & gaps", "vela-windows-symbolic"),
     ("Hyprland", "hypr-effects", "Blur & effects", "vela-blur-symbolic"),
+    ("Hyprland", "hypr-animations", "Animations", "vela-animations-symbolic"),
+    ("Hyprland", "hypr-input", "Input", "input-keyboard-symbolic"),
+    ("Hyprland", "hypr-layouts", "Layouts", "vela-layouts-symbolic"),
+    ("Hyprland", "hypr-behaviour", "Behaviour", "vela-behaviour-symbolic"),
     ("Everywhere", "appearance", "Appearance", "applications-graphics-symbolic"),
     ("Everywhere", "system", "System", "preferences-system-symbolic"),
 ];
@@ -74,6 +78,10 @@ impl SettingsWindow {
                 "power" => pages::power(&binder).upcast(),
                 "hypr-windows" => hypr_pages::windows(&hypr).upcast(),
                 "hypr-effects" => hypr_pages::effects(&hypr).upcast(),
+                "hypr-animations" => hypr_pages::animations(&hypr).upcast(),
+                "hypr-input" => hypr_pages::input(&hypr).upcast(),
+                "hypr-layouts" => hypr_pages::layouts(&hypr).upcast(),
+                "hypr-behaviour" => hypr_pages::behaviour(&hypr).upcast(),
                 "appearance" => pages::appearance(&binder).upcast(),
                 _ => pages::system(daemon, &binder).upcast(),
             };

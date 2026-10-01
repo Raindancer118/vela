@@ -1,6 +1,7 @@
 //! Rows bound to Hyprland options through the HyprStore. Each shows the
 //! value Hyprland uses right now and a reset button while vela overrides it.
 
+use crate::hypranim::Anim;
 use crate::hyprconf::{EdgeGaps, Gaps, Gradient, Kind, OptionInfo, Value};
 use crate::ui::hypr_store::HyprStore;
 use adw::prelude::*;
@@ -269,7 +270,6 @@ impl Rows {
         row
     }
 
-    #[allow(dead_code)] // Keyboard layout (Input page) is next.
     pub fn entry(&self, name: &str, title: &str) -> adw::EntryRow {
         let row = adw::EntryRow::builder().title(title).show_apply_button(true).build();
         if let Some(info) = self.mark_unsupported(&row, name) {
@@ -560,6 +560,145 @@ impl Rows {
                 write(e);
             });
         }
+        row
+    }
+
+    /// One animation: on/off, duration, curve and (if given) style. Unset
+    /// leaves show what they inherit; changing one gives it its own settings.
+    pub fn anim(&self, leaf: &str, title: &str, sub: &str, styles: &[(&str, &str)]) -> adw::ExpanderRow {
+        let key = format!("anim:{leaf}");
+        let row = adw::ExpanderRow::builder().title(title).show_enable_switch(true).build();
+        if !sub.is_empty() {
+            row.set_subtitle(sub);
+        }
+        if self.store.anim(leaf).is_none() {
+            row.set_sensitive(false);
+        }
+        row.add_suffix(&self.reset_button(&[&key]));
+
+        let speed_row = adw::ActionRow::builder().title("Duration").build();
+        let (speed, speed_label) = Self::scale(0.5, 20.0, 0.1, 1);
+        speed_row.add_suffix(&speed);
+        speed_row.add_suffix(&speed_label);
+        row.add_row(&speed_row);
+
+        let curves = self.store.curves();
+        let curve_label = |c: &str| match c.strip_prefix("spring:") {
+            Some(s) => format!("Spring: {s}"),
+            None => c.to_owned(),
+        };
+        let curve_model = gtk::StringList::new(
+            &curves
+                .iter()
+                .map(|c| curve_label(c))
+                .collect::<Vec<_>>()
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+        );
+        let curve_row = adw::ComboRow::builder()
+            .title("Curve")
+            .subtitle("Bezier curves ease, springs bounce")
+            .model(&curve_model)
+            .build();
+        row.add_row(&curve_row);
+
+        let styles: Vec<(String, String)> = styles.iter().map(|(v, l)| (v.to_string(), l.to_string())).collect();
+        let style_model = gtk::StringList::new(&styles.iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>());
+        let style_row = adw::ComboRow::builder().title("Style").model(&style_model).build();
+        if !styles.is_empty() {
+            row.add_row(&style_row);
+        }
+        // Styles typed into hyprland.lua that aren't in the list get an entry.
+        let styles = Rc::new(std::cell::RefCell::new(styles));
+        let curves = Rc::new(curves);
+
+        let sync = {
+            let (store, leaf) = (self.store.clone(), leaf.to_owned());
+            let (wr, ws, wsl, wc, wst) = (
+                row.downgrade(),
+                speed.downgrade(),
+                speed_label.downgrade(),
+                curve_row.downgrade(),
+                style_row.downgrade(),
+            );
+            let (curves, styles, style_model) = (curves.clone(), styles.clone(), style_model.clone());
+            move || {
+                let Some(a) = store.anim(&leaf) else { return };
+                let (Some(r), Some(s), Some(sl), Some(c), Some(st)) = (wr.upgrade(), ws.upgrade(), wsl.upgrade(), wc.upgrade(), wst.upgrade()) else {
+                    return;
+                };
+                r.set_enable_expansion(a.enabled);
+                s.adjustment().set_upper(s.adjustment().upper().max(a.speed));
+                s.set_value(a.speed);
+                sl.set_label(&format!("{:.0} ms", a.speed * 100.0));
+                match curves.iter().position(|x| *x == a.curve) {
+                    Some(i) => c.set_selected(i as u32),
+                    None => c.set_selected(gtk::INVALID_LIST_POSITION),
+                }
+                let mut styles = styles.borrow_mut();
+                if !styles.is_empty() {
+                    let i = match styles.iter().position(|(v, _)| *v == a.style) {
+                        Some(i) => i,
+                        None => {
+                            styles.push((a.style.clone(), format!("Custom ({})", a.style)));
+                            style_model.append(&format!("Custom ({})", a.style));
+                            styles.len() - 1
+                        }
+                    };
+                    st.set_selected(i as u32);
+                }
+            }
+        };
+        sync();
+        self.store.subscribe(move |n| {
+            if n.is_none_or(|n| n.starts_with("anim:")) {
+                sync();
+            }
+        });
+
+        let write = {
+            let (store, leaf) = (self.store.clone(), leaf.to_owned());
+            let (wr, ws, wc, wst) = (row.downgrade(), speed.downgrade(), curve_row.downgrade(), style_row.downgrade());
+            let (curves, styles) = (curves.clone(), styles.clone());
+            Rc::new(move || {
+                if store.notifying() {
+                    return;
+                }
+                let (Some(r), Some(s), Some(c), Some(st)) = (wr.upgrade(), ws.upgrade(), wc.upgrade(), wst.upgrade()) else {
+                    return;
+                };
+                let Some(cur) = store.anim(&leaf) else { return };
+                let curve = curves.get(c.selected() as usize).cloned().unwrap_or(cur.curve.clone());
+                let styles = styles.borrow();
+                let style = if styles.is_empty() {
+                    cur.style.clone()
+                } else {
+                    styles.get(st.selected() as usize).map_or(cur.style.clone(), |(v, _)| v.clone())
+                };
+                store.set_anim(
+                    &leaf,
+                    Anim {
+                        enabled: r.enables_expansion(),
+                        speed: (s.value() * 10.0).round() / 10.0,
+                        curve,
+                        style,
+                    },
+                );
+            })
+        };
+        let w = write.clone();
+        row.connect_enable_expansion_notify(move |_| w());
+        let (w, wsl) = (write.clone(), speed_label.downgrade());
+        speed.connect_value_changed(move |s| {
+            if let Some(l) = wsl.upgrade() {
+                l.set_label(&format!("{:.0} ms", s.value() * 100.0));
+            }
+            w();
+        });
+        let w = write.clone();
+        curve_row.connect_selected_notify(move |_| w());
+        style_row.connect_selected_notify(move |_| write());
         row
     }
 }

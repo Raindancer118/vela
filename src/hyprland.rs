@@ -170,6 +170,12 @@ pub fn options() -> Option<(Vec<crate::hyprconf::OptionInfo>, std::collections::
     Some(crate::hyprconf::catalogue(&descriptions, &crate::hyprconf::split_batch(&got, names.len())))
 }
 
+/// Animations and curve names (`j/animations`).
+pub fn animations() -> Option<(std::collections::BTreeMap<String, crate::hypranim::AnimState>, Vec<String>)> {
+    let json = request_timeout("j/animations", 1000)?;
+    Some(crate::hypranim::parse(&json))
+}
+
 /// Current value of one option.
 pub fn option_value(info: &crate::hyprconf::OptionInfo) -> Option<crate::hyprconf::Value> {
     let out = request(&format!("j/getoption {}", info.name))?;
@@ -273,6 +279,22 @@ mod live {
             let Some(v) = current.get(&info.name) else { continue };
             if let Err(e) = super::eval(&[crate::hyprconf::eval_code(&info.name, v)]) {
                 failed.push(format!("{} = {}: {e}", info.name, v.to_lua()));
+            }
+        }
+        assert!(failed.is_empty(), "{}", failed.join("\n"));
+    }
+
+    #[test]
+    #[ignore]
+    fn live_vela_curves_and_every_animation_apply() {
+        super::eval(&crate::hypranim::curves_lua()).expect("vela curves");
+        let (anims, curves) = super::animations().expect("Hyprland reachable");
+        assert!(curves.iter().any(|c| c == "velaSmooth"), "{curves:?}");
+        let mut failed = Vec::new();
+        for (leaf, state) in anims.iter().filter(|(l, s)| s.overridden && !l.starts_with("__")) {
+            let code = state.anim.eval_code(leaf);
+            if let Err(e) = super::eval(std::slice::from_ref(&code)) {
+                failed.push(format!("{code}: {e}"));
             }
         }
         assert!(failed.is_empty(), "{}", failed.join("\n"));
