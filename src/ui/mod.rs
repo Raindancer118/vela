@@ -1,4 +1,5 @@
 pub mod daemon;
+pub mod fingerprint;
 pub mod hypr_store;
 pub mod icons;
 pub mod launcher;

@@ -2,6 +2,7 @@
 //! "Fix with Claude". The settings page only shows this state; the control
 //! center reads the same state from `updates.json` (`vela updates watch`).
 
+use super::fingerprint::FingerprintPrompt;
 use super::store::ConfigStore;
 use crate::update::{self, Event, Failure, Mode, Status};
 use gtk::glib;
@@ -55,6 +56,7 @@ pub struct Updates {
     open_page: RefCell<Option<Rc<dyn Fn()>>>,
     /// Whether someone looks at the page (no desktop notification then).
     page_visible: Cell<bool>,
+    fingerprint: RefCell<Option<Rc<FingerprintPrompt>>>,
 }
 
 fn now_ms() -> i64 {
@@ -81,6 +83,7 @@ impl Updates {
             log_listeners: RefCell::default(),
             open_page: RefCell::default(),
             page_visible: Cell::new(false),
+            fingerprint: RefCell::default(),
         });
         u.write_status();
         let weak = Rc::downgrade(&u);
@@ -125,13 +128,46 @@ impl Updates {
         self.write_status();
     }
 
+    /// Synchronous: a few hundred bytes, and writer threads would race for
+    /// the same temporary file.
     fn write_status(&self) {
         let json = serde_json::to_string(&self.state.borrow().status).unwrap_or_default();
-        std::thread::spawn(move || {
-            if let Err(e) = crate::config::write_atomic(&update::status_file(), &json) {
-                log::warn!("updates: cannot write status: {e:#}");
+        if let Err(e) = crate::config::write_atomic(&update::status_file(), &json) {
+            log::warn!("updates: cannot write status: {e:#}");
+        }
+    }
+
+    /// pam_fprintd's request shows the fingerprint prompt; the next line
+    /// says whether the finger was accepted.
+    fn on_output_lines(&self, text: &str) {
+        for line in text.lines() {
+            let waiting = self.state.borrow().status.fingerprint;
+            if update::is_fingerprint_request(line) {
+                self.prompt().show(line);
+                if !waiting {
+                    self.state.borrow_mut().status.fingerprint = true;
+                    self.changed();
+                }
+            } else if waiting && !line.trim().is_empty() {
+                self.prompt().finish(!update::fingerprint_failed(line));
+                self.state.borrow_mut().status.fingerprint = false;
+                self.changed();
             }
-        });
+        }
+    }
+
+    fn prompt(&self) -> Rc<FingerprintPrompt> {
+        self.fingerprint
+            .borrow_mut()
+            .get_or_insert_with(|| FingerprintPrompt::new(self.store.clone()))
+            .clone()
+    }
+
+    fn end_fingerprint(&self) {
+        if let Some(p) = self.fingerprint.borrow().as_ref() {
+            p.hide();
+        }
+        self.state.borrow_mut().status.fingerprint = false;
     }
 
     /// Asks every source what is pending (on a worker thread).
@@ -170,6 +206,16 @@ impl Updates {
             return Err("An update is already running".into());
         }
         let steps = update::plan(&mode, &update::Tools::detect(&self.store.get().updates))?;
+        // vela.service rarely has SUDO_ASKPASS (shells set it in their own config).
+        let askpass = update::find_askpass(std::env::var_os("SUDO_ASKPASS").as_deref());
+        let needs_sudo = steps.iter().any(|s| s.argv.iter().any(|a| a == "-A"));
+        if needs_sudo && askpass.is_none() {
+            return Err("No password dialog for sudo found: install ksshaskpass (or another askpass) or set SUDO_ASKPASS".into());
+        }
+        let env: Vec<(String, String)> = askpass
+            .map(|p| ("SUDO_ASKPASS".to_owned(), p.to_string_lossy().into_owned()))
+            .into_iter()
+            .collect();
         let secs = (now_ms() / 1000) as u64;
         let log_path = update::new_log_path(&update::log_dir(), secs, 20);
         let label = mode.label().to_owned();
@@ -195,7 +241,7 @@ impl Updates {
         let (tx, rx) = async_channel::unbounded();
         let use_scope = self.use_scope;
         std::thread::spawn(move || {
-            let result = update::run(&label, &steps, &log_path, use_scope, &mut |e| {
+            let result = update::run_with_env(&label, &steps, &log_path, use_scope, &env, &mut |e| {
                 let _ = tx.send_blocking(Msg::Event(e));
             })
             .map_err(|f| *f);
@@ -218,8 +264,10 @@ impl Updates {
                         for l in u.log_listeners.borrow().iter() {
                             l(&text);
                         }
+                        u.on_output_lines(&text);
                     }
                     Msg::Event(Event::Step { index, count, title }) => {
+                        u.end_fingerprint();
                         {
                             let mut s = u.state.borrow_mut();
                             s.status.running = Some(title.clone());
@@ -230,6 +278,7 @@ impl Updates {
                         u.changed();
                     }
                     Msg::Done(result) => {
+                        u.end_fingerprint();
                         {
                             let mut s = u.state.borrow_mut();
                             s.status.running = None;
@@ -311,11 +360,7 @@ impl Updates {
         let log = std::fs::read_to_string(&failure.log_path).unwrap_or_default();
         let prompt = update::fix_prompt(&failure, update::tail(&log, 80).trim_end());
         let cfg = self.store.get();
-        let askpass = std::env::var_os("SUDO_ASKPASS").map(PathBuf::from).filter(|p| p.exists()).or_else(|| {
-            ["ksshaskpass", "ssh-askpass", "lxqt-openssh-askpass"]
-                .iter()
-                .find_map(|n| crate::paths::find_executable(n))
-        });
+        let askpass = update::find_askpass(std::env::var_os("SUDO_ASKPASS").as_deref());
         let workspace = cfg.updates.claude_workspace.clone();
         let command = update::claude_shell_command(&cfg.claude, &cfg.terminal, &prompt, askpass.as_deref())?;
         let before = crate::hyprland::clients_json().map(|j| update::windows_on(&j, &workspace));

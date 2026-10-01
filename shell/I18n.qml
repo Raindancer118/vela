@@ -118,6 +118,7 @@ Singleton {
                 "Not checked yet": "Noch nicht geprüft",
                 "%1 available": "%1 verfügbar",
                 "Up to date": "Aktuell",
+                "Touch the fingerprint reader": "Finger auf den Sensor legen",
                 "Sound": "Ton",
                 "Output": "Ausgabe",
                 "Input": "Eingabe",

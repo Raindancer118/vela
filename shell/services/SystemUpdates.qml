@@ -12,10 +12,12 @@ import qs
 Singleton {
     id: root
 
-    // { checkedAt, checking, pending: [{ source, name, old, new, id }], checkErrors, running?, failed? }
+    // { checkedAt, checking, pending: [{ source, name, old, new, id }], checkErrors, running?, failed?, fingerprint }
     property var status: ({ checkedAt: 0, pending: [] })
 
     function subtitle(s: var): string {
+        if (s.running && s.fingerprint)
+            return I18n.tr("Touch the fingerprint reader");
         if (s.running)
             return I18n.tr("Updating…");
         if (s.failed)
@@ -33,6 +35,8 @@ Singleton {
     }
 
     function icon(s: var): string {
+        if (s.running && s.fingerprint)
+            return "fingerprint";
         return s.failed && !s.running ? "priority_high" : "system_update";
     }
 

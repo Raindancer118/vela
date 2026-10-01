@@ -351,6 +351,18 @@ pub enum Event {
 /// `use_scope` puts each step into its own systemd scope so that restarting
 /// vela.service doesn't kill it either.
 pub fn run(mode_label: &str, steps: &[Step], log_path: &Path, use_scope: bool, on: &mut dyn FnMut(Event)) -> Result<(), Box<Failure>> {
+    run_with_env(mode_label, steps, log_path, use_scope, &[], on)
+}
+
+/// `run` with extra environment variables for every step (SUDO_ASKPASS).
+pub fn run_with_env(
+    mode_label: &str,
+    steps: &[Step],
+    log_path: &Path,
+    use_scope: bool,
+    env: &[(String, String)],
+    on: &mut dyn FnMut(Event),
+) -> Result<(), Box<Failure>> {
     use std::io::Write;
     let failure = |step: &Step, code: Option<i32>, summary: String| {
         Box::new(Failure {
@@ -392,7 +404,7 @@ pub fn run(mode_label: &str, steps: &[Step], log_path: &Path, use_scope: bool, o
         let mut output = String::new();
         let shown = shlex::try_join(step.argv.iter().map(String::as_str)).unwrap_or_else(|_| step.argv.join(" "));
         let _ = writeln!(log, "==> {}\n$ {shown}", step.title);
-        let status = spawn_into(&step.argv, &log, use_scope).map(|mut child| {
+        let status = spawn_into(&step.argv, &log, use_scope, env).map(|mut child| {
             loop {
                 drain(&mut reader, &mut partial, &mut output, on);
                 match child.try_wait() {
@@ -418,7 +430,7 @@ pub fn run(mode_label: &str, steps: &[Step], log_path: &Path, use_scope: bool, o
     Ok(())
 }
 
-fn spawn_into(argv: &[String], log: &std::fs::File, use_scope: bool) -> std::io::Result<std::process::Child> {
+fn spawn_into(argv: &[String], log: &std::fs::File, use_scope: bool, env: &[(String, String)]) -> std::io::Result<std::process::Child> {
     use std::os::unix::process::CommandExt;
     let argv = if use_scope {
         crate::launch::wrap_in_scope(&crate::launch::SpawnSpec {
@@ -438,6 +450,7 @@ fn spawn_into(argv: &[String], log: &std::fs::File, use_scope: bool) -> std::io:
         // English messages: the error lines are what Claude and summarize() read.
         .env("LC_ALL", "C.UTF-8")
         .env("PATH", crate::paths::child_path_env());
+    cmd.envs(env.iter().map(|(k, v)| (k, v)));
     // SAFETY: setsid is async-signal-safe.
     unsafe {
         cmd.pre_exec(|| {
@@ -565,6 +578,52 @@ pub struct Status {
     pub running: Option<String>,
     /// Summary of the last failed run (cleared by the next check or run).
     pub failed: Option<String>,
+    /// sudo waits for a finger on the reader (pam_fprintd).
+    pub fingerprint: bool,
+}
+
+/// pam_fprintd's request to touch the reader (it waits for the finger, then
+/// falls back to the password dialog).
+pub fn is_fingerprint_request(line: &str) -> bool {
+    let l = line.trim().to_lowercase();
+    (l.starts_with("place your") || l.starts_with("swipe your")) && (l.contains("finger") || l.contains("thumb"))
+}
+
+/// Whether the line after a fingerprint request means the reader gave up
+/// (anything else means the finger was accepted and the command went on).
+pub fn fingerprint_failed(line: &str) -> bool {
+    let l = line.to_lowercase();
+    [
+        "timed out",
+        "failed to match",
+        "not match",
+        "too many",
+        "askpass",
+        "authentication failure",
+        "verification failed",
+    ]
+    .iter()
+    .any(|p| l.contains(p))
+}
+
+/// The password dialog for `sudo -A`: SUDO_ASKPASS if it exists, else a
+/// known askpass program. vela.service usually lacks the variable, which
+/// shells set in their own config.
+pub fn find_askpass(env_value: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+    env_value
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
+        .or_else(|| {
+            ["ksshaskpass", "ssh-askpass", "lxqt-openssh-askpass", "x11-ssh-askpass"]
+                .iter()
+                .find_map(|n| crate::paths::find_executable(n))
+        })
+        .or_else(|| {
+            ["/usr/lib/ssh/ssh-askpass", "/usr/lib/openssh/gnome-ssh-askpass"]
+                .map(PathBuf::from)
+                .into_iter()
+                .find(|p| p.is_file())
+        })
 }
 
 #[cfg(test)]
@@ -964,5 +1023,52 @@ mod tests {
             ["keep-me.txt", "update-4.log", "update-5.log"],
             "room for the new one, foreign files untouched"
         );
+    }
+
+    #[test]
+    fn fingerprint_requests() {
+        for l in [
+            "Place your right index finger on the fingerprint reader",
+            "Swipe your left thumb across the fingerprint reader",
+            "  Place your finger on the reader again",
+        ] {
+            assert!(is_fingerprint_request(l), "{l}");
+        }
+        for l in [
+            "Verification timed out",
+            "Failed to match fingerprint",
+            ":: Starting full system upgrade...",
+            "",
+        ] {
+            assert!(!is_fingerprint_request(l), "{l}");
+        }
+        assert!(fingerprint_failed("Verification timed out"));
+        assert!(fingerprint_failed("Failed to match fingerprint"));
+        assert!(fingerprint_failed("sudo: no askpass program specified, try setting SUDO_ASKPASS"));
+        assert!(!fingerprint_failed(":: Synchronizing package databases..."));
+    }
+
+    #[test]
+    fn askpass_lookup() {
+        let dir = tempfile::tempdir().unwrap();
+        let own = script(dir.path(), "my-askpass", "");
+        assert_eq!(find_askpass(Some(std::ffi::OsStr::new(&own))), Some(PathBuf::from(&own)));
+        // A stale variable doesn't win over an installed program (or None).
+        let found = find_askpass(Some(std::ffi::OsStr::new("/nonexistent/askpass")));
+        assert_ne!(found, Some(PathBuf::from("/nonexistent/askpass")));
+        assert!(found.is_none_or(|p| p.exists()));
+    }
+
+    #[test]
+    fn run_passes_extra_environment() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = script(dir.path(), "env", "echo \"PASS=$SUDO_ASKPASS\"");
+        let log = dir.path().join("env.log");
+        let steps = vec![Step {
+            title: "Env".into(),
+            argv: vec![s],
+        }];
+        run_with_env("x", &steps, &log, false, &[("SUDO_ASKPASS".into(), "/x/askpass".into())], &mut |_| {}).unwrap();
+        assert!(std::fs::read_to_string(&log).unwrap().contains("PASS=/x/askpass"));
     }
 }

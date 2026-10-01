@@ -22,6 +22,7 @@ const BUNDLED: &[(&str, &str)] = &[
     ("vela-autostart-symbolic.svg", include_str!("../../data/icons/vela-autostart-symbolic.svg")),
     ("vela-all-options-symbolic.svg", include_str!("../../data/icons/vela-all-options-symbolic.svg")),
     ("vela-updates-symbolic.svg", include_str!("../../data/icons/vela-updates-symbolic.svg")),
+    ("vela-fingerprint-symbolic.svg", include_str!("../../data/icons/vela-fingerprint-symbolic.svg")),
 ];
 
 /// Makes the bundled icons available by name even when vela runs from the

@@ -248,10 +248,85 @@ fn motion_css(cfg: &Config) -> String {
     css
 }
 
+/// The fingerprint prompt during updates (ui/fingerprint.rs), in the
+/// launcher's look: card, the icon in a disc that breathes slowly while
+/// waiting, a green pop on success, a red shake when the reader gave up. Deliberately slow and
+/// not tied to `animation_speed`: it waits for a finger, it shouldn't rush.
+pub fn fingerprint_css(cfg: &Config) -> String {
+    let a = &cfg.appearance;
+    let p = palette(a.theme);
+    let (accent, radius) = (&a.accent, a.border_radius);
+    let bg = rgba(p.bg, cfg.general.opacity.max(0.82));
+    let (fg, dim, border) = (rgba(p.fg, 1.0), rgba(p.dim, 1.0), rgba(p.tint, 0.10));
+    let (ok, bad) = ("#57c785", "#e5534b");
+    let mut css = format!(
+        r#"
+window.vela-fp-window, window.vela-fp-window.background {{ background: transparent; box-shadow: none; }}
+.vela-fp {{
+  background-color: {bg}; color: {fg};
+  border-radius: {radius}px; border: 1px solid {border};
+  box-shadow: 0 14px 36px rgba(0,0,0,0.34);
+  margin: 24px; padding: 26px 40px 22px 40px;
+}}
+.vela-fp .vela-fp-title {{ font-size: 1.15em; font-weight: 700; }}
+.vela-fp .vela-fp-detail {{ color: {dim}; }}
+.vela-fp .vela-fp-stage {{ padding: 6px; }}
+.vela-fp .vela-fp-disc {{
+  padding: 26px; border-radius: 999px;
+  background: alpha({accent}, 0.08); box-shadow: inset 0 0 0 1px alpha({accent}, 0.30);
+  transition: background-color 220ms ease, box-shadow 220ms ease;
+}}
+.vela-fp .vela-fp-icon {{ color: {accent}; transition: color 300ms ease; }}
+.vela-fp.waiting .vela-fp-disc {{ animation: vela-fp-breathe 5200ms ease-in-out infinite; }}
+.vela-fp.ok .vela-fp-icon {{ color: {ok}; }}
+.vela-fp.fail .vela-fp-icon {{ color: {bad}; }}
+.vela-fp.ok .vela-fp-disc {{ background: alpha({ok}, 0.20); box-shadow: inset 0 0 0 2px {ok}, 0 0 26px alpha({ok}, 0.35); }}
+.vela-fp.ok .vela-fp-disc {{ animation: vela-fp-pop 800ms cubic-bezier(0.3, 1.35, 0.6, 1); }}
+.vela-fp.fail .vela-fp-disc {{ background: alpha({bad}, 0.18); box-shadow: inset 0 0 0 2px {bad}; }}
+.vela-fp.fail .vela-fp-stage {{ animation: vela-fp-shake 700ms ease-in-out; }}
+.vela-fp.in {{ animation: vela-fp-in 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }}
+.vela-fp.out {{ animation: vela-fp-out 400ms ease-in both; }}
+@keyframes vela-fp-breathe {{ 0% {{ transform: scale(1); box-shadow: inset 0 0 0 1px alpha({accent}, 0.30), 0 0 0 alpha({accent}, 0); }} 50% {{ transform: scale(1.03); box-shadow: inset 0 0 0 1px alpha({accent}, 0.60), 0 0 22px alpha({accent}, 0.28); }} 100% {{ transform: scale(1); box-shadow: inset 0 0 0 1px alpha({accent}, 0.30), 0 0 0 alpha({accent}, 0); }} }}
+@keyframes vela-fp-pop {{ 0% {{ transform: scale(0.92); }} 55% {{ transform: scale(1.06); }} 100% {{ transform: scale(1); }} }}
+@keyframes vela-fp-shake {{ 0% {{ transform: translateX(0); }} 20% {{ transform: translateX(-6px); }} 40% {{ transform: translateX(5px); }} 60% {{ transform: translateX(-3px); }} 80% {{ transform: translateX(2px); }} 100% {{ transform: translateX(0); }} }}
+@keyframes vela-fp-in {{ from {{ opacity: 0; transform: translateY(10px) scale(0.94); }} to {{ opacity: 1; transform: none; }} }}
+@keyframes vela-fp-out {{ from {{ opacity: 1; transform: none; }} to {{ opacity: 0; transform: scale(0.96); }} }}
+"#
+    );
+    if !a.animations {
+        // Every animation rule is a line of its own.
+        css = css.lines().filter(|l| !l.contains("animation")).collect::<Vec<_>>().join("\n");
+        css += "\n.vela-fp { animation: none; }\n";
+    }
+    css
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::Theme;
+
+    #[test]
+    fn fingerprint_css_follows_the_theme() {
+        let mut cfg = Config::default();
+        cfg.appearance.accent = "#12ab34".into();
+        cfg.appearance.border_radius = 30;
+        let css = fingerprint_css(&cfg);
+        for needle in [
+            "@keyframes vela-fp-breathe",
+            "@keyframes vela-fp-shake",
+            "@keyframes vela-fp-pop",
+            "@keyframes vela-fp-in",
+            "#12ab34",
+            "border-radius: 30px",
+        ] {
+            assert!(css.contains(needle), "{needle} missing");
+        }
+        let opens = css.matches('{').count();
+        assert_eq!(opens, css.matches('}').count(), "balanced braces");
+        cfg.appearance.animations = false;
+        assert!(fingerprint_css(&cfg).contains("animation: none"), "animations off");
+    }
 
     #[test]
     fn css_reflects_config() {

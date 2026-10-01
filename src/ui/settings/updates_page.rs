@@ -373,6 +373,11 @@ pub fn build(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
                 None => {
                     let (i, n, title) = &run.step;
                     let step = if *n > 1 { format!("Step {} of {n} · {title}", i + 1) } else { title.clone() };
+                    let step = if s.status.fingerprint {
+                        format!("{step} · touch the fingerprint reader")
+                    } else {
+                        step
+                    };
                     run_row.set_subtitle(&glib::markup_escape_text(&step));
                     error_row.set_visible(false);
                     claude_row.set_visible(false);
