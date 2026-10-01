@@ -19,8 +19,9 @@ mkdir -p "$tmp/bin"
 printf '#!/bin/sh\necho "zlib 1-1 -> 1-2"\n' >"$tmp/bin/checkupdates"
 printf '#!/bin/sh\n[ "$1" = -A ] && shift\nexec "$@"\n' >"$tmp/bin/sudo"
 printf '#!/bin/sh\necho "fake pacman $*"\n' >"$tmp/bin/pacman"
+printf '#!/bin/sh\n' >"$tmp/bin/askpass"
 chmod +x "$tmp/bin/"*
-export PATH="$tmp/bin:$PATH" VELA_UPDATES_RUN=full
+export PATH="$tmp/bin:$PATH" VELA_UPDATES_RUN=full SUDO_ASKPASS="$tmp/bin/askpass"
 weston_pid=""
 cleanup() {
     [[ -n "${daemon_pid:-}" ]] && kill "$daemon_pid" 2>/dev/null || true

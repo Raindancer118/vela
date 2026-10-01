@@ -1,6 +1,6 @@
 # Maintainer: Raindancer118 <tom560stieh@gmail.com>
 pkgname=vela
-pkgver=0.33.0
+pkgver=0.33.1
 pkgrel=1
 pkgdesc="Spotlight-style application launcher for Hyprland with file search and Claude Code integration"
 arch=('x86_64' 'aarch64')

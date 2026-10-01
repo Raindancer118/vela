@@ -1,6 +1,6 @@
 //! "Touch the fingerprint reader" while an update waits for sudo
 //! (pam_fprintd prints its request into the log, nobody would see it).
-//! A small overlay in the middle of the launcher's monitor that never takes
+//! A small overlay in the middle of the focused monitor that never takes
 //! the keyboard. The fingerprint icon breathes slowly while it waits; a check
 //! mark or a red shake ends it before it fades out.
 
@@ -95,16 +95,13 @@ impl FingerprintPrompt {
         self.title.set_label("Touch the fingerprint reader");
         self.detail.set_label(request.trim());
         if gtk4_layer_shell::is_supported() {
-            // Where the launcher would open (main monitor, else the focused one).
+            // Where the user is right now, not the launcher's main monitor.
             let monitors: Vec<gdk::Monitor> = gdk::Display::default()
                 .map(|d| d.monitors())
                 .map(|l| (0..l.n_items()).filter_map(|i| l.item(i).and_downcast::<gdk::Monitor>()).collect())
                 .unwrap_or_default();
-            let main = self.store.get().general.main_monitor.clone();
-            let name = crate::hyprland::resolve_monitor(&main, &crate::hyprland::monitors())
-                .map(str::to_owned)
-                .or_else(crate::hyprland::focused_monitor);
-            let monitor = name.and_then(|n| monitors.into_iter().find(|m| m.connector().is_some_and(|c| c == n)));
+            let monitor = crate::hyprland::focused_monitor().and_then(|n| monitors.into_iter().find(|m| m.connector().is_some_and(|c| c == n)));
+            log::info!("updates: fingerprint prompt on {:?}", monitor.as_ref().and_then(|m| m.connector()));
             self.window.set_monitor(monitor.as_ref());
         }
         let was_visible = self.window.is_visible();
@@ -123,6 +120,7 @@ impl FingerprintPrompt {
         if !self.window.is_visible() {
             return;
         }
+        log::info!("updates: fingerprint {}", if ok { "accepted" } else { "not accepted" });
         if ok {
             self.set_state("ok", "object-select-symbolic");
             self.title.set_label("Fingerprint accepted");
