@@ -17,6 +17,9 @@ const BUNDLED: &[(&str, &str)] = &[
     ("vela-layouts-symbolic.svg", include_str!("../../data/icons/vela-layouts-symbolic.svg")),
     ("vela-behaviour-symbolic.svg", include_str!("../../data/icons/vela-behaviour-symbolic.svg")),
     ("vela-monitors-symbolic.svg", include_str!("../../data/icons/vela-monitors-symbolic.svg")),
+    ("vela-shortcuts-symbolic.svg", include_str!("../../data/icons/vela-shortcuts-symbolic.svg")),
+    ("vela-rules-symbolic.svg", include_str!("../../data/icons/vela-rules-symbolic.svg")),
+    ("vela-autostart-symbolic.svg", include_str!("../../data/icons/vela-autostart-symbolic.svg")),
     ("vela-all-options-symbolic.svg", include_str!("../../data/icons/vela-all-options-symbolic.svg")),
 ];
 

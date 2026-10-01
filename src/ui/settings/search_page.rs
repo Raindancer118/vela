@@ -248,6 +248,14 @@ impl Search {
         self.entry.grab_focus();
     }
 
+    /// Empty search field (puts borrowed rows back).
+    pub fn clear(&self) {
+        if !self.entry.text().is_empty() {
+            self.entry.set_text("");
+        }
+        self.restore();
+    }
+
     fn index(&self) {
         if self.items.borrow().is_some() {
             return;

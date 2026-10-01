@@ -4,6 +4,7 @@
 
 mod apps_page;
 mod binder;
+mod hypr_extras;
 mod hypr_monitors;
 mod hypr_pages;
 mod hypr_rows;
@@ -18,7 +19,7 @@ use gtk::{gdk, glib};
 use std::rc::Rc;
 
 /// Sidebar entries: (section, page id, title, icon). Ids are `SETTINGS_PAGES`.
-const ENTRIES: [(&str, &str, &str, &str); 18] = [
+const ENTRIES: [(&str, &str, &str, &str); 21] = [
     ("", "home", "Search", "system-search-symbolic"),
     ("Launcher", "general", "Launcher", "system-search-symbolic"),
     ("Launcher", "apps", "Applications", "view-grid-symbolic"),
@@ -32,6 +33,9 @@ const ENTRIES: [(&str, &str, &str, &str); 18] = [
     ("Hyprland", "hypr-animations", "Animations", "vela-animations-symbolic"),
     ("Hyprland", "hypr-input", "Input", "input-keyboard-symbolic"),
     ("Hyprland", "hypr-monitors", "Monitors", "vela-monitors-symbolic"),
+    ("Hyprland", "hypr-shortcuts", "Shortcuts", "vela-shortcuts-symbolic"),
+    ("Hyprland", "hypr-rules", "Window rules", "vela-rules-symbolic"),
+    ("Hyprland", "hypr-autostart", "Autostart", "vela-autostart-symbolic"),
     ("Hyprland", "hypr-layouts", "Layouts", "vela-layouts-symbolic"),
     ("Hyprland", "hypr-behaviour", "Behaviour", "vela-behaviour-symbolic"),
     ("Hyprland", "hypr-all", "All options", "vela-all-options-symbolic"),
@@ -42,6 +46,7 @@ const ENTRIES: [(&str, &str, &str, &str); 18] = [
 pub struct SettingsWindow {
     window: adw::ApplicationWindow,
     sidebar: gtk::ListBox,
+    home: Rc<search_page::Search>,
 }
 
 fn sidebar_row(title: &str, icon: &str) -> gtk::ListBoxRow {
@@ -88,6 +93,9 @@ impl SettingsWindow {
                 "hypr-animations" => hypr_pages::animations(&hypr).upcast(),
                 "hypr-input" => hypr_pages::input(&hypr).upcast(),
                 "hypr-monitors" => hypr_monitors::monitors(&hypr).upcast(),
+                "hypr-shortcuts" => hypr_extras::shortcuts(&hypr).upcast(),
+                "hypr-rules" => hypr_extras::window_rules(&hypr).upcast(),
+                "hypr-autostart" => hypr_extras::autostart(&hypr).upcast(),
                 "hypr-layouts" => hypr_pages::layouts(&hypr).upcast(),
                 "hypr-behaviour" => hypr_pages::behaviour(&hypr).upcast(),
                 "hypr-all" => {
@@ -283,12 +291,16 @@ impl SettingsWindow {
         let b = binder.clone();
         daemon.store.subscribe_replace(move |cfg| b.refresh(cfg));
 
-        Rc::new(SettingsWindow { window, sidebar })
+        Rc::new(SettingsWindow { window, sidebar, home })
     }
 
     pub fn show_page(&self, name: &str) {
         if let Some(i) = ENTRIES.iter().position(|(_, id, _, _)| *id == name) {
             self.sidebar.select_row(self.sidebar.row_at_index(i as i32).as_ref());
+        }
+        if name == "home" {
+            self.home.clear();
+            self.home.focus();
         }
     }
 

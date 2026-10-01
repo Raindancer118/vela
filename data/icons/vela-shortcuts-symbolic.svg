@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <g fill="#222"><path d="M2.5 3h11A1.5 1.5 0 0 1 15 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 11.5v-7A1.5 1.5 0 0 1 2.5 3zm0 1.25a.25.25 0 0 0-.25.25v7c0 .14.11.25.25.25h11a.25.25 0 0 0 .25-.25v-7a.25.25 0 0 0-.25-.25z"/><rect x="3.5" y="5.5" width="2" height="2" rx=".5"/><rect x="7" y="5.5" width="2" height="2" rx=".5"/><rect x="10.5" y="5.5" width="2" height="2" rx=".5"/><rect x="5" y="9" width="6" height="1.6" rx=".5"/></g>
+</svg>

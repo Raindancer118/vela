@@ -439,6 +439,8 @@ pub struct Overrides {
     pub animations: BTreeMap<String, crate::hypranim::Anim>,
     /// Full `hl.monitor` rules by output (`desc:…` or connector).
     pub monitors: BTreeMap<String, crate::hyprmon::MonitorRule>,
+    /// Shortcuts, switched-off binds, window rules, autostart.
+    pub extras: crate::hyprextra::Extras,
     pub remember: BTreeMap<String, i64>,
 }
 
@@ -479,6 +481,7 @@ impl Overrides {
                 }
             }
         }
+        o.extras = crate::hyprextra::Extras::read(&table);
         if let Some(rem) = table.get("remember").and_then(|v| v.as_table()) {
             for (k, v) in rem {
                 if let Some(i) = v.as_integer() {
@@ -501,6 +504,7 @@ impl Overrides {
             let mons: toml::Table = self.monitors.iter().map(|(k, r)| (k.clone(), r.to_toml())).collect();
             table.insert("monitors".into(), toml::Value::Table(mons));
         }
+        self.extras.write(&mut table);
         if !self.remember.is_empty() {
             let rem: toml::Table = self.remember.iter().map(|(k, v)| (k.clone(), toml::Value::Integer(*v))).collect();
             table.insert("remember".into(), toml::Value::Table(rem));
@@ -530,6 +534,7 @@ impl Overrides {
         for rule in self.monitors.values() {
             let _ = writeln!(out, "try(hl.monitor, {})", rule.to_lua());
         }
+        out.push_str(&self.extras.lua());
         out
     }
 }
@@ -869,6 +874,11 @@ mod tests {
         );
         o.options.insert("decoration:shadow:offset".into(), Value::Vec2([1.0, 2.0]));
         o.remember.insert("edge_gap".into(), 12);
+        o.extras.unbind.push("SUPER + M".into());
+        o.extras.autostart.push(crate::hyprextra::Autostart {
+            command: "nm-applet".into(),
+            enabled: true,
+        });
         o.monitors.insert(
             "desc:HP Inc. HP E243i".into(),
             crate::hyprmon::MonitorRule {

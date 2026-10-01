@@ -10,6 +10,7 @@ pub mod config;
 pub mod history;
 pub mod hypranim;
 pub mod hyprconf;
+pub mod hyprextra;
 pub mod hyprland;
 pub mod hyprmon;
 pub mod idle;

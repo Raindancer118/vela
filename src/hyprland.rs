@@ -194,6 +194,52 @@ pub fn reload_all() -> bool {
     request_timeout("reload", 5000).is_some_and(|r| r.trim() == "ok")
 }
 
+/// A shortcut Hyprland knows (from hyprland.lua or vela).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Bind {
+    pub combo: String,
+    pub description: String,
+    pub mouse: bool,
+    pub submap: String,
+}
+
+pub fn parse_binds(json: &str) -> Vec<Bind> {
+    let Ok(list) = serde_json::from_str::<Vec<serde_json::Value>>(json) else {
+        return Vec::new();
+    };
+    list.iter()
+        .filter_map(|b| {
+            let key = b.get("key")?.as_str()?;
+            let mask = b.get("modmask").and_then(|m| m.as_u64()).unwrap_or(0) as u32;
+            Some(Bind {
+                combo: crate::hyprextra::combo_from_mask(mask, key),
+                description: b.get("description").and_then(|d| d.as_str()).unwrap_or_default().to_owned(),
+                mouse: b.get("mouse").and_then(|m| m.as_bool()).unwrap_or(false),
+                submap: b.get("submap").and_then(|d| d.as_str()).unwrap_or_default().to_owned(),
+            })
+        })
+        .filter(|b| !b.combo.is_empty())
+        .collect()
+}
+
+pub fn binds() -> Option<Vec<Bind>> {
+    Some(parse_binds(&request_timeout("j/binds", 1000)?))
+}
+
+/// Window classes and titles that are open now (to build a rule from).
+pub fn open_windows() -> Vec<(String, String)> {
+    let Some(json) = request_timeout("j/clients", 1000) else { return Vec::new() };
+    let list: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap_or_default();
+    let mut out: Vec<(String, String)> = list
+        .iter()
+        .filter_map(|c| Some((c.get("class")?.as_str()?.to_owned(), c.get("title")?.as_str()?.to_owned())))
+        .filter(|(c, _)| !c.is_empty())
+        .collect();
+    out.sort();
+    out.dedup_by(|a, b| a.0 == b.0);
+    out
+}
+
 /// Current value of one option.
 pub fn option_value(info: &crate::hyprconf::OptionInfo) -> Option<crate::hyprconf::Value> {
     let out = request(&format!("j/getoption {}", info.name))?;
@@ -205,6 +251,17 @@ pub fn option_value(info: &crate::hyprconf::OptionInfo) -> Option<crate::hyprcon
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binds_read_as_combos() {
+        let json = r#"[{"modmask":65,"key":"Q","mouse":false,"submap":"","description":""},
+                       {"modmask":64,"key":"mouse:272","mouse":true,"submap":"","description":"drag"}]"#;
+        let b = parse_binds(json);
+        assert_eq!(b[0].combo, "SUPER + SHIFT + Q");
+        assert!(b[1].mouse);
+        assert_eq!(b[1].combo, "SUPER + mouse:272");
+        assert!(parse_binds("x").is_empty());
+    }
 
     #[test]
     fn parses_focused_monitor() {
@@ -330,5 +387,74 @@ mod live {
             rule.vrr = Some(0);
             super::eval(&[rule.eval_code()]).unwrap_or_else(|e| panic!("{}: {e}", rule.eval_code()));
         }
+    }
+
+    #[test]
+    #[ignore]
+    fn live_every_shortcut_action_and_rule_effect_is_accepted() {
+        use crate::hyprextra::{self, Arg, EffectKind, Shortcut, WindowRule};
+        const KEYS: &str = "SUPER + CTRL + ALT + SHIFT + F24";
+        for a in hyprextra::ACTIONS {
+            let arg = match a.arg {
+                Arg::None => "",
+                Arg::Direction => "left",
+                Arg::Monitor => "+1",
+                Arg::Text(_) if a.id == "workspace" || a.id == "movetoworkspace" => "3",
+                Arg::Text(_) if a.id == "lua" => "hl.dsp.window.center()",
+                Arg::Text(_) => "true",
+            };
+            let s = Shortcut {
+                keys: KEYS.into(),
+                action: a.id.into(),
+                arg: arg.into(),
+                repeat: true,
+                locked: true,
+                description: String::new(),
+                enabled: true,
+            };
+            let bind = format!("hl.bind({})", s.bind_lua().expect(a.id));
+            super::eval(std::slice::from_ref(&bind)).unwrap_or_else(|e| panic!("{bind}: {e}"));
+            let bound = super::binds().unwrap().iter().any(|b| b.combo == KEYS && b.description.starts_with("vela: "));
+            super::eval(&[format!("hl.unbind(\"{KEYS}\")")]).unwrap();
+            assert!(bound, "{} was not bound", a.id);
+        }
+        for (key, _, kind) in hyprextra::EFFECTS {
+            let value: toml::Value = match kind {
+                EffectKind::Bool => true.into(),
+                EffectKind::Int => 0.into(),
+                EffectKind::Float => 0.9.into(),
+                EffectKind::Text if *key == "idle_inhibit" => "fullscreen".into(),
+                EffectKind::Text if *key == "workspace" => "3 silent".into(),
+                EffectKind::Text if *key == "monitor" => "0".into(),
+                EffectKind::Text => "800 600".into(),
+            };
+            let r = WindowRule {
+                name: "live-test".into(),
+                enabled: true,
+                class: "^vela-live-test-nonexistent$".into(),
+                title: String::new(),
+                effects: vec![((*key).into(), value)],
+            };
+            let code = format!("local r = hl.window_rule({}) r:set_enabled(false)", r.lua().unwrap());
+            super::eval(std::slice::from_ref(&code)).unwrap_or_else(|e| panic!("{code}: {e}"));
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn live_recording_submap_enters_and_always_leaves() {
+        super::eval(&crate::hyprextra::record_start_lua()).expect("enter");
+        let out = std::env::temp_dir().join(format!("vela-submap-{}", std::process::id()));
+        let probe = |p: &std::path::Path| {
+            super::eval(&[format!("hl.exec_cmd(\"echo \" .. tostring(hl.get_current_submap()) .. \" > {}\")", p.display())]).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            std::fs::read_to_string(p).unwrap_or_default().trim().to_owned()
+        };
+        let inside = probe(&out);
+        super::eval(&[crate::hyprextra::RECORD_STOP_LUA.to_owned()]).expect("leave");
+        let after = probe(&out);
+        let _ = std::fs::remove_file(&out);
+        assert_eq!(inside, crate::hyprextra::RECORD_SUBMAP);
+        assert_eq!(after, "");
     }
 }

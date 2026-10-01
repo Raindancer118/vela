@@ -100,7 +100,13 @@ impl HyprStore {
             log::error!("cannot write {}: {e:#}", self.0.lua_path.display());
             return;
         }
-        let code = format!("dofile({})", crate::hyprconf::lua_string(&self.0.lua_path.to_string_lossy()));
+        // Only the file vela.lua itself loads: a vela started with another
+        // XDG_STATE_HOME (tests) must not change the running Hyprland.
+        let code = format!(
+            "local s = os.getenv(\"XDG_STATE_HOME\") if not s or s == \"\" then s = os.getenv(\"HOME\") .. \"/.local/state\" end \
+             local p = {} if s .. \"/vela/hyprland.lua\" == p then dofile(p) end",
+            crate::hyprconf::lua_string(&self.0.lua_path.to_string_lossy())
+        );
         if let Err(e) = hyprland::eval(&[code]) {
             log::info!("hyprland overrides not applied now: {e}");
         }
@@ -203,6 +209,36 @@ impl HyprStore {
             this.refresh_monitors();
         });
         *self.0.monitor_refresh.borrow_mut() = Some(id);
+    }
+
+    pub fn extras(&self) -> crate::hyprextra::Extras {
+        self.0.overrides.borrow().extras.clone()
+    }
+
+    /// Shortcuts, rules and autostart: saved, then Hyprland reloads its
+    /// config (removing a bind or rule needs that anyway).
+    pub fn set_extras(&self, e: crate::hyprextra::Extras) {
+        if self.0.overrides.borrow().extras == e {
+            return;
+        }
+        self.0.overrides.borrow_mut().extras = e;
+        self.save_now();
+        if hyprland::reload_config() {
+            self.set_error(None);
+        } else {
+            self.set_error(Some("Hyprland did not reload its config"));
+        }
+        self.notify(Some("extras:*"));
+    }
+
+    /// Every shortcut Hyprland has now.
+    pub fn binds(&self) -> Vec<hyprland::Bind> {
+        hyprland::binds().unwrap_or_default()
+    }
+
+    /// Runs a command the way Hyprland's autostart would.
+    pub fn run_command(&self, cmd: &str) -> Result<(), String> {
+        hyprland::eval(&[format!("hl.exec_cmd({})", crate::hyprconf::lua_string(cmd))])
     }
 
     /// What an animation does now (its own settings or inherited ones).

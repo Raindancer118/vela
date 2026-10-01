@@ -5,6 +5,7 @@
 
 use crate::hypranim::{self, Anim};
 use crate::hyprconf::{self, Overrides};
+use crate::hyprextra;
 use crate::hyprmon::{self, MonitorRule};
 use crate::{config, hyprland, ipc, paths};
 use serde_json::{Value as J, json};
@@ -141,6 +142,67 @@ fn tools() -> J {
             &["monitor"],
         ),
         tool(
+            "list_shortcuts",
+            "Shortcuts: the ones added in vela (with action) and the key combos bound in hyprland.lua (what those do isn't visible), plus combos vela switched off.",
+            json!({}),
+            &[],
+        ),
+        tool(
+            "set_shortcut",
+            "Add or change a vela shortcut (keys like \"SUPER + SHIFT + B\"). It replaces a hyprland.lua shortcut on the same keys. Actions: exec (arg: command), close, kill, float, fullscreen, maximize, pin, center, pseudo, togglesplit, group, cycle, focus/move (arg: left|right|up|down), workspace/movetoworkspace (arg: workspace), special (arg: name), focusmonitor/movetomonitor (arg: +1, -1 or connector), global (arg: name), exit, lua (arg: hl.dsp expression).",
+            json!({
+                "keys": { "type": "string" },
+                "action": { "type": "string" },
+                "arg": { "type": "string" },
+                "repeat": { "type": "boolean" },
+                "locked": { "type": "boolean", "description": "Also on the lock screen" },
+                "description": { "type": "string" },
+                "enabled": { "type": "boolean" }
+            }),
+            &["keys", "action"],
+        ),
+        tool(
+            "remove_shortcut",
+            "Remove a vela shortcut, or with switch_off_hyprland_lua switch off (or with false back on) a shortcut from hyprland.lua.",
+            json!({ "keys": { "type": "string" }, "switch_off_hyprland_lua": { "type": "boolean" } }),
+            &["keys"],
+        ),
+        tool(
+            "list_window_rules",
+            "vela's window rules and the effects they can use. Also lists open windows' classes to match on.",
+            json!({}),
+            &[],
+        ),
+        tool(
+            "set_window_rule",
+            "Add or replace (by name) a window rule. class/title are regexes (\"^firefox$\"). effects: e.g. {\"float\": true, \"size\": \"900 600\", \"workspace\": \"3 silent\", \"opacity\": 0.9}.",
+            json!({
+                "name": { "type": "string", "description": "Optional; made from the class" },
+                "class": { "type": "string" },
+                "title": { "type": "string" },
+                "effects": { "type": "object", "additionalProperties": true },
+                "enabled": { "type": "boolean" }
+            }),
+            &["effects"],
+        ),
+        tool(
+            "remove_window_rule",
+            "Remove a vela window rule by name.",
+            json!({ "name": { "type": "string" } }),
+            &["name"]
+        ),
+        tool(
+            "set_autostart",
+            "Add a command started with Hyprland, switch it on/off (enabled) or remove it. run_now also starts it right away.",
+            json!({
+                "command": { "type": "string" },
+                "enabled": { "type": "boolean" },
+                "remove": { "type": "boolean" },
+                "run_now": { "type": "boolean" }
+            }),
+            &["command"],
+        ),
+        tool(
             "get_vela_settings",
             "vela's own settings (launcher, control center, appearance) as TOML.",
             json!({}),
@@ -175,6 +237,16 @@ fn save(o: &Overrides) -> Result<(), String> {
     config::write_atomic(&paths::hypr_lua_file(), &o.to_lua())
         .and_then(|()| config::write_atomic(&paths::hypr_overrides_file(), &o.to_toml()))
         .map_err(|e| format!("saving failed: {e:#}"))
+}
+
+/// Binds and rules can only be removed by reloading Hyprland's config.
+fn save_and_reload(o: &Overrides) -> Result<(), String> {
+    save(o)?;
+    if hyprland::reload_config() {
+        Ok(())
+    } else {
+        Err("saved, but Hyprland did not reload its config".into())
+    }
 }
 
 fn pretty(v: &J) -> String {
@@ -396,6 +468,157 @@ pub fn call(name: &str, args: &J) -> Result<String, String> {
             save(&overrides)?;
             Ok(format!("{name}: {}", rule.to_lua()))
         }
+        "list_shortcuts" => {
+            let o = load()?;
+            let binds = hyprland::binds().unwrap_or_default();
+            let mine: Vec<J> = o
+                .extras
+                .shortcuts
+                .iter()
+                .map(|s| json!({ "keys": s.keys, "action": s.action, "arg": s.arg, "does": s.summary(), "enabled": s.enabled, "repeat": s.repeat, "locked": s.locked }))
+                .collect();
+            let mut theirs: Vec<String> = binds
+                .iter()
+                .filter(|b| b.submap.is_empty() && !b.description.starts_with("vela: "))
+                .map(|b| {
+                    if b.description.is_empty() {
+                        b.combo.clone()
+                    } else {
+                        format!("{} ({})", b.combo, b.description)
+                    }
+                })
+                .collect();
+            theirs.dedup();
+            Ok(pretty(&json!({ "vela": mine, "hyprland_lua": theirs, "switched_off": o.extras.unbind })))
+        }
+        "set_shortcut" => {
+            let keys = s("keys").and_then(hyprextra::normalize).ok_or("keys like \"SUPER + B\" are required")?;
+            let action = s("action").ok_or("action is required")?;
+            let def = hyprextra::action(action).ok_or_else(|| format!("unknown action {action}"))?;
+            let b = |k: &str| args.get(k).and_then(|v| v.as_bool());
+            let new = hyprextra::Shortcut {
+                keys: keys.clone(),
+                action: def.id.into(),
+                arg: s("arg").unwrap_or_default().to_owned(),
+                repeat: b("repeat").unwrap_or(false),
+                locked: b("locked").unwrap_or(false),
+                description: s("description").unwrap_or_default().to_owned(),
+                enabled: b("enabled").unwrap_or(true),
+            };
+            let bind = new.bind_lua().ok_or_else(|| format!("{} needs an arg", def.id))?;
+            // Hyprland checks the dispatcher before anything is saved.
+            hyprland::eval(&[format!("local _ = {}", new.dispatcher_lua().unwrap_or_default())]).map_err(|e| format!("Hyprland refused it: {e}"))?;
+            let mut o = load()?;
+            match o.extras.shortcuts.iter().position(|x| hyprextra::same_combo(&x.keys, &keys)) {
+                Some(i) => o.extras.shortcuts[i] = new,
+                None => o.extras.shortcuts.push(new),
+            }
+            save_and_reload(&o)?;
+            Ok(format!("hl.bind({bind})"))
+        }
+        "remove_shortcut" => {
+            let keys = s("keys").and_then(hyprextra::normalize).ok_or("keys are required")?;
+            let mut o = load()?;
+            let msg = if let Some(off) = args.get("switch_off_hyprland_lua").and_then(|v| v.as_bool()) {
+                o.extras.unbind.retain(|u| !hyprextra::same_combo(u, &keys));
+                if off {
+                    o.extras.unbind.push(keys.clone());
+                    format!("{keys} from hyprland.lua is switched off")
+                } else {
+                    format!("{keys} from hyprland.lua is on again")
+                }
+            } else {
+                let before = o.extras.shortcuts.len();
+                o.extras.shortcuts.retain(|x| !hyprextra::same_combo(&x.keys, &keys));
+                if before == o.extras.shortcuts.len() {
+                    return Err(format!("no vela shortcut on {keys}"));
+                }
+                format!("removed {keys}")
+            };
+            save_and_reload(&o)?;
+            Ok(msg)
+        }
+        "list_window_rules" => {
+            let o = load()?;
+            let rules: Vec<J> = o
+                .extras
+                .rules
+                .iter()
+                .map(|r| json!({ "name": r.name, "class": r.class, "title": r.title, "enabled": r.enabled, "effects": r.effects.iter().cloned().collect::<toml::Table>() }))
+                .collect();
+            let effects: Vec<J> = hyprextra::EFFECTS.iter().map(|(k, l, _)| json!({ "effect": k, "means": l })).collect();
+            let open: Vec<J> = hyprland::open_windows().into_iter().map(|(c, t)| json!({ "class": c, "title": t })).collect();
+            Ok(pretty(&json!({ "rules": rules, "effects": effects, "open_windows": open })))
+        }
+        "set_window_rule" => {
+            let class = s("class").unwrap_or_default().to_owned();
+            let title = s("title").unwrap_or_default().to_owned();
+            let mut effects = Vec::new();
+            for (k, v) in args.get("effects").and_then(|e| e.as_object()).ok_or("effects must be an object")? {
+                let (_, _, kind) = hyprextra::effect(k).ok_or_else(|| format!("unknown effect {k}"))?;
+                let tv: toml::Value = match kind {
+                    hyprextra::EffectKind::Bool => v.as_bool().ok_or_else(|| format!("{k} expects true/false"))?.into(),
+                    hyprextra::EffectKind::Int => v.as_i64().ok_or_else(|| format!("{k} expects an integer"))?.into(),
+                    hyprextra::EffectKind::Float => v.as_f64().ok_or_else(|| format!("{k} expects a number"))?.into(),
+                    hyprextra::EffectKind::Text => v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string()).into(),
+                };
+                effects.push((k.clone(), tv));
+            }
+            effects.sort_by_key(|(k, _)| hyprextra::EFFECTS.iter().position(|(e, _, _)| e == k));
+            let name = s("name")
+                .map(hyprextra::rule_name)
+                .unwrap_or_else(|| hyprextra::rule_name(&hyprextra::plain_regex(if class.is_empty() { &title } else { &class })));
+            let rule = hyprextra::WindowRule {
+                name: name.clone(),
+                enabled: args.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true),
+                class,
+                title,
+                effects,
+            };
+            let lua = rule.lua().ok_or("a rule needs a class or title and at least one effect")?;
+            // Checked with a rule that is switched off right away.
+            hyprland::eval(&[format!("local r = hl.window_rule({lua}) r:set_enabled(false)")]).map_err(|e| format!("Hyprland refused it: {e}"))?;
+            let mut o = load()?;
+            match o.extras.rules.iter().position(|r| r.name == name) {
+                Some(i) => o.extras.rules[i] = rule,
+                None => o.extras.rules.push(rule),
+            }
+            save_and_reload(&o)?;
+            Ok(format!("hl.window_rule({lua})"))
+        }
+        "remove_window_rule" => {
+            let name = s("name").ok_or("name is required")?;
+            let mut o = load()?;
+            let before = o.extras.rules.len();
+            o.extras.rules.retain(|r| r.name != name && format!("vela-{}", r.name) != name);
+            if before == o.extras.rules.len() {
+                return Err(format!("no vela rule named {name}"));
+            }
+            save_and_reload(&o)?;
+            Ok(format!("removed {name}"))
+        }
+        "set_autostart" => {
+            let cmd = s("command").map(str::trim).filter(|c| !c.is_empty()).ok_or("command is required")?.to_owned();
+            let mut o = load()?;
+            let i = o.extras.autostart.iter().position(|a| a.command == cmd);
+            let msg = if args.get("remove").and_then(|v| v.as_bool()) == Some(true) {
+                let i = i.ok_or_else(|| format!("{cmd} isn't in vela's autostart"))?;
+                o.extras.autostart.remove(i);
+                format!("removed {cmd}")
+            } else {
+                let enabled = args.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+                match i {
+                    Some(i) => o.extras.autostart[i].enabled = enabled,
+                    None => o.extras.autostart.push(hyprextra::Autostart { command: cmd.clone(), enabled }),
+                }
+                format!("{cmd}: {}", if enabled { "starts with Hyprland" } else { "switched off" })
+            };
+            save_and_reload(&o)?;
+            if args.get("run_now").and_then(|v| v.as_bool()) == Some(true) {
+                hyprland::eval(&[format!("hl.exec_cmd({})", hyprconf::lua_string(&cmd))]).map_err(|e| format!("saved, but starting failed: {e}"))?;
+            }
+            Ok(msg)
+        }
         "get_vela_settings" => std::fs::read_to_string(paths::config_file()).map_err(|e| format!("cannot read config: {e}")),
         "set_vela_setting" => {
             let (path, value) = (s("path").ok_or("path is required")?, s("value").ok_or("value is required")?);
@@ -438,6 +661,8 @@ mod tests {
             .collect();
         assert!(names.contains(&"set_hyprland_options"));
         assert!(names.contains(&"set_monitor"));
+        assert!(names.contains(&"set_shortcut"));
+        assert!(names.contains(&"set_window_rule"));
         for t in list["result"]["tools"].as_array().unwrap() {
             assert_eq!(t["inputSchema"]["type"], "object", "{}", t["name"]);
         }

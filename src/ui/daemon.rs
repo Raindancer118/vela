@@ -425,9 +425,8 @@ impl Daemon {
                 w
             }
         };
-        if let Some(page) = page {
-            win.show_page(page);
-        }
+        // Without a page always the search, also when the window was only hidden.
+        win.show_page(page.unwrap_or("home"));
         win.present();
     }
 }
