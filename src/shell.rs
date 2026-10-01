@@ -67,6 +67,12 @@ fn system_font() -> String {
 
 /// One JSON line with everything the control center needs.
 pub fn shell_json(cfg: &Config) -> String {
+    shell_json_for(cfg, crate::components::installed())
+}
+
+/// `shell_json` for a given selection: tiles of what isn't installed stay off.
+pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) -> String {
+    use crate::components::Component;
     let a = &cfg.appearance;
     let p = palette(a.theme);
     let accent: Rgb = parse_hex(&a.accent).unwrap_or((0x7a, 0xa2, 0xf7));
@@ -121,11 +127,11 @@ pub fn shell_json(cfg: &Config) -> String {
             "workspaceOsd": pn.workspace_osd,
             "nightLightTemperature": pn.night_light_temperature,
             "clockCentered": pn.clock_centered,
-            "claudeUsage": pn.claude_usage,
+            "claudeUsage": pn.claude_usage && installed.has(Component::Claude),
             "claudeUsageSubtle": pn.claude_usage_subtle,
             "claudeUsageOnlyDefault": pn.claude_usage_only_default,
             "claudeUsageHidden": pn.claude_usage_hidden,
-            "updatesTile": pn.updates_tile,
+            "updatesTile": pn.updates_tile && installed.has(Component::Updates),
         },
     })
     .to_string()
@@ -234,6 +240,17 @@ mod tests {
     #[test]
     fn is_a_single_line() {
         assert!(!shell_json(&Config::default()).contains('\n'), "one line per update for the SplitParser");
+    }
+
+    #[test]
+    fn tiles_of_missing_components_stay_hidden() {
+        use crate::components::{Component, Installed};
+        let j: Value = serde_json::from_str(&shell_json_for(&Config::default(), &Installed::only(&[Component::Panel]))).unwrap();
+        assert_eq!(j["panel"]["claudeUsage"], false);
+        assert_eq!(j["panel"]["updatesTile"], false);
+        let j: Value = serde_json::from_str(&shell_json_for(&Config::default(), &Installed::all())).unwrap();
+        assert_eq!(j["panel"]["claudeUsage"], true);
+        assert_eq!(j["panel"]["updatesTile"], true);
     }
 
     #[test]

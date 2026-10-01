@@ -23,6 +23,8 @@ rm -f "$PREFIX/bin/vela" "$PREFIX/bin/vela-daemon" "$PREFIX/bin/vela-share-picke
     "$CONFDIR/systemd/user/vela.service" \
     "$HYPRDIR/vela.lua"
 rm -rf "$DATADIR/vela/shell"
+rm -f "$DATADIR/vela/components.toml"
+rmdir "$DATADIR/vela" 2>/dev/null || true
 if command -v claude >/dev/null; then
     env -u CLAUDE_CONFIG_DIR claude mcp remove --scope user vela >/dev/null 2>&1 || true
     for d in "$HOME"/.claude-accounts/*/; do

@@ -1,0 +1,18 @@
+# Selectable parts of vela. install.sh offers them, vela compiles this file in
+# (src/components.rs) and hides what isn't installed.
+#
+#   profile   <name> <description>
+#   component <id> <profiles, comma-separated> <description>
+#
+# The core (vela, vela-daemon, Settings, Appearance) is always installed.
+profile   full      Full suite: everything vela has
+profile   minimal   Just the launcher
+profile   launcher  Launcher with Claude Code, Hyprland settings and updates
+profile   panel     Control center with notifications, idle and screen sharing, no launcher
+component launcher      full,minimal,launcher        Launcher: tap Super to search apps and files
+component claude        full,launcher                Claude Code: Ask Claude, vela MCP server, usage in the panel
+component hyprland      full,launcher                Hyprland settings: gaps, blur, animations, monitors, shortcuts
+component panel         full,panel                   Control center: panel, notifications, OSD (Quickshell)
+component idle          full,panel                   Idle: dim, lock and suspend while away (hypridle)
+component share-picker  full,panel                   Screen-share picker for xdg-desktop-portal-hyprland
+component updates       full,launcher,panel          Updates: pacman, AUR and Flatpak in Settings and the panel

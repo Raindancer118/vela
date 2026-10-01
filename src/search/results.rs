@@ -129,7 +129,7 @@ pub fn assemble(cfg: &Config, query: &str, catalog: &Arc<Catalog>, apps: &[usize
         items.extend(files.iter().take(cfg.search.max_file_results as usize).cloned().map(Item::File));
     }
 
-    let with_claude = cfg.search.claude && (cfg.claude.always_visible || items.is_empty());
+    let with_claude = cfg.claude_search() && (cfg.claude.always_visible || items.is_empty());
     let claude_first = with_claude && (items.is_empty() || (cfg.claude.prefer_for_questions && looks_like_question(query)));
     let room = if with_claude { max.saturating_sub(1) } else { max };
     items.truncate(room);

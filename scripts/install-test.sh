@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# Installer test: runs install.sh / uninstall.sh into a throwaway home with
+# each profile and checks what lands on disk, what is removed again when the
+# selection changes, and that vela reads the selection. Needs the release
+# binaries (cargo build --release).
+#
+#   scripts/install-test.sh
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+export HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home/.config" XDG_DATA_HOME="$tmp/home/.local/share" XDG_STATE_HOME="$tmp/home/.local/state"
+export XDG_CACHE_HOME="$tmp/home/.cache"
+# Never talk to the real daemon (uninstall.sh runs `vela quit`).
+export VELA_SOCKET="$tmp/vela.sock"
+unset HYPRLAND_INSTANCE_SIGNATURE PREFIX VELA_COMPONENTS
+mkdir -p "$HOME/.config/hypr" "$tmp/fake"
+echo '-- hyprland.lua' >"$HOME/.config/hypr/hyprland.lua"
+
+# Fakes: systemctl does nothing, claude keeps its MCP servers in a file.
+log="$tmp/calls.log"
+printf '#!/bin/sh\necho "systemctl $*" >>%s\n' "$log" >"$tmp/fake/systemctl"
+cat >"$tmp/fake/claude" <<EOF
+#!/bin/sh
+echo "claude \$*" >>$log
+reg="\${CLAUDE_CONFIG_DIR:-\$HOME}/.mcp-registered"
+case "\$1 \$2" in
+    "mcp get") [ -f "\$reg" ] ;;
+    "mcp add") touch "\$reg" ;;
+    "mcp remove") [ -f "\$reg" ] && rm "\$reg" ;;
+esac
+EOF
+chmod +x "$tmp/fake/"*
+export PATH="$tmp/fake:$PATH"
+
+BIN="$HOME/.local/bin"
+DATA="$XDG_DATA_HOME"
+fails=0
+check() {
+    local name="$1"
+    shift
+    if "$@"; then :; else
+        echo "FAIL: $name"
+        fails=$((fails + 1))
+    fi
+}
+no() { ! "$@"; }
+key() { grep -qx "$1 = $2" "$DATA/vela/components.toml"; }
+installed() {
+    echo "--- install.sh $*" >>"$log"
+    ./install.sh --no-build "$@" >>"$tmp/out.log" 2>&1 || { cat "$tmp/out.log"; echo "FAIL: install.sh $* exited non-zero"; exit 1; }
+}
+
+# minimal: launcher only.
+installed --profile minimal -y
+check "minimal: vela" test -x "$BIN/vela"
+check "minimal: daemon" test -x "$BIN/vela-daemon"
+check "minimal: no share picker" test ! -e "$BIN/vela-share-picker"
+check "minimal: no shell" test ! -e "$DATA/vela/shell"
+check "minimal: vela.lua" test -f "$HOME/.config/hypr/vela.lua"
+check "minimal: unit" test -f "$HOME/.config/systemd/user/vela.service"
+check "minimal: profile" key profile '"minimal"'
+check "minimal: launcher on" key launcher true
+check "minimal: panel off" key panel false
+check "minimal: share_picker off" key share_picker false
+check "minimal: no MCP" test ! -e "$HOME/.mcp-registered"
+check "minimal: no xdph.conf" test ! -e "$HOME/.config/hypr/xdph.conf"
+check "minimal: vela reads it" sh -c "'$BIN/vela' components | grep -q '\[ \] panel'"
+check "minimal: vela sees the launcher" sh -c "'$BIN/vela' components | grep -q '\[x\] launcher'"
+
+# full: everything.
+installed --profile full -y
+check "full: share picker" test -x "$BIN/vela-share-picker"
+check "full: shell" test -f "$DATA/vela/shell/shell.qml"
+check "full: share picker qml" test -f "$DATA/vela/shell/share-picker.qml"
+check "full: no test files" sh -c "! ls '$DATA/vela/shell' | grep -q '^test-'"
+check "full: xdph.conf" grep -q "custom_picker_binary = $BIN/vela-share-picker" "$HOME/.config/hypr/xdph.conf"
+check "full: MCP registered" test -e "$HOME/.mcp-registered"
+check "full: profile" key profile '"full"'
+check "full: vela reads it" sh -c "'$BIN/vela' components | grep -q 'profile: full'"
+
+# A rerun without options keeps the selection.
+installed -y
+check "rerun: still full" key profile '"full"'
+
+# panel, adjusted: custom selection; the share picker and launcher go away.
+installed --profile panel --with claude --without share-picker
+check "panel: profile is custom" key profile '"custom"'
+check "panel: launcher off" key launcher false
+check "panel: claude on" key claude true
+check "panel: idle on" key idle true
+check "panel: share picker removed" test ! -e "$BIN/vela-share-picker"
+check "panel: xdph block removed" test ! -e "$HOME/.config/hypr/xdph.conf"
+check "panel: shell kept" test -f "$DATA/vela/shell/shell.qml"
+check "panel: MCP still registered" test -e "$HOME/.mcp-registered"
+
+# Dropping Claude unregisters the MCP server; dropping the panel the shell.
+installed --without claude,panel -y
+check "drop: MCP removed" test ! -e "$HOME/.mcp-registered"
+check "drop: shell removed" test ! -e "$DATA/vela/shell"
+check "drop: idle kept" key idle true
+
+# The menu: 5 = custom, toggle 1 (launcher) and 4 (panel) on from the last selection.
+echo "--- menu" >>"$log"
+printf '5\n1 4\n\n' | ./install.sh --no-build --ask >>"$tmp/out.log" 2>&1 || { cat "$tmp/out.log"; exit 1; }
+check "menu: custom" key profile '"custom"'
+check "menu: launcher on" key launcher true
+check "menu: panel on" key panel true
+check "menu: claude still off" key claude false
+printf '2\n' | ./install.sh --no-build --ask >>"$tmp/out.log" 2>&1 || { cat "$tmp/out.log"; exit 1; }
+check "menu: profile 2 = minimal" key profile '"minimal"'
+
+# Bad input fails before anything changes.
+check "unknown profile fails" no ./install.sh --no-build --profile huge -y 2>/dev/null
+check "unknown component fails" no ./install.sh --no-build --with teleport -y 2>/dev/null
+check "selection unchanged" key profile '"minimal"'
+
+# Settings survive the uninstall, the rest is gone.
+mkdir -p "$XDG_CONFIG_HOME/vela" && echo '# mine' >"$XDG_CONFIG_HOME/vela/config.toml"
+./uninstall.sh >>"$tmp/out.log" 2>&1
+check "uninstall: vela gone" test ! -e "$BIN/vela"
+check "uninstall: selection gone" test ! -e "$DATA/vela/components.toml"
+check "uninstall: config kept" test -f "$XDG_CONFIG_HOME/vela/config.toml"
+check "uninstall: hyprland.lua kept" test -f "$HOME/.config/hypr/hyprland.lua"
+
+if ((fails)); then
+    echo "--- output"
+    cat "$tmp/out.log"
+    exit 1
+fi
+echo "install.sh: all checks passed"

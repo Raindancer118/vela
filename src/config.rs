@@ -504,6 +504,11 @@ fn valid_hex_color(s: &str) -> bool {
 }
 
 impl Config {
+    /// Ask Claude in the launcher: switched on and installed.
+    pub fn claude_search(&self) -> bool {
+        self.search.claude && crate::components::has(crate::components::Component::Claude)
+    }
+
     /// Clamps values into sane ranges and repairs invalid ones, so the UI
     /// never has to deal with a broken configuration.
     pub fn sanitize(&mut self) {

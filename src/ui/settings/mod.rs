@@ -14,6 +14,7 @@ mod updates_page;
 
 use super::daemon::Daemon;
 use super::marker::Marker;
+use crate::components::{Component, Installed};
 use adw::prelude::*;
 use binder::Binder;
 use gtk::{gdk, glib};
@@ -45,8 +46,30 @@ const ENTRIES: [(&str, &str, &str, &str); 22] = [
     ("Everywhere", "system", "System", "preferences-system-symbolic"),
 ];
 
+type Entry = (&'static str, &'static str, &'static str, &'static str);
+
+/// Whether a page belongs to something installed (install.sh's selection).
+fn page_visible(id: &str, installed: &Installed) -> bool {
+    let needs: &[Component] = match id {
+        "general" | "apps" | "search" => &[Component::Launcher],
+        "claude" => &[Component::Claude],
+        "panel" | "notifications" => &[Component::Panel],
+        // Night light belongs to the panel, the rest to idle.
+        "power" => &[Component::Panel, Component::Idle],
+        "updates" => &[Component::Updates],
+        _ if id.starts_with("hypr-") => &[Component::Hyprland],
+        _ => return true,
+    };
+    needs.iter().any(|c| installed.has(*c))
+}
+
+fn visible_entries(installed: &Installed) -> Vec<Entry> {
+    ENTRIES.into_iter().filter(|e| page_visible(e.1, installed)).collect()
+}
+
 pub struct SettingsWindow {
     window: adw::ApplicationWindow,
+    entries: Rc<Vec<Entry>>,
     sidebar: gtk::ListBox,
     home: Rc<search_page::Search>,
 }
@@ -79,9 +102,10 @@ impl SettingsWindow {
             .transition_type(gtk::StackTransitionType::Crossfade)
             .transition_duration(140)
             .build();
+        let entries = Rc::new(visible_entries(crate::components::installed()));
         let home = search_page::Search::new(daemon);
         stack.add_named(&home.widget, Some("home"));
-        for (_, id, title, _) in ENTRIES.into_iter().skip(1) {
+        for &(_, id, title, _) in entries.iter().skip(1) {
             let page: gtk::Widget = match id {
                 "general" => pages::launcher(&binder).upcast(),
                 "apps" => apps_page::build(daemon, &binder).upcast(),
@@ -115,13 +139,14 @@ impl SettingsWindow {
 
         // Sidebar with a heading above each section.
         let sidebar = gtk::ListBox::builder().css_classes(["navigation-sidebar"]).build();
-        for (_, _, title, icon) in ENTRIES {
+        for (_, _, title, icon) in entries.iter() {
             sidebar.append(&sidebar_row(title, icon));
         }
-        sidebar.set_header_func(|row, before| {
+        let e = entries.clone();
+        sidebar.set_header_func(move |row, before| {
             let i = row.index() as usize;
-            let section = ENTRIES[i].0;
-            if !section.is_empty() && before.is_none_or(|b| ENTRIES[b.index() as usize].0 != section) {
+            let section = e[i].0;
+            if !section.is_empty() && before.is_none_or(|b| e[b.index() as usize].0 != section) {
                 let label = gtk::Label::builder().label(section).xalign(0.0).css_classes(["vela-sidebar-heading"]).build();
                 row.set_header(Some(&label));
             } else {
@@ -154,7 +179,9 @@ impl SettingsWindow {
             .icon_name("view-reveal-symbolic")
             .tooltip_text("Show a live preview of the launcher")
             .build();
-        header.pack_end(&preview);
+        if crate::components::has(Component::Launcher) {
+            header.pack_end(&preview);
+        }
         let banner = adw::Banner::new("");
         banner.set_button_label(Some("Reload file"));
         let set_banner = {
@@ -200,17 +227,18 @@ impl SettingsWindow {
         let marker = Rc::new(marker);
         let flip = Rc::new(std::cell::Cell::new(false));
         {
-            let (stack, content_page, split, marker, store, home) = (
+            let (stack, content_page, split, marker, store, home, entries) = (
                 stack.clone(),
                 content_page.clone(),
                 split.clone(),
                 marker.clone(),
                 daemon.store.clone(),
                 home.clone(),
+                entries.clone(),
             );
             sidebar.connect_row_selected(move |_, row| {
                 let Some(row) = row else { return };
-                let (_, id, title, _) = ENTRIES[row.index() as usize];
+                let (_, id, title, _) = entries[row.index() as usize];
                 if id != "home" {
                     // Borrowed rows go back to their page before it shows.
                     home.restore();
@@ -234,9 +262,9 @@ impl SettingsWindow {
         }
         sidebar.select_row(sidebar.row_at_index(0).as_ref());
         {
-            let sb = sidebar.downgrade();
+            let (sb, entries) = (sidebar.downgrade(), entries.clone());
             home.set_open_page(Rc::new(move |id: &str| {
-                if let (Some(sb), Some(i)) = (sb.upgrade(), ENTRIES.iter().position(|(_, x, _, _)| *x == id)) {
+                if let (Some(sb), Some(i)) = (sb.upgrade(), entries.iter().position(|(_, x, _, _)| *x == id)) {
                     sb.select_row(sb.row_at_index(i as i32).as_ref());
                 }
             }));
@@ -294,11 +322,16 @@ impl SettingsWindow {
         let b = binder.clone();
         daemon.store.subscribe_replace(move |cfg| b.refresh(cfg));
 
-        Rc::new(SettingsWindow { window, sidebar, home })
+        Rc::new(SettingsWindow {
+            window,
+            entries,
+            sidebar,
+            home,
+        })
     }
 
     pub fn show_page(&self, name: &str) {
-        if let Some(i) = ENTRIES.iter().position(|(_, id, _, _)| *id == name) {
+        if let Some(i) = self.entries.iter().position(|(_, id, _, _)| *id == name) {
             self.sidebar.select_row(self.sidebar.row_at_index(i as i32).as_ref());
         }
         if name == "home" {
@@ -321,4 +354,30 @@ fn install_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(&crate::ui::style::settings_css(&pages::ACCENTS));
     gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ids(installed: &Installed) -> Vec<&'static str> {
+        visible_entries(installed).into_iter().map(|e| e.1).collect()
+    }
+
+    #[test]
+    fn everything_installed_shows_every_page() {
+        assert_eq!(ids(&Installed::all()).len(), ENTRIES.len());
+    }
+
+    #[test]
+    fn pages_follow_the_installed_components() {
+        let minimal = ids(&Installed::only(&[Component::Launcher]));
+        assert_eq!(minimal, ["home", "general", "apps", "search", "appearance", "system"]);
+        let panel = ids(&Installed::only(&[Component::Panel, Component::Updates]));
+        assert_eq!(panel, ["home", "panel", "notifications", "power", "appearance", "updates", "system"]);
+        assert!(ids(&Installed::only(&[Component::Idle])).contains(&"power"));
+        let hypr = ids(&Installed::only(&[Component::Hyprland]));
+        assert_eq!(hypr.iter().filter(|i| i.starts_with("hypr-")).count(), 11);
+        assert!(!hypr.contains(&"claude"));
+    }
 }

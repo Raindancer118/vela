@@ -82,6 +82,8 @@ enum Cmd {
         #[arg(default_value = "list", value_parser = ["check", "list", "watch"])]
         action: String,
     },
+    /// Print which parts of vela are installed (chosen in install.sh).
+    Components,
     /// Print the control center settings as JSON (used by the shell).
     ShellConfig {
         /// Keep running and print a new line whenever the config changes.
@@ -143,6 +145,10 @@ fn main() -> ExitCode {
                 }
             };
         }
+        Cmd::Components => {
+            print_components();
+            return ExitCode::SUCCESS;
+        }
         Cmd::Shell => return run_qs(&[]),
         Cmd::Panel { action } => return run_qs(&["ipc", "call", "panel", &action]),
         Cmd::ShellConfig { watch } => return shell_config(watch),
@@ -183,6 +189,18 @@ fn main() -> ExitCode {
         }
     };
     client(ipc_cmd)
+}
+
+fn print_components() {
+    use vela::components::{self, Component};
+    let installed = components::installed();
+    match components::manifest_file() {
+        Some(f) => println!("profile: {} ({})", installed.profile.as_deref().unwrap_or("?"), f.display()),
+        None => println!("profile: full (no selection from install.sh)"),
+    }
+    for c in Component::ALL {
+        println!("  [{}] {:<13} {}", if installed.has(c) { 'x' } else { ' ' }, c.id(), c.description());
+    }
 }
 
 fn client(cmd: Command) -> ExitCode {

@@ -12,7 +12,7 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install dependencies
-        run: pacman -Syu --noconfirm --needed base-devel git rust gtk4 gtk4-layer-shell libadwaita weston adwaita-icon-theme quickshell dbus
+        run: pacman -Syu --noconfirm --needed base-devel git rust gtk4 gtk4-layer-shell libadwaita weston adwaita-icon-theme quickshell dbus lua
       - uses: actions/checkout@v5
       - name: Format
         run: cargo fmt --check
@@ -25,6 +25,10 @@ jobs:
           cargo build --release --locked
           ./target/release/vela --version
           scripts/smoke-test.sh target/release/vela
+      - name: Installer and vela.lua tests
+        run: |
+          lua scripts/lua-test.lua
+          scripts/install-test.sh
       - name: Control center tests (Quickshell, headless Wayland)
         run: |
           sed -i -E 's/^#(de_DE|en_US|fr_FR)\.UTF-8/\1.UTF-8/' /etc/locale.gen && locale-gen

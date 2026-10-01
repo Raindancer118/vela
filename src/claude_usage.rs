@@ -379,6 +379,11 @@ pub fn cache_file() -> PathBuf {
 /// Starts the background poller thread (in `vela-daemon`). Set
 /// VELA_NO_CLAUDE_USAGE=1 for test daemons that share the real home.
 pub fn spawn_poller() {
+    use crate::components::{Component, has};
+    // Only the panel shows it.
+    if !(has(Component::Claude) && has(Component::Panel)) {
+        return;
+    }
     if std::env::var_os("VELA_NO_CLAUDE_USAGE").is_some_and(|v| !v.is_empty()) {
         return;
     }

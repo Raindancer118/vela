@@ -70,4 +70,24 @@ kill -0 "$daemon_pid" 2>/dev/null && fail "daemon did not exit"
 wait "$daemon_pid" || fail "daemon exited with an error"
 daemon_pid=""
 grep -Eq "panicked|CRITICAL" "$tmp/daemon.log" && fail "errors in daemon log"
+
+# A selective install (install.sh --profile panel): pages of missing parts are
+# left out, `vela` opens the settings instead of the launcher.
+printf 'profile = "panel"\nlauncher = false\nclaude = false\nhyprland = false\n' >"$tmp/components.toml"
+export VELA_COMPONENTS="$tmp/components.toml"
+"$BIN" components | grep -q '\[ \] launcher' || fail "vela components ignores the selection"
+unset VELA_SETTINGS_SEARCH VELA_SETTINGS_DIALOG VELA_UPDATES_RUN
+VELA_COMPONENTS="$tmp/components.toml" "$BIN" daemon >"$tmp/daemon.log" 2>&1 &
+daemon_pid=$!
+for _ in $(seq 100); do "$BIN" status 2>/dev/null && break; sleep 0.1; done
+for cmd in toggle show "settings" "settings panel" "settings system" "settings claude" "settings hypr-windows" hide; do
+    # shellcheck disable=SC2086
+    "$BIN" $cmd || fail "command '$cmd' failed (panel profile)"
+    sleep 0.2
+    kill -0 "$daemon_pid" 2>/dev/null || fail "daemon died after '$cmd' (panel profile)"
+done
+"$BIN" quit || fail "quit failed (panel profile)"
+wait "$daemon_pid" || fail "daemon exited with an error (panel profile)"
+daemon_pid=""
+grep -Eq "panicked|CRITICAL" "$tmp/daemon.log" && fail "errors in daemon log (panel profile)"
 echo "smoke test passed"

@@ -1069,7 +1069,7 @@ impl Launcher {
     fn claude_mode(&self) -> bool {
         let cfg = self.config.borrow();
         let query = self.state.borrow().query.clone();
-        if !cfg.search.claude || query.trim().is_empty() {
+        if !cfg.claude_search() || query.trim().is_empty() {
             return false;
         }
         if self.shift_held.get() && cfg.claude.shift_enter {

@@ -201,6 +201,8 @@ impl Daemon {
 
     pub fn handle(self: &Rc<Self>, cmd: Command) {
         match cmd {
+            // Without the launcher, `vela` opens the settings.
+            Command::Toggle | Command::Show if !crate::components::has(crate::components::Component::Launcher) => self.open_settings_page(None),
             Command::Toggle => self.launcher.toggle(),
             Command::Show => self.launcher.show(false),
             Command::Hide => self.launcher.hide(),
@@ -335,7 +337,7 @@ impl Daemon {
             }
             Request::Claude(prompt) => {
                 let cfg = self.store.get();
-                if !cfg.search.claude {
+                if !cfg.claude_search() {
                     return;
                 }
                 self.spawn(launch::claude_spec(&cfg.claude, &cfg.terminal, &prompt), None);

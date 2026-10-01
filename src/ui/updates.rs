@@ -90,6 +90,9 @@ impl Updates {
         // Due checks: shortly after login, then whenever the interval is over.
         glib::timeout_add_local(Duration::from_secs(20), move || {
             let Some(u) = weak.upgrade() else { return glib::ControlFlow::Break };
+            if !crate::components::has(crate::components::Component::Updates) {
+                return glib::ControlFlow::Break;
+            }
             let hours = u.store.get().updates.check_interval_hours;
             let checked = u.state.borrow().status.checked_at;
             if hours > 0 && now_ms() - checked >= i64::from(hours) * 3_600_000 {

@@ -278,14 +278,48 @@ pub fn system(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
             .subtitle(format!("Version {}", env!("CARGO_PKG_VERSION")))
             .build(),
     );
-    about.add(
-        &adw::ActionRow::builder()
-            .title("Keyboard")
-            .subtitle("Tap Super to open · Enter launches · Shift+Enter asks Claude · Ctrl+Enter shows a file in its folder · Esc closes")
-            .build(),
-    );
+    if crate::components::has(crate::components::Component::Launcher) {
+        about.add(
+            &adw::ActionRow::builder()
+                .title("Keyboard")
+                .subtitle("Tap Super to open · Enter launches · Shift+Enter asks Claude · Ctrl+Enter shows a file in its folder · Esc closes")
+                .build(),
+        );
+    }
+    p.add(&components_group());
     p.add(&about);
     p
+}
+
+/// What install.sh installed; changing it means running it again.
+fn components_group() -> adw::PreferencesGroup {
+    use crate::components::{self, Component};
+    let installed = components::installed();
+    let profile = match installed.profile.as_deref() {
+        Some("custom") => "Picked by hand".to_string(),
+        Some(p) => components::catalog()
+            .profiles
+            .iter()
+            .find(|(n, _)| *n == p)
+            .map_or_else(|| p.to_string(), |(_, d)| d.to_string()),
+        None => "Everything (no selection from install.sh)".to_string(),
+    };
+    let g = group("Components", "Run ./install.sh again to add or remove parts of vela.");
+    g.add(&adw::ActionRow::builder().title("Profile").subtitle(profile).build());
+    for c in Component::ALL {
+        let (title, desc) = c.description().split_once(": ").unwrap_or((c.id(), c.description()));
+        let row = adw::ActionRow::builder().title(title).subtitle(desc).build();
+        let on = installed.has(c);
+        let icon = gtk::Image::from_icon_name(if on { "object-select-symbolic" } else { "list-remove-symbolic" });
+        icon.set_tooltip_text(Some(if on { "Installed" } else { "Not installed" }));
+        if !on {
+            icon.add_css_class("dim-label");
+            row.add_css_class("dim-label");
+        }
+        row.add_suffix(&icon);
+        g.add(&row);
+    }
+    g
 }
 
 /// Shows below an executable entry whether the command can be found.

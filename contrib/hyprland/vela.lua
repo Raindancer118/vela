@@ -23,9 +23,27 @@ local function find_binary()
     return "vela"
 end
 
+-- install.sh's selection (<data dir>/vela/components.toml); missing file or
+-- key = installed. Only `key = true|false` lines matter here.
+local function installed_components()
+    local data = os.getenv("XDG_DATA_HOME")
+    if not data or data == "" then data = os.getenv("HOME") .. "/.local/share" end
+    local has = setmetatable({}, { __index = function() return true end })
+    local f = io.open(data .. "/vela/components.toml", "r")
+    if not f then return has end
+    for line in f:lines() do
+        local key, value = line:match("^%s*([%w_]+)%s*=%s*(%a+)")
+        if key and (value == "true" or value == "false") then has[key] = value == "true" end
+    end
+    f:close()
+    return has
+end
+
 local defaults = {
     -- Path of the vela binary; found automatically when nil.
     binary = nil,
+    -- Toggle the launcher on a Super tap.
+    launcher = true,
     -- Command run on a Super tap; defaults to "<binary> toggle".
     command = nil,
     -- XKB keycodes of Super_L / Super_R on standard (evdev) keyboards.
@@ -56,6 +74,13 @@ function M.setup(opts)
     local o = {}
     for k, v in pairs(defaults) do o[k] = v end
     for k, v in pairs(opts or {}) do o[k] = v end
+    -- Options can switch parts off, but not on when they aren't installed.
+    local has = installed_components()
+    o.launcher = o.launcher and has.launcher
+    o.shell = o.shell and has.panel
+    o.idle = o.idle and has.idle
+    o.settings = o.settings and has.hyprland
+    if not has.panel then o.panel_peek = nil end
     local bin = o.binary or find_binary()
     local command = o.command or (bin .. " toggle")
 
@@ -74,28 +99,30 @@ function M.setup(opts)
 
     -- The event fires for every key before binds are processed.
     -- state: 0 = released, 1 = pressed, 2 = repeated
-    hl.on("input.keyboard.key", function(keycode, _, state)
-        if is_super[keycode] then
-            if state == 1 then
-                armed = true
-                press_id = press_id + 1
-                local id = press_id
-                stop_timer()
-                expire = hl.timer(function()
-                    if id == press_id then armed = false end
-                end, { timeout = o.tap_ms, type = "oneshot" })
-            elseif state == 0 then
-                stop_timer()
-                if armed then
-                    hl.exec_cmd(command)
+    if o.launcher then
+        hl.on("input.keyboard.key", function(keycode, _, state)
+            if is_super[keycode] then
+                if state == 1 then
+                    armed = true
+                    press_id = press_id + 1
+                    local id = press_id
+                    stop_timer()
+                    expire = hl.timer(function()
+                        if id == press_id then armed = false end
+                    end, { timeout = o.tap_ms, type = "oneshot" })
+                elseif state == 0 then
+                    stop_timer()
+                    if armed then
+                        hl.exec_cmd(command)
+                    end
+                    armed = false
                 end
+            elseif state ~= 0 then
+                -- Any other key while Super is held turns it into a shortcut.
                 armed = false
             end
-        elseif state ~= 0 then
-            -- Any other key while Super is held turns it into a shortcut.
-            armed = false
-        end
-    end)
+        end)
+    end
 
     hl.layer_rule({
         name         = "vela",

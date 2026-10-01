@@ -251,14 +251,45 @@ dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup()
 ```
 
 <details>
+<summary><b>Pick what you want: profiles and components</b></summary>
+
+`install.sh` asks which profile to install, or lets you pick the parts one by
+one. Running it again changes the selection; parts you drop are removed again
+(settings stay). Settings and Appearance are always there.
+
+| Profile | Contains |
+| --- | --- |
+| `full` | everything (default) |
+| `minimal` | the launcher |
+| `launcher` | launcher, Claude Code, Hyprland settings, updates |
+| `panel` | control center, idle, screen-share picker, updates (no launcher) |
+
+Components: `launcher`, `claude`, `hyprland`, `panel`, `idle`,
+`share-picker`, `updates` (`./install.sh --list` describes them).
+
+```sh
+./install.sh --profile panel -y                          # no questions
+./install.sh --profile launcher --without claude --with idle
+./install.sh -y                                          # update, keep the selection
+```
+
+The selection lives in `~/.local/share/vela/components.toml`; vela and
+`vela.lua` leave out what isn't installed (`vela components` shows it, so
+does *Settings → System*). Without that file, as with the package, everything
+is on.
+
+</details>
+
+<details>
 <summary><b>What gets installed where</b></summary>
 
 | File | Location |
 | --- | --- |
-| `vela`, `vela-daemon` | `~/.local/bin/` |
+| `vela`, `vela-daemon`, `vela-share-picker` | `~/.local/bin/` |
 | systemd user unit | `~/.config/systemd/user/vela.service` |
 | Hyprland module | `~/.config/hypr/vela.lua` |
 | control center (QML) | `~/.local/share/vela/shell` |
+| component selection | `~/.local/share/vela/components.toml` |
 | desktop entry, icons | `~/.local/share/applications`, `~/.local/share/icons` |
 | MCP server | registered with Claude Code, if installed |
 

@@ -113,15 +113,24 @@ pub fn claude_prompt(request: &str) -> String {
 
 impl Search {
     pub fn new(daemon: &Rc<Daemon>) -> Rc<Search> {
+        let claude = crate::components::has(crate::components::Component::Claude);
         let entry = gtk::SearchEntry::builder()
-            .placeholder_text("Search settings, or describe a change for Claude")
+            .placeholder_text(if claude {
+                "Search settings, or describe a change for Claude"
+            } else {
+                "Search settings"
+            })
             .css_classes(["vela-home-search"])
             .hexpand(true)
             .build();
         let icon = gtk::Image::builder().icon_name("vela").pixel_size(64).build();
         let title = gtk::Label::builder().label("What do you want to change?").css_classes(["title-2"]).build();
         let hint = gtk::Label::builder()
-            .label("Every vela and Hyprland setting is in here. Describe a change and press Ctrl+Enter to let Claude make it.")
+            .label(if claude {
+                "Every vela and Hyprland setting is in here. Describe a change and press Ctrl+Enter to let Claude make it."
+            } else {
+                "Every vela setting is in here."
+            })
             .css_classes(["dim-label"])
             .wrap(true)
             .justify(gtk::Justification::Center)
@@ -337,8 +346,9 @@ impl Search {
         hits.truncate(MAX_RESULTS);
 
         // A sentence reads like a request: Claude first.
+        let claude = crate::components::has(crate::components::Component::Claude);
         let wants_claude = text.split_whitespace().count() >= 3 || hits.is_empty();
-        if wants_claude {
+        if claude && wants_claude {
             self.results.append(&self.claude_card(text));
         }
         // Grouped by where they live; the group with the best hit first,
@@ -378,7 +388,7 @@ impl Search {
             row.set_visible(true);
             self.borrowed.borrow_mut().push(Borrowed { row, parent, index, visible });
         }
-        if !wants_claude {
+        if claude && !wants_claude {
             self.results.append(&self.claude_card(text));
         }
     }
@@ -438,6 +448,9 @@ impl Search {
     }
 
     fn ask_claude(&self) {
+        if !crate::components::has(crate::components::Component::Claude) {
+            return;
+        }
         let text = self.entry.text().to_string();
         if text.trim().is_empty() {
             return;
