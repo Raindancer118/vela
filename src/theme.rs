@@ -77,6 +77,29 @@ pub fn backdrop_layer_alpha(dim: f64, layers: u32) -> f64 {
     each.max(MIN_BLUR_ALPHA)
 }
 
+/// Stacked backdrop layers: `strength` with blur, else one dimming layer.
+pub fn backdrop_layers(strength: u32, blur: bool) -> u32 {
+    if blur { strength.clamp(1, 4) } else { 1 }
+}
+
+/// Opacity of each backdrop layer (see [`backdrop_layers`]).
+pub fn backdrop_alpha(dim: f64, strength: u32, blur: bool) -> f64 {
+    if blur {
+        backdrop_layer_alpha(dim, backdrop_layers(strength, true))
+    } else {
+        dim.clamp(0.0, 0.95)
+    }
+}
+
+pub fn backdrop_visible(dim: f64, blur: bool) -> bool {
+    blur || dim > 0.0
+}
+
+/// Layer namespace: only `base` has a blur layer rule in vela.lua.
+pub fn backdrop_namespace(base: &str, blur: bool) -> String {
+    if blur { base.to_owned() } else { format!("{base}-dim") }
+}
+
 /// Linear blend: t = 0 → a, t = 1 → b.
 pub fn mix(a: Rgb, b: Rgb, t: f64) -> Rgb {
     let m = |x: u8, y: u8| (f64::from(x) + (f64::from(y) - f64::from(x)) * t).round() as u8;
@@ -126,6 +149,23 @@ mod tests {
         // Hyprland doesn't blur nearly invisible layers.
         assert_eq!(backdrop_layer_alpha(0.0, 1), MIN_BLUR_ALPHA);
         assert_eq!(backdrop_layer_alpha(0.1, 4), MIN_BLUR_ALPHA);
+    }
+
+    #[test]
+    fn unblurred_backdrop_is_one_plain_dimming_layer() {
+        assert_eq!(backdrop_layers(3, true), 3);
+        assert_eq!(backdrop_layers(9, true), 4);
+        assert_eq!(backdrop_layers(3, false), 1, "stacking only strengthens blur");
+        assert_eq!(backdrop_alpha(0.3, 3, true), backdrop_layer_alpha(0.3, 3));
+        assert_eq!(backdrop_alpha(0.3, 3, false), 0.3);
+        assert_eq!(backdrop_alpha(0.0, 1, false), 0.0, "no minimum without blur");
+        assert!(backdrop_visible(0.0, true));
+        assert!(backdrop_visible(0.1, false));
+        assert!(!backdrop_visible(0.0, false), "neither blur nor dim: nothing to draw");
+        assert_eq!(
+            (backdrop_namespace("vela-backdrop", true), backdrop_namespace("vela-backdrop", false)),
+            ("vela-backdrop".into(), "vela-backdrop-dim".into())
+        );
     }
 
     #[test]

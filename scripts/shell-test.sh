@@ -37,6 +37,7 @@ accent = "#ff0000"
 border_radius = 30
 font_scale = 1.5
 animation_speed = 2.0
+backdrop_blur = false
 [panel]
 width = 500
 popup_timeout_secs = 7

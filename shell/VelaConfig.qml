@@ -44,6 +44,7 @@ Singleton {
             width: 420,
             closeOnFocusLoss: true,
             backdrop: false,
+            backdropBlur: true,
             backdropLayers: 1,
             backdropLayerAlpha: 0.18,
             popupTimeoutMs: 5000,

@@ -392,7 +392,7 @@ reloads it, reports errors in the settings and keeps the last valid settings
 | | `columns` | fixed column count, `0` = derived from width |
 | | `show_labels`, `tile_background`, `tile_outline` | the app grid |
 | | `animations`, `animation_speed` | motion on/off; speed factor |
-| | `backdrop`, `backdrop_dim` | blur and darken the rest of the monitor while the launcher is open |
+| | `backdrop`, `backdrop_dim`, `backdrop_blur` | blur and darken the rest of the monitor while the launcher is open (`backdrop_blur = false`: only darken, launcher and panel) |
 | `apps` | `grid` | `pinned`, `pinned_then_all`, `all` |
 | | `pinned`, `hidden` | desktop IDs (`firefox.desktop`), `custom:<id>` or `vela:settings` |
 | | `desktop_actions` | offer desktop actions in search |

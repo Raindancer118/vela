@@ -72,7 +72,7 @@ pub fn keyboard_mode(preview: bool, close_on_click_outside: bool) -> KeyboardMod
     }
 }
 
-/// Whether the blurred backdrop goes behind the launcher.
+/// Whether the backdrop goes behind the launcher.
 pub fn wants_backdrop(layer: bool, preview: bool, enabled: bool) -> bool {
     layer && !preview && enabled
 }
@@ -192,6 +192,8 @@ pub struct Launcher {
     /// `appearance.backdrop_strength` of them are stacked, each blurring the
     /// result below again.
     backdrop: RefCell<Vec<gtk::Window>>,
+    /// Whether `backdrop` was built with the blurring namespace.
+    backdrop_blur: Cell<bool>,
 }
 
 impl Launcher {
@@ -363,6 +365,7 @@ impl Launcher {
             monitor: RefCell::default(),
             app: app.clone(),
             backdrop: RefCell::default(),
+            backdrop_blur: Cell::new(true),
         });
 
         this.connect_signals(&gear);
@@ -507,9 +510,19 @@ impl Launcher {
     }
 
     fn show_backdrop(&self) {
-        let n = self.config.borrow().appearance.backdrop_strength.clamp(1, 4) as usize;
+        let (strength, blur) = {
+            let a = &self.config.borrow().appearance;
+            (a.backdrop_strength, a.backdrop_blur)
+        };
+        let n = crate::theme::backdrop_layers(strength, blur) as usize;
         let layers: Vec<gtk::Window> = {
             let mut all = self.backdrop.borrow_mut();
+            // A mapped layer surface can't change its namespace.
+            if self.backdrop_blur.replace(blur) != blur {
+                for b in all.drain(..) {
+                    b.destroy();
+                }
+            }
             while all.len() < n {
                 all.push(self.new_backdrop());
             }
@@ -543,7 +556,7 @@ impl Launcher {
         w.add_css_class("vela-backdrop");
         w.init_layer_shell();
         w.set_layer(Layer::Overlay);
-        w.set_namespace(Some("vela-backdrop"));
+        w.set_namespace(Some(&crate::theme::backdrop_namespace("vela-backdrop", self.backdrop_blur.get())));
         w.set_keyboard_mode(KeyboardMode::None);
         for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
             w.set_anchor(edge, true);
@@ -618,7 +631,11 @@ impl Launcher {
         self.shift_held.set(false);
         self.shown_at.set(Some(Instant::now()));
         self.show_mode();
-        if wants_backdrop(self.layer, preview, self.config.borrow().appearance.backdrop) {
+        let enabled = {
+            let a = &self.config.borrow().appearance;
+            a.backdrop && crate::theme::backdrop_visible(a.backdrop_dim, a.backdrop_blur)
+        };
+        if wants_backdrop(self.layer, preview, enabled) {
             self.show_backdrop();
         } else {
             self.hide_backdrop();

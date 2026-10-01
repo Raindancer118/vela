@@ -31,6 +31,8 @@ backdrop = false
 backdrop_dim = 0.18
 # 1–4: stacks blurred layers for a stronger blur than Hyprland's decoration.blur.
 backdrop_strength = 1
+# false = launcher and panel backdrop only dim, no blur.
+backdrop_blur = true
 
 [apps]
 grid = "pinned"

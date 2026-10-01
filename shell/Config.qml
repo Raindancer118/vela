@@ -16,6 +16,7 @@ Singleton {
     // Control center (vela settings → Panel)
     readonly property bool closeOnFocusLoss: vp.closeOnFocusLoss
     readonly property bool panelBackdrop: vp.backdrop
+    readonly property bool panelBackdropBlur: vp.backdropBlur
     readonly property int panelBackdropLayers: vp.backdropLayers
     readonly property real panelBackdropLayerAlpha: vp.backdropLayerAlpha
     readonly property bool workspaceOsd: vp.workspaceOsd

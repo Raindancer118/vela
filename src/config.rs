@@ -96,6 +96,8 @@ pub struct Appearance {
     pub backdrop_dim: f64,
     /// Blur strength of the launcher's backdrop, 1–4 (1 = Hyprland's blur).
     pub backdrop_strength: u32,
+    /// Off = the launcher's and the panel's backdrop only dim.
+    pub backdrop_blur: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -341,6 +343,7 @@ impl Default for Appearance {
             backdrop: false,
             backdrop_dim: 0.18,
             backdrop_strength: 1,
+            backdrop_blur: true,
         }
     }
 }
@@ -708,6 +711,9 @@ mod tests {
         assert_eq!((a.backdrop_strength, Panel::default().backdrop_strength), (1, 1), "1 = Hyprland's blur as is");
         let cfg = Config::from_toml("[appearance]\nbackdrop_strength = 9\n[panel]\nbackdrop_strength = 0\n").unwrap();
         assert_eq!((cfg.appearance.backdrop_strength, cfg.panel.backdrop_strength), (4, 1));
+        assert!(a.backdrop_blur, "the backdrop blurs unless switched off");
+        let cfg = Config::from_toml("[appearance]\nbackdrop_blur = false\n").unwrap();
+        assert!(!cfg.appearance.backdrop_blur);
     }
 
     #[test]

@@ -8,11 +8,13 @@ import qs.services
 // settings → Appearance → Blur). Hyprland blurs and fades them via the
 // "vela-shell-backdrop" layer rule from vela.lua; they never take input.
 // `strength` of them are stacked: each blurs the result below again.
+// Without blur: one layer in "vela-shell-backdrop-dim" (no blur rule). The
+// namespace is in the model so switching recreates the surfaces.
 Variants {
-    model: Array.from({ length: Config.panelBackdropLayers }, (_, i) => i)
+    model: Array.from({ length: Config.panelBackdropLayers }, (_, i) => (Config.panelBackdropBlur ? "vela-shell-backdrop" : "vela-shell-backdrop-dim") + "#" + i)
 
     PanelWindow {
-        required property int modelData
+        required property string modelData
 
         visible: Config.panelBackdrop && ShellState.panelOpen && ShellState.panelScreen !== null
         screen: ShellState.panelScreen
@@ -27,7 +29,7 @@ Variants {
         mask: Region {}
         // Top: always below the panel (Overlay), above windows.
         WlrLayershell.layer: WlrLayer.Top
-        WlrLayershell.namespace: "vela-shell-backdrop"
+        WlrLayershell.namespace: modelData.split("#")[0]
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     }
 }

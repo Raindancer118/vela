@@ -507,7 +507,7 @@ fn accent_row(b: &Binder) -> adw::ActionRow {
 }
 
 fn strength_row(b: &Binder, get: fn(&Config) -> f64, set: fn(&mut Config, f64)) -> adw::SpinRow {
-    b.spin(
+    let row = b.spin(
         "Strength",
         "1 = Hyprland's blur; each step blurs once more (and a little darker)",
         1.0,
@@ -516,7 +516,15 @@ fn strength_row(b: &Binder, get: fn(&Config) -> f64, set: fn(&mut Config, f64)) 
         0,
         get,
         set,
-    )
+    );
+    row.set_sensitive(b.store.get().appearance.backdrop_blur);
+    let w = row.downgrade();
+    b.on_refresh(move |c| {
+        if let Some(r) = w.upgrade() {
+            r.set_sensitive(c.appearance.backdrop_blur);
+        }
+    });
+    row
 }
 
 pub fn appearance(b: &Binder) -> adw::PreferencesPage {
@@ -593,8 +601,14 @@ pub fn appearance(b: &Binder) -> adw::PreferencesPage {
 
     let blur = group(
         "Blur behind",
-        "Blurs everything else on the monitor while open. Hyprland renders it (decoration.blur, via vela.lua); it has no per-surface strength, so stronger levels stack blurred layers.",
+        "Blurs and dims everything else on the monitor while open. Hyprland renders the blur (decoration.blur, via vela.lua); it has no per-surface strength, so stronger levels stack blurred layers.",
     );
+    blur.add(&b.switch(
+        "Blur",
+        "Off = only dim the rest of the screen",
+        |c| c.appearance.backdrop_blur,
+        |c, v| c.appearance.backdrop_blur = v,
+    ));
     let launcher = b.expander("The launcher", "", |c| c.appearance.backdrop, |c, v| c.appearance.backdrop = v);
     launcher.add_row(&strength_row(
         b,

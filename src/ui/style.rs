@@ -34,7 +34,7 @@ pub fn launcher_css(cfg: &Config) -> String {
         "none".into()
     };
     let spacing = a.spacing;
-    let backdrop_dim = crate::theme::backdrop_layer_alpha(a.backdrop_dim, a.backdrop_strength);
+    let backdrop_dim = crate::theme::backdrop_alpha(a.backdrop_dim, a.backdrop_strength, a.backdrop_blur);
 
     format!(
         r#"
