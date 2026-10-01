@@ -157,6 +157,8 @@ pub struct Panel {
     pub clock_on_backdrop: bool,
     /// Font family of the clock and date; empty = the UI font.
     pub clock_font: String,
+    /// Height of the time on the backdrop in logical pixels, 48–320; the date scales along.
+    pub backdrop_clock_size: u32,
     /// Claude plan usage at the bottom of the panel.
     pub claude_usage: bool,
     /// Subtle style: grey text under a line instead of a card.
@@ -187,6 +189,7 @@ impl Default for Panel {
             clock_centered: false,
             clock_on_backdrop: false,
             clock_font: String::new(),
+            backdrop_clock_size: 128,
             claude_usage: true,
             claude_usage_subtle: false,
             claude_usage_only_default: false,
@@ -570,6 +573,7 @@ impl Config {
         p.popup_max_visible = p.popup_max_visible.clamp(1, 10);
         p.group_collapsed_count = p.group_collapsed_count.clamp(1, 10);
         p.night_light_temperature = p.night_light_temperature.clamp(1000, 6500);
+        p.backdrop_clock_size = p.backdrop_clock_size.clamp(48, 320);
 
         let i = &mut self.idle;
         for m in [
@@ -791,6 +795,7 @@ mod tests {
         assert!(!p.clock_centered, "clock on the left by default");
         assert!(!p.clock_on_backdrop, "clock stays in the panel by default");
         assert!(p.clock_font.is_empty(), "clock in the UI font by default");
+        assert_eq!(p.backdrop_clock_size, 128);
         assert!(p.claude_usage && !p.claude_usage_only_default && p.claude_usage_hidden.is_empty());
         assert!(!p.claude_usage_subtle, "the card is the default style");
         assert!(p.compact_notifications, "notifications arrive as one line");
@@ -803,7 +808,7 @@ mod tests {
     #[test]
     fn panel_values_are_clamped() {
         let cfg = Config::from_toml(
-            "[panel]\nwidth = 10\npopup_timeout_secs = 0\npopup_max_visible = 99\ngroup_collapsed_count = 0\nnight_light_temperature = 100000\n",
+            "[panel]\nwidth = 10\npopup_timeout_secs = 0\npopup_max_visible = 99\ngroup_collapsed_count = 0\nnight_light_temperature = 100000\nbackdrop_clock_size = 9\n",
         )
         .unwrap();
         assert_eq!(cfg.panel.width, 320);
@@ -811,6 +816,9 @@ mod tests {
         assert_eq!(cfg.panel.popup_max_visible, 10);
         assert_eq!(cfg.panel.group_collapsed_count, 1);
         assert_eq!(cfg.panel.night_light_temperature, 6500);
+        assert_eq!(cfg.panel.backdrop_clock_size, 48);
+        let cfg = Config::from_toml("[panel]\nbackdrop_clock_size = 999\n").unwrap();
+        assert_eq!(cfg.panel.backdrop_clock_size, 320);
     }
 
     #[test]

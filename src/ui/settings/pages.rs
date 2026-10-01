@@ -732,19 +732,33 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
         |c, v| c.panel.clock_on_backdrop = v,
     );
     layout.add(&on_blur);
+    let size = b.spin(
+        "Clock size",
+        "Height of the time on the blur in logical pixels; the date scales along",
+        48.0,
+        320.0,
+        4.0,
+        0,
+        |c| c.panel.backdrop_clock_size.into(),
+        |c, v| c.panel.backdrop_clock_size = v as u32,
+    );
+    layout.add(&size);
     layout.add(&clock_font_row(b));
     let blurred = |c: &Config| c.panel.backdrop && c.panel.backdrop_blur;
     let sync = {
-        let (centred, on_blur) = (centred.downgrade(), on_blur.downgrade());
+        let (centred, on_blur, size) = (centred.downgrade(), on_blur.downgrade(), size.downgrade());
         move |c: &Config| {
-            if let (Some(centred), Some(on_blur)) = (centred.upgrade(), on_blur.upgrade()) {
+            if let (Some(centred), Some(on_blur), Some(size)) = (centred.upgrade(), on_blur.upgrade(), size.upgrade()) {
+                let on = blurred(c) && c.panel.clock_on_backdrop;
                 on_blur.set_sensitive(blurred(c));
-                centred.set_sensitive(!(blurred(c) && c.panel.clock_on_backdrop));
+                size.set_sensitive(on);
+                centred.set_sensitive(!on);
             }
         }
     };
     sync(&b.store.get());
-    b.on_refresh(sync);
+    // Not on_refresh: that one only runs on reloads, not when a switch here flips.
+    b.store.subscribe(move |_, c| sync(c));
     layout.add(&b.switch(
         "Updates tile",
         "Pending system updates as a tile; opens Settings → Updates",

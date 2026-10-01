@@ -105,8 +105,9 @@ Singleton {
         readonly property int title: Math.round(16 * scale)
         readonly property int large: Math.round(20 * scale)
         readonly property int clock: Math.round(64 * scale)
-        readonly property int backdropClock: Math.round(128 * scale)
-        readonly property int backdropDate: Math.round(26 * scale)
+        // vela settings → Panel → Clock size (logical px, not scaled by text size).
+        readonly property int backdropClock: VelaConfig.panel.backdropClockSize ?? 128
+        readonly property int backdropDate: Math.round(backdropClock * 0.2)
         readonly property real labelLetterSpacing: 0.4
 
         readonly property int weightLight: Font.Light
