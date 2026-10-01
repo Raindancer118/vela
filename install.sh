@@ -52,8 +52,10 @@ install -Dm644 contrib/hyprland/vela.lua "$HYPRDIR/vela.lua"
 # change and reloads itself; drop files that no longer exist.
 mkdir -p "$DATADIR/vela/shell"
 (cd shell && find . -type f \( -name '*.qml' -o -name '*.svg' \) ! -name 'test-*' ! -path ./shell.qml -exec sh -c 'mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2"' _ "$DATADIR/vela/shell" {} \;)
-# shell.qml last and always different: the running shell reloads once, with
-# every file in place (it may already have reloaded mid-copy and failed).
+# shell.qml last, after a pause and always different: the running shell may
+# have reloaded mid-copy (old and new files mixed); this separate change makes
+# it reload once more with every file in place.
+sleep 1
 { cat shell/shell.qml; printf '// installed %s\n' "$(date +%s)"; } >"$DATADIR/vela/shell/shell.qml"
 (cd "$DATADIR/vela/shell" && find . -type f \( -name '*.qml' -o -name '*.svg' \) | while read -r f; do [[ -f "$OLDPWD/shell/$f" ]] || rm -f "$f"; done)
 command -v qs >/dev/null || warn "Quickshell (qs) not found — the control center (vela shell) needs it"
