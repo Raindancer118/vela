@@ -36,7 +36,8 @@ Card {
         }
     }
 
-    // Plan as quiet small caps ("PRO": the first letter a touch larger).
+    // Plan as quiet small caps ("PRO": the first letter a pixel larger),
+    // right-aligned in its row.
     component PlanBadge: StyledText {
         property string plan
 
@@ -44,7 +45,7 @@ Card {
         textFormat: Text.RichText
         text: {
             const p = plan.toUpperCase();
-            return p.charAt(0) + "<span style='font-size:" + Math.round(font.pixelSize * 0.82) + "px'>" + p.slice(1) + "</span>";
+            return p.charAt(0) + "<span style='font-size:" + (font.pixelSize - 1) + "px'>" + p.slice(1) + "</span>";
         }
         color: Theme.withAlpha(Theme.colors.text, 0.5)
         font.pixelSize: Theme.font.small
@@ -216,14 +217,14 @@ Card {
                 font.weight: Theme.font.weightMedium
             }
 
-            // One account: its plan next to the title.
+            Item {
+                Layout.fillWidth: true
+            }
+
+            // One account: its plan in the title row.
             PlanBadge {
                 Layout.alignment: Qt.AlignBaseline
                 plan: root.accounts.length === 1 ? (root.accounts[0].plan ?? "") : ""
-            }
-
-            Item {
-                Layout.fillWidth: true
             }
         }
 
@@ -250,6 +251,10 @@ Card {
                         color: Theme.colors.textMuted
                         font.pixelSize: Theme.font.small
                         font.weight: Theme.font.weightMedium
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
                     }
 
                     PlanBadge {
