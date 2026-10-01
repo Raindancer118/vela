@@ -44,6 +44,8 @@ enum Cmd {
     Status,
     /// Print the default configuration (TOML).
     DefaultConfig,
+    /// Change one setting, e.g. `vela set idle.suspend false`.
+    Set { path: String, value: String },
     /// Run the control center (Quickshell, `qs`) with vela's settings.
     Shell,
     /// Toggle, open or close the control center.
@@ -93,6 +95,23 @@ fn main() -> ExitCode {
         Cmd::DefaultConfig => {
             print!("{}", config::Config::default().to_toml());
             return ExitCode::SUCCESS;
+        }
+        Cmd::Set { path, value } => {
+            let file = paths::config_file();
+            let result = config::load_or_create(&file).and_then(|outcome| {
+                let mut cfg = match outcome {
+                    config::LoadOutcome::Loaded(c) | config::LoadOutcome::Created(c) => c,
+                };
+                cfg.set_value(&path, &value)?;
+                config::save(&file, &cfg)
+            });
+            return match result {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("vela: {e:#}");
+                    ExitCode::FAILURE
+                }
+            };
         }
         Cmd::Shell => return run_qs(&[]),
         Cmd::Panel { action } => return run_qs(&["ipc", "call", "panel", &action]),

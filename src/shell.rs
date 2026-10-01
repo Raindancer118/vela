@@ -51,6 +51,10 @@ pub fn shell_json(cfg: &Config) -> String {
     let animation_scale = if a.animations { 1.0 / a.animation_speed } else { 0.0 };
     let pn = &cfg.panel;
     json!({
+        "idle": {
+            "suspend": cfg.idle.suspend,
+            "suspendAfterMin": cfg.idle.suspend_after_min,
+        },
         "colors": colors,
         "appearance": {
             "light": theme::is_light(a.theme),
@@ -202,6 +206,8 @@ mod tests {
         assert_eq!(j["panel"]["claudeUsage"], true);
         assert_eq!(j["panel"]["claudeUsageSubtle"], false);
         assert_eq!(j["panel"]["compactNotifications"], true);
+        assert_eq!(j["idle"]["suspend"], true);
+        assert_eq!(j["idle"]["suspendAfterMin"], 30.0);
         assert_eq!(j["panel"]["backdropLayers"], 1);
         cfg.panel.backdrop_strength = 3;
         let j = json(&cfg);

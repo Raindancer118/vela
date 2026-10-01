@@ -213,6 +213,9 @@ overwriting an unparsable file, vela backs it up as `config.toml.broken-<time>`.
 | `terminal` | `executable` | default `kitty` |
 | | `exec_args` | arguments before the command; omit to use the known default (`-e` for most, none for kitty/foot, `start --` for wezterm) |
 
+Single settings can also be changed from scripts: `vela set idle.suspend false`
+(the value is checked against the setting's type and range).
+
 The control center takes `theme`, `accent`, `border_radius`, `surface_opacity`,
 `font_scale`, `animations`, `animation_speed`, `backdrop_dim` and
 `general.opacity` from the same file.

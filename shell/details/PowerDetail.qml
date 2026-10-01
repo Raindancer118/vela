@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs
 import qs.components
 import qs.services
+import Quickshell
 
 // Power profiles to choose from; the current one is highlighted.
 ColumnLayout {
@@ -57,6 +58,20 @@ ColumnLayout {
                     }
                 }
             }
+        }
+    }
+
+    // Whether the computer goes to sleep on its own (vela idle / hypridle).
+    ListRow {
+        Layout.fillWidth: true
+        icon: VelaConfig.idle.suspend ? "bedtime" : "bedtime_off"
+        title: I18n.tr("Sleep automatically")
+        subtitle: VelaConfig.idle.suspend ? I18n.tr("After %1 min", Math.round(VelaConfig.idle.suspendAfterMin)) : I18n.tr("Never")
+        clickable: false
+
+        Switch {
+            checked: VelaConfig.idle.suspend
+            onToggled: Quickshell.execDetached([Quickshell.env("VELA_BIN") || "vela", "set", "idle.suspend", String(!checked)])
         }
     }
 }

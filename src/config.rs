@@ -546,6 +546,27 @@ impl Config {
         }
     }
 
+    /// Sets one value by `section.key` (e.g. `idle.suspend false`). The value
+    /// is read as JSON (numbers, booleans, arrays) or else taken as a string;
+    /// unknown keys and wrong types are refused, the result is sanitized.
+    pub fn set_value(&mut self, path: &str, value: &str) -> Result<()> {
+        let (section, key) = path.split_once('.').context("expected section.key")?;
+        let mut tree = serde_json::to_value(&*self)?;
+        let slot = tree
+            .get_mut(section)
+            .and_then(|s| s.get_mut(key))
+            .with_context(|| format!("unknown setting {path}"))?;
+        let parsed = serde_json::from_str(value).unwrap_or_else(|_| serde_json::Value::String(value.to_owned()));
+        if std::mem::discriminant(slot) != std::mem::discriminant(&parsed) && !(slot.is_number() && parsed.is_number()) {
+            anyhow::bail!("{path} expects a value like {slot}");
+        }
+        *slot = parsed;
+        let mut next: Config = serde_json::from_value(tree).with_context(|| format!("invalid value for {path}"))?;
+        next.sanitize();
+        *self = next;
+        Ok(())
+    }
+
     pub fn from_toml(text: &str) -> Result<Config> {
         let mut cfg: Config = toml::from_str(text)?;
         cfg.sanitize();
@@ -735,6 +756,22 @@ mod tests {
         assert_eq!(cfg.idle.suspend_after_min, 30.0, "the time is kept while switched off");
         assert_eq!(cfg.idle.lock_after_min, 0.5);
         assert_eq!(cfg.idle.dim_after_min, 720.0);
+    }
+
+    #[test]
+    fn single_values_can_be_set_by_path() {
+        let mut cfg = Config::default();
+        cfg.set_value("idle.suspend", "false").unwrap();
+        assert!(!cfg.idle.suspend);
+        cfg.set_value("panel.width", "500").unwrap();
+        assert_eq!(cfg.panel.width, 500);
+        cfg.set_value("appearance.accent", "#ff0000").unwrap();
+        assert_eq!(cfg.appearance.accent, "#ff0000", "plain strings need no quotes");
+        cfg.set_value("panel.width", "5").unwrap();
+        assert_eq!(cfg.panel.width, 320, "values are sanitized");
+        assert!(cfg.set_value("idle.nope", "1").is_err(), "unknown keys are refused");
+        assert!(cfg.set_value("idle.suspend", "maybe").is_err(), "wrong types are refused");
+        assert!(cfg.set_value("idle", "1").is_err());
     }
 
     #[test]

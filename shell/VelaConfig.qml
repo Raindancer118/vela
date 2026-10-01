@@ -26,6 +26,10 @@ Singleton {
             textOnError: "#601410",
             errorSurface: "#372e33"
         })
+    property var idle: ({
+            suspend: true,
+            suspendAfterMin: 30
+        })
     property var appearance: ({
             light: false,
             radius: 22,
@@ -56,6 +60,7 @@ Singleton {
     function apply(line: string): void {
         try {
             const d = JSON.parse(line);
+            idle = d.idle;
             colors = d.colors;
             appearance = d.appearance;
             panel = d.panel;
