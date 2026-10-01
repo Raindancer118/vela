@@ -3,3 +3,4 @@
 /pkg/arch/pkg
 /pkg/arch/*.tar.*
 Project.md
+__pycache__/
