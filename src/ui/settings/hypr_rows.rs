@@ -23,6 +23,14 @@ fn rgba_to_argb(c: &gdk::RGBA) -> u32 {
     (ch(c.alpha()) << 24) | (ch(c.red()) << 16) | (ch(c.green()) << 8) | ch(c.blue())
 }
 
+/// `follow_mouse_threshold` → "Follow mouse threshold", `col.active_border`
+/// → "Col active border".
+pub fn humanize(key: &str) -> String {
+    let s = key.replace(['_', '.', '-'], " ");
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+}
+
 /// Subtitle from the given text, else Hyprland's own description.
 fn subtitle(info: Option<&OptionInfo>, given: &str) -> String {
     if !given.is_empty() {
@@ -559,6 +567,110 @@ impl Rows {
                 }
                 write(e);
             });
+        }
+        row
+    }
+
+    /// Number field for an int or float option without a useful range.
+    pub fn spin(&self, name: &str, title: &str, sub: &str) -> adw::SpinRow {
+        let info = self.store.info(name);
+        let float = info.as_ref().is_some_and(|i| i.kind == Kind::Float);
+        let lo = info.as_ref().and_then(|i| i.min).unwrap_or(if float { -1e6 } else { -2_147_483_648.0 });
+        let hi = info.as_ref().and_then(|i| i.max).unwrap_or(if float { 1e6 } else { 2_147_483_647.0 });
+        let step = if float { 0.01 } else { 1.0 };
+        let adj = gtk::Adjustment::new(0.0, lo, hi, step, step * 10.0, 0.0);
+        let row = adw::SpinRow::builder()
+            .title(title)
+            .adjustment(&adj)
+            .digits(if float { 3 } else { 0 })
+            .climb_rate(1.0)
+            .build();
+        let info = self.mark_unsupported(&row, name);
+        row.set_subtitle(&subtitle(info.as_ref(), sub));
+        row.add_suffix(&self.reset_button(&[name]));
+        let w = row.downgrade();
+        self.watch(name, move |v| {
+            if let (Some(r), Some(v)) = (w.upgrade(), v.and_then(|v| v.as_f64())) {
+                r.set_value(v);
+            }
+        });
+        let kind = info.map_or(Kind::Float, |i| i.kind);
+        let (store, name) = (self.store.clone(), name.to_owned());
+        row.connect_value_notify(move |r| {
+            if !store.notifying()
+                && let Some(v) = Value::number(kind, r.value())
+            {
+                store.set(&name, v);
+            }
+        });
+        row
+    }
+
+    /// Two numbers (x, y), e.g. a shadow offset.
+    pub fn vec2(&self, name: &str, title: &str, sub: &str) -> adw::ActionRow {
+        let row = adw::ActionRow::builder().title(title).build();
+        let info = self.mark_unsupported(&row, name);
+        row.set_subtitle(&subtitle(info.as_ref(), sub));
+        let spin = || {
+            gtk::SpinButton::builder()
+                .adjustment(&gtk::Adjustment::new(0.0, -1e5, 1e5, 1.0, 10.0, 0.0))
+                .digits(1)
+                .valign(gtk::Align::Center)
+                .build()
+        };
+        let (x, y) = (spin(), spin());
+        row.add_suffix(&x);
+        row.add_suffix(&y);
+        row.add_suffix(&self.reset_button(&[name]));
+        let (wx, wy) = (x.downgrade(), y.downgrade());
+        self.watch(name, move |v| {
+            if let (Some(x), Some(y), Some(Value::Vec2([a, b]))) = (wx.upgrade(), wy.upgrade(), v) {
+                x.set_value(a);
+                y.set_value(b);
+            }
+        });
+        let write = {
+            let (store, name, wx, wy) = (self.store.clone(), name.to_owned(), x.downgrade(), y.downgrade());
+            Rc::new(move || {
+                if let (false, Some(x), Some(y)) = (store.notifying(), wx.upgrade(), wy.upgrade()) {
+                    store.set(&name, Value::Vec2([x.value(), y.value()]));
+                }
+            })
+        };
+        let w = write.clone();
+        x.connect_value_changed(move |_| w());
+        y.connect_value_changed(move |_| write());
+        row
+    }
+
+    /// The fitting row for any option, from what Hyprland says about it.
+    pub fn auto(&self, info: &OptionInfo) -> gtk::Widget {
+        let title = humanize(info.key());
+        let n = info.name.as_str();
+        let ranged = matches!((info.min, info.max), (Some(lo), Some(hi)) if hi > lo && hi - lo <= 10_000.0);
+        let row: gtk::Widget = match info.kind {
+            Kind::Bool => self.switch(n, &title, "").upcast(),
+            Kind::Int if !info.choices.is_empty() => self.choice(n, &title, "", &[]).upcast(),
+            Kind::Int if ranged => self
+                .slider(n, &title, "", info.min.unwrap_or(0.0), info.max.unwrap_or(1.0), 1.0, 0, "")
+                .upcast(),
+            Kind::Float if ranged => {
+                let (lo, hi) = (info.min.unwrap_or(0.0), info.max.unwrap_or(1.0));
+                let digits = if hi - lo <= 2.0 { 2 } else { 1 };
+                self.slider(n, &title, "", lo, hi, (hi - lo) / 200.0, digits, "").upcast()
+            }
+            Kind::Int | Kind::Float => self.spin(n, &title, "").upcast(),
+            Kind::Str => {
+                let r = self.entry(n, &title);
+                r.set_tooltip_text(Some(&format!("{}\n{n}", info.description)));
+                r.upcast()
+            }
+            Kind::Color | Kind::Gradient => self.color(n, &title, "").upcast(),
+            Kind::Gaps => self.gaps_slider(n, &title, "", 100.0).upcast(),
+            Kind::Vec2 => self.vec2(n, &title, "").upcast(),
+        };
+        if !matches!(info.kind, Kind::Str) {
+            row.set_tooltip_text(Some(n));
         }
         row
     }

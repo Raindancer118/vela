@@ -39,7 +39,7 @@ for _ in $(seq 100); do "$BIN" status 2>/dev/null && break; sleep 0.1; done
 for _ in $(seq 100); do grep -q "found .* applications" "$tmp/daemon.log" 2>/dev/null && break; sleep 0.1; done
 [[ -f "$XDG_CONFIG_HOME/vela/config.toml" ]] || fail "default config was not created"
 
-for cmd in show hide toggle toggle "settings" "settings claude" "settings hypr-windows" "settings hypr-effects" "settings hypr-animations" "settings hypr-input" "settings hypr-layouts" "settings hypr-behaviour" reload show; do
+for cmd in show hide toggle toggle "settings" "settings claude" "settings hypr-windows" "settings hypr-effects" "settings hypr-animations" "settings hypr-input" "settings hypr-layouts" "settings hypr-behaviour" "settings hypr-all" reload show; do
     # shellcheck disable=SC2086
     "$BIN" $cmd || fail "command '$cmd' failed"
     sleep 0.2

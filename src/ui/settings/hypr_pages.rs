@@ -3,6 +3,7 @@
 use super::binder::group;
 use super::hypr_rows::Rows;
 use adw::prelude::*;
+use std::rc::Rc;
 
 fn page(r: &Rows) -> adw::PreferencesPage {
     let p = adw::PreferencesPage::new();
@@ -617,5 +618,127 @@ pub fn behaviour(r: &Rows) -> adw::PreferencesPage {
     apps.add(&r.switch("xwayland:force_zero_scaling", "Unscaled X11 apps", "Sharp but small on scaled screens"));
     apps.add(&r.switch("xwayland:enabled", "X11 apps (XWayland)", ""));
     p.add(&apps);
+    p
+}
+
+/// `decoration:blur` → "Decoration › Blur".
+fn section_title(section: &str) -> String {
+    section.split(':').map(super::hypr_rows::humanize).collect::<Vec<_>>().join(" › ")
+}
+
+/// Every option Hyprland has, grouped by section and searchable. Built when
+/// first shown: a few hundred rows would slow down opening the settings.
+pub fn all_options(r: &Rows) -> adw::PreferencesPage {
+    let p = page(r);
+    let search_group = group("", "");
+    let search = gtk::SearchEntry::builder()
+        .placeholder_text("Search all Hyprland options")
+        .hexpand(true)
+        .build();
+    search_group.add(&search);
+    p.add(&search_group);
+    let tools = group("", "");
+    let only_changed = adw::SwitchRow::builder()
+        .title("Only options changed in vela")
+        .subtitle("Everything vela overrides on top of hyprland.lua")
+        .build();
+    tools.add(&only_changed);
+    let reset_all = adw::ButtonRow::builder().title("Reset everything changed in vela").build();
+    reset_all.add_css_class("destructive-action");
+    tools.add(&reset_all);
+    p.add(&tools);
+
+    {
+        let store = r.store.clone();
+        reset_all.connect_activated(move |btn| {
+            let names = store.overridden();
+            if names.is_empty() {
+                return;
+            }
+            let dialog = adw::AlertDialog::builder()
+                .heading("Reset all Hyprland settings?")
+                .body(format!("{} change(s) made in vela go back to the values from hyprland.lua.", names.len()))
+                .build();
+            dialog.add_responses(&[("cancel", "Cancel"), ("reset", "Reset")]);
+            dialog.set_response_appearance("reset", adw::ResponseAppearance::Destructive);
+            let store = store.clone();
+            dialog.connect_response(None, move |_, resp| {
+                if resp == "reset" {
+                    store.reset(&store.overridden());
+                }
+            });
+            dialog.present(Some(btn));
+        });
+    }
+
+    // Per group: (row, option name, lowercase search text).
+    type Entry = (gtk::Widget, String, String);
+    type Groups = Vec<(adw::PreferencesGroup, Vec<Entry>)>;
+    let rows: Rc<std::cell::RefCell<Groups>> = Rc::default();
+    let filter = {
+        let (rows, store, search, only_changed) = (rows.clone(), r.store.clone(), search.downgrade(), only_changed.downgrade());
+        Rc::new(move || {
+            let (Some(search), Some(only)) = (search.upgrade(), only_changed.upgrade()) else {
+                return;
+            };
+            let words: Vec<String> = search.text().to_lowercase().split_whitespace().map(str::to_owned).collect();
+            let only = only.is_active();
+            for (g, entries) in rows.borrow().iter() {
+                let mut any = false;
+                for (w, name, hay) in entries {
+                    let show = words.iter().all(|w| hay.contains(w.as_str())) && (!only || store.is_overridden(name));
+                    w.set_visible(show);
+                    any |= show;
+                }
+                g.set_visible(any);
+            }
+        })
+    };
+    let f = filter.clone();
+    search.connect_search_changed(move |_| f());
+    let f = filter.clone();
+    only_changed.connect_active_notify(move |_| f());
+    {
+        let f = filter.clone();
+        r.store.subscribe(move |_| {
+            // Keeps "only changed" right after resets; cheap enough.
+            f();
+        });
+    }
+
+    let built = std::cell::Cell::new(false);
+    let (r2, p2) = (r.clone(), p.downgrade());
+    p.connect_map(move |_| {
+        if built.replace(true) {
+            return;
+        }
+        let Some(p) = p2.upgrade() else { return };
+        let mut infos = r2.store.infos();
+        // Debug options last; the rest by section as Hyprland groups them.
+        infos.sort_by(|a, b| (a.section().starts_with("debug"), a.section()).cmp(&(b.section().starts_with("debug"), b.section())));
+        let mut current: Option<(String, adw::PreferencesGroup, Vec<Entry>)> = None;
+        let mut out = Vec::new();
+        for info in infos {
+            if current.as_ref().is_none_or(|(s, _, _)| s != info.section()) {
+                if let Some((_, g, e)) = current.take() {
+                    out.push((g, e));
+                }
+                let g = group(&section_title(info.section()), "");
+                p.add(&g);
+                current = Some((info.section().to_owned(), g, Vec::new()));
+            }
+            let row = r2.auto(&info);
+            let hay = format!("{} {} {}", info.name, super::hypr_rows::humanize(info.key()), info.description).to_lowercase();
+            if let Some((_, g, e)) = current.as_mut() {
+                g.add(&row);
+                e.push((row, info.name.clone(), hay));
+            }
+        }
+        if let Some((_, g, e)) = current.take() {
+            out.push((g, e));
+        }
+        *rows.borrow_mut() = out;
+        filter();
+    });
     p
 }

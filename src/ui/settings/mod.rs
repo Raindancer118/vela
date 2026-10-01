@@ -16,7 +16,7 @@ use gtk::{gdk, glib};
 use std::rc::Rc;
 
 /// Sidebar entries: (section, page id, title, icon). Ids are `SETTINGS_PAGES`.
-const ENTRIES: [(&str, &str, &str, &str); 15] = [
+const ENTRIES: [(&str, &str, &str, &str); 16] = [
     ("Launcher", "general", "Launcher", "system-search-symbolic"),
     ("Launcher", "apps", "Applications", "view-grid-symbolic"),
     ("Launcher", "search", "Search", "edit-find-symbolic"),
@@ -30,6 +30,7 @@ const ENTRIES: [(&str, &str, &str, &str); 15] = [
     ("Hyprland", "hypr-input", "Input", "input-keyboard-symbolic"),
     ("Hyprland", "hypr-layouts", "Layouts", "vela-layouts-symbolic"),
     ("Hyprland", "hypr-behaviour", "Behaviour", "vela-behaviour-symbolic"),
+    ("Hyprland", "hypr-all", "All options", "vela-all-options-symbolic"),
     ("Everywhere", "appearance", "Appearance", "applications-graphics-symbolic"),
     ("Everywhere", "system", "System", "preferences-system-symbolic"),
 ];
@@ -82,6 +83,7 @@ impl SettingsWindow {
                 "hypr-input" => hypr_pages::input(&hypr).upcast(),
                 "hypr-layouts" => hypr_pages::layouts(&hypr).upcast(),
                 "hypr-behaviour" => hypr_pages::behaviour(&hypr).upcast(),
+                "hypr-all" => hypr_pages::all_options(&hypr).upcast(),
                 "appearance" => pages::appearance(&binder).upcast(),
                 _ => pages::system(daemon, &binder).upcast(),
             };
