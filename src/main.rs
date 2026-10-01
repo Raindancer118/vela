@@ -54,7 +54,11 @@ enum Cmd {
     /// Run hypridle with the [idle] settings; restarts it when they change.
     Idle,
     /// Print the Claude plan usage of every Claude Code profile as JSON.
-    ClaudeUsage,
+    ClaudeUsage {
+        /// Only the names of the shown profiles that are logged in (no request).
+        #[arg(long)]
+        list: bool,
+    },
     /// Print the control center settings as JSON (used by the shell).
     ShellConfig {
         /// Keep running and print a new line whenever the config changes.
@@ -94,7 +98,7 @@ fn main() -> ExitCode {
         Cmd::Panel { action } => return run_qs(&["ipc", "call", "panel", &action]),
         Cmd::ShellConfig { watch } => return shell_config(watch),
         Cmd::Idle => return run_idle(),
-        Cmd::ClaudeUsage => {
+        Cmd::ClaudeUsage { list } => {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_millis() as i64);
@@ -103,7 +107,11 @@ fn main() -> ExitCode {
                 .ok()
                 .and_then(|t| config::Config::from_toml(&t).ok())
                 .unwrap_or_default();
-            println!("{}", vela::claude_usage::report(&paths::home_dir(), &cfg.panel, now));
+            if list {
+                println!("{}", serde_json::json!(vela::claude_usage::usable_names(&paths::home_dir(), &cfg.panel, now)));
+            } else {
+                println!("{}", vela::claude_usage::report(&paths::home_dir(), &cfg.panel, now));
+            }
             return ExitCode::SUCCESS;
         }
     };

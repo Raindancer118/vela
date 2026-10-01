@@ -75,8 +75,24 @@ Singleton {
         target: ShellState
 
         function onPanelOpenChanged(): void {
-            if (ShellState.panelOpen)
-                root.refreshIfStale();
+            if (!ShellState.panelOpen)
+                return;
+            root.refreshIfStale();
+            // Cheap check (no request) for accounts added, logged in or hidden.
+            if (!proc.running)
+                listProc.running = true;
+        }
+    }
+
+    // Accounts hidden or shown in the settings: fetch the new selection.
+    Connections {
+        target: VelaConfig
+
+        function onPanelChanged(): void {
+            if (root.raw !== null) {
+                root.lastAttempt = 0;
+                root.refresh();
+            }
         }
     }
 
@@ -110,6 +126,29 @@ Singleton {
                 root.accounts = merged;
                 root.raw = { fetchedAt: fresh.fetchedAt, accounts: merged };
                 cache.setText(JSON.stringify(root.raw));
+            }
+        }
+    }
+
+    Process {
+        id: listProc
+
+        command: [Quickshell.env("VELA_BIN") || "vela", "claude-usage", "--list"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let names = null;
+                try {
+                    names = JSON.parse(text);
+                } catch (e) {
+                    return;
+                }
+                // Only new names count: expired accounts stay listed from the
+                // cache for a while and must not cause a request every time.
+                const shown = root.accounts.map(a => a.name);
+                if (names.some(n => !shown.includes(n))) {
+                    root.lastAttempt = 0;
+                    root.refresh();
+                }
             }
         }
     }

@@ -121,8 +121,9 @@ Card {
             font.weight: Theme.font.weightMedium
         }
 
+        // Hidden, not removed: every bar keeps the same length.
         MaterialIcon {
-            visible: reset.text !== ""
+            opacity: reset.text !== "" ? 1 : 0
             icon: "restart_alt"
             size: Theme.icon.small * 0.8
             color: Theme.colors.textMuted

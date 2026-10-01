@@ -234,26 +234,6 @@ ColumnLayout {
                     }
                 }
             }
-
-            // Also restores opacity/x: an add transition interrupted by a
-            // displacement would otherwise leave the item half transparent.
-            displaced: Transition {
-                ParallelAnimation {
-                    SpringAnim {
-                        property: "y"
-                    }
-
-                    Anim {
-                        property: "opacity"
-                        to: 1
-                    }
-
-                    Anim {
-                        property: "x"
-                        to: 0
-                    }
-                }
-            }
         }
 
         EmptyState {

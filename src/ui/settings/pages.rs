@@ -710,32 +710,52 @@ fn claude_usage_group(b: &Binder) -> adw::PreferencesGroup {
         |c| c.panel.claude_usage_only_default,
         |c, v| c.panel.claude_usage_only_default = v,
     ));
-    let mut rows = Vec::new();
-    for (name, dir) in crate::claude_usage::profiles(&paths::home_dir()) {
-        let row = adw::SwitchRow::builder().title(&name).subtitle(paths::display_path(&dir)).build();
-        let (b2, n) = (b.clone(), name.clone());
-        row.connect_active_notify(move |r| {
-            let (show, n) = (r.is_active(), n.clone());
-            b2.write(move |c| {
-                c.panel.claude_usage_hidden.retain(|h| *h != n);
-                if !show {
-                    c.panel.claude_usage_hidden.push(n);
-                }
-            });
-        });
-        g.add(&row);
-        rows.push((name, row.downgrade()));
-    }
-    let sync = move |c: &Config| {
-        for (name, w) in &rows {
-            if let Some(r) = w.upgrade() {
+    // One switch per profile; rebuilt whenever the page is shown, so new
+    // ccacct profiles appear without restarting vela.
+    type Rows = Vec<(String, adw::SwitchRow)>;
+    let rows: Rc<std::cell::RefCell<Rows>> = Rc::default();
+    let sync = {
+        let rows = rows.clone();
+        move |c: &Config| {
+            for (name, r) in rows.borrow().iter() {
                 r.set_active(!c.panel.claude_usage_hidden.contains(name));
                 r.set_sensitive(c.panel.claude_usage && (name == "default" || !c.panel.claude_usage_only_default));
             }
         }
     };
     let sync = Rc::new(sync);
-    sync(&b.store.get());
+    let rebuild = {
+        let (rows, g, b, sync) = (rows.clone(), g.clone(), b.clone(), sync.clone());
+        move || {
+            for (_, r) in rows.borrow_mut().drain(..) {
+                g.remove(&r);
+            }
+            for (name, dir) in crate::claude_usage::profiles(&paths::home_dir()) {
+                let row = adw::SwitchRow::builder().title(&name).subtitle(paths::display_path(&dir)).build();
+                g.add(&row);
+                rows.borrow_mut().push((name, row));
+            }
+            sync(&b.store.get());
+            // Handlers after the initial state, so building writes nothing.
+            for (name, row) in rows.borrow().iter() {
+                let (b2, n) = (b.clone(), name.clone());
+                row.connect_active_notify(move |r| {
+                    let (show, n) = (r.is_active(), n.clone());
+                    b2.write(move |c| {
+                        let hidden = c.panel.claude_usage_hidden.contains(&n);
+                        if show == hidden {
+                            c.panel.claude_usage_hidden.retain(|h| *h != n);
+                            if !show {
+                                c.panel.claude_usage_hidden.push(n);
+                            }
+                        }
+                    });
+                });
+            }
+        }
+    };
+    rebuild();
+    g.connect_map(move |_| rebuild());
     {
         let sync = sync.clone();
         b.on_refresh(move |c| sync(c));

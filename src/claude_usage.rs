@@ -102,15 +102,19 @@ pub fn plan_of(credentials: &str) -> Option<String> {
     let oauth = v.get("claudeAiOauth")?;
     let kind = oauth.get("subscriptionType").and_then(Value::as_str).filter(|s| !s.is_empty())?;
     let tier = oauth.get("rateLimitTier").and_then(Value::as_str).unwrap_or("");
+    // "…_max_20x" → "Max 20×"; any Max-like tier without a number → "Max".
+    let max = || match tier.rsplit('_').next().and_then(|t| t.strip_suffix('x')) {
+        Some(n) if n.chars().all(|c| c.is_ascii_digit()) && !n.is_empty() => format!("Max {n}×"),
+        _ => "Max".into(),
+    };
     Some(match kind {
         "pro" => "Pro".into(),
-        "team" => "Team".into(),
+        // Team seats show as what they amount to: standard ≈ Pro, premium ≈ Max.
+        "team" if tier.contains("premium") || tier.contains("max") => max(),
+        "team" => "Pro".into(),
         "enterprise" => "Enterprise".into(),
         "free" => "Free".into(),
-        "max" => match tier.rsplit('_').next().and_then(|t| t.strip_suffix('x')) {
-            Some(n) if n.chars().all(|c| c.is_ascii_digit()) && !n.is_empty() => format!("Max {n}×"),
-            _ => "Max".into(),
-        },
+        "max" => max(),
         other => {
             let words = other.replace('_', " ");
             let mut c = words.chars();
@@ -180,6 +184,16 @@ fn fetch(token: &str) -> Result<String, String> {
 
 fn window_json(w: Option<Window>) -> Value {
     w.map_or(Value::Null, |w| json!({ "utilization": w.utilization, "resetsAt": w.resets_at }))
+}
+
+/// Shown profiles that currently have a usable token, without any request
+/// (lets the panel notice new or freshly logged-in accounts cheaply).
+pub fn usable_names(home: &Path, panel: &Panel, now_ms: i64) -> Vec<String> {
+    select(profiles(home), panel)
+        .into_iter()
+        .filter(|(_, dir)| std::fs::read_to_string(dir.join(".credentials.json")).is_ok_and(|c| read_token(&c, now_ms).is_ok()))
+        .map(|(name, _)| name)
+        .collect()
 }
 
 /// One JSON line with every profile's usage (or why it is unavailable).
@@ -289,14 +303,41 @@ mod tests {
             plan(r#"{"claudeAiOauth":{"subscriptionType":"max","rateLimitTier":"default_claude_max_5x"}}"#),
             Some("Max 5×".into())
         );
+        // Team seats show as what they amount to: standard = Pro, premium = Max.
         assert_eq!(
             plan(r#"{"claudeAiOauth":{"subscriptionType":"team","rateLimitTier":"default_raven"}}"#),
-            Some("Team".into())
+            Some("Pro".into())
+        );
+        assert_eq!(
+            plan(r#"{"claudeAiOauth":{"subscriptionType":"team","rateLimitTier":"default_raven_premium"}}"#),
+            Some("Max".into())
+        );
+        assert_eq!(
+            plan(r#"{"claudeAiOauth":{"subscriptionType":"team","rateLimitTier":"team_max_5x"}}"#),
+            Some("Max 5×".into())
         );
         assert_eq!(plan(r#"{"claudeAiOauth":{"subscriptionType":"enterprise"}}"#), Some("Enterprise".into()));
         assert_eq!(plan(r#"{"claudeAiOauth":{"subscriptionType":"some_new_plan"}}"#), Some("Some new plan".into()));
         assert_eq!(plan(r#"{"claudeAiOauth":{}}"#), None);
         assert_eq!(plan("broken"), None);
+    }
+
+    #[test]
+    fn usable_names_skip_expired_and_hidden() {
+        let home = tempfile::tempdir().unwrap();
+        let h = home.path();
+        let creds = |exp: i64| format!(r#"{{"claudeAiOauth":{{"accessToken":"t","expiresAt":{exp}}}}}"#);
+        std::fs::create_dir_all(h.join(".claude")).unwrap();
+        std::fs::write(h.join(".claude/.credentials.json"), creds(5000)).unwrap();
+        for (name, exp) in [("new", 5000), ("old", 10), ("hidden", 5000)] {
+            std::fs::create_dir_all(h.join(".claude-accounts").join(name)).unwrap();
+            std::fs::write(h.join(".claude-accounts").join(name).join(".credentials.json"), creds(exp)).unwrap();
+        }
+        let panel = Panel {
+            claude_usage_hidden: vec!["hidden".into()],
+            ..Panel::default()
+        };
+        assert_eq!(usable_names(h, &panel, 1000), vec!["default", "new"]);
     }
 
     #[test]

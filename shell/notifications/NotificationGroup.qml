@@ -38,6 +38,22 @@ Card {
         id: shift
     }
 
+    // Moves smoothly when the list repositions it (insertions, removals,
+    // cards above growing). Unlike a ListView displaced transition, whose
+    // target is fixed when it starts, this retargets on every change, so a
+    // card above that grows mid-animation can't leave this one overlapping.
+    property bool placed: false
+
+    Component.onCompleted: Qt.callLater(() => root.placed = true)
+
+    Behavior on y {
+        enabled: root.placed && ShellState.panelOpen
+
+        SpringAnim {
+            duration: Theme.anim.normal
+        }
+    }
+
     // Opacity/x of the delegate itself belong to the ListView transitions.
     SequentialAnimation {
         running: root.leaving
