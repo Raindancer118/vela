@@ -42,8 +42,10 @@ Rectangle {
             Layout.fillHeight: true
         }
 
+        // Low screens (laptop at 1.5x): notifications need the room more.
         ClaudeUsageSection {
             Layout.fillWidth: true
+            visible: Config.claudeUsage && accounts.length > 0 && root.height >= Theme.size.claudeUsageMinPanelHeight
         }
     }
 }

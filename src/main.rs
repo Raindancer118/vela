@@ -213,8 +213,50 @@ fn run_qs(args: &[&str]) -> ExitCode {
     ExitCode::FAILURE
 }
 
+/// For long-running subcommands: optionally die with the parent, and notice
+/// when an update replaced this binary.
+struct Lifecycle {
+    exe: Option<std::path::PathBuf>,
+    stamp: Option<std::time::SystemTime>,
+}
+
+impl Lifecycle {
+    /// `with_parent`: for helpers the shell spawns directly; not for `idle`,
+    /// which is started detached on purpose.
+    fn start(with_parent: bool) -> Lifecycle {
+        if with_parent {
+            let parent = unsafe { libc::getppid() };
+            // SAFETY: plain prctl/getppid calls without pointers.
+            unsafe {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+            }
+            // The parent died before prctl took effect.
+            if unsafe { libc::getppid() } != parent {
+                std::process::exit(0);
+            }
+        }
+        // Remember the path now: after an update /proc/self/exe reads "… (deleted)".
+        let exe = std::env::current_exe().ok().filter(|p| !p.to_string_lossy().ends_with(" (deleted)"));
+        let stamp = exe.as_ref().and_then(|p| p.metadata().ok()?.modified().ok());
+        Lifecycle { exe, stamp }
+    }
+
+    /// Re-execs the new binary with the same arguments after an update.
+    fn reexec_if_updated(&self, before: impl FnOnce()) {
+        let Some(exe) = &self.exe else { return };
+        let now = exe.metadata().ok().and_then(|m| m.modified().ok());
+        if now.is_none() || now == self.stamp {
+            return;
+        }
+        before();
+        let err = std::process::Command::new(exe).args(std::env::args_os().skip(1)).exec();
+        eprintln!("vela: cannot restart after update: {err}");
+    }
+}
+
 fn shell_config(watch: bool) -> ExitCode {
     use std::io::Write;
+    let life = watch.then(|| Lifecycle::start(true));
     let mut watcher = shell::ConfigWatcher::new(paths::config_file());
     let mut out = std::io::stdout();
     loop {
@@ -233,6 +275,9 @@ fn shell_config(watch: bool) -> ExitCode {
         if !watch {
             return ExitCode::SUCCESS;
         }
+        if let Some(life) = &life {
+            life.reexec_if_updated(|| {});
+        }
         std::thread::sleep(Duration::from_millis(250));
     }
 }
@@ -244,6 +289,7 @@ fn run_idle() -> ExitCode {
         eprintln!("vela: hypridle is not installed");
         return ExitCode::FAILURE;
     };
+    let life = Lifecycle::start(false);
     let conf_path = paths::state_dir().join("hypridle.conf");
     let kbd = idle::keyboard_backlight();
     let mut current: Option<config::Idle> = None;
@@ -288,6 +334,13 @@ fn run_idle() -> ExitCode {
                 Err(e) => eprintln!("vela: cannot start hypridle: {e}"),
             }
         }
+        life.reexec_if_updated(|| {
+            // The new image starts its own hypridle.
+            if let Some(mut c) = child.take() {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+        });
         std::thread::sleep(Duration::from_millis(1000));
     }
 }

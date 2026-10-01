@@ -19,6 +19,9 @@ Card {
     readonly property var items: Notifications.list.filter(n => Notifications.appKey(n) === app)
     readonly property int collapsedCount: Config.groupCollapsedCount
     property bool expanded: false
+    // Compact: one mini row (icon, app, count) until clicked open.
+    property bool open: false
+    readonly property bool mini: Config.compactNotifications && !open
     readonly property var shown: expanded ? items : items.slice(0, collapsedCount)
 
     // Grows and shrinks smoothly when notifications come, go or "Show more"
@@ -88,11 +91,69 @@ Card {
         width: parent.width
         spacing: 0
 
+        // Mini row: small icon, app name, count; click opens the group.
+        Item {
+            Layout.fillWidth: true
+            visible: root.mini
+            implicitHeight: miniRow.implicitHeight + 2 * Theme.spacing.sm
+
+            HoverHandler {
+                id: miniHover
+            }
+
+            Clickable {
+                radius: Theme.radius.card
+                onClicked: root.open = true
+            }
+
+            RowLayout {
+                id: miniRow
+
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: Theme.spacing.md
+                anchors.rightMargin: Theme.spacing.sm
+                spacing: Theme.spacing.sm
+
+                NotificationIcon {
+                    notification: root.items[0] ?? null
+                    size: Theme.size.notificationIconMini
+                }
+
+                StyledText {
+                    Layout.fillWidth: true
+                    text: root.items.length > 1 ? root.app + "  ·  " + root.items.length : root.app
+                    color: Theme.colors.textMuted
+                    font.pixelSize: Theme.font.small
+                    font.weight: Theme.font.weightMedium
+                }
+
+                IconButton {
+                    opacity: miniHover.hovered ? 1 : 0
+                    implicitWidth: Theme.icon.normal
+                    implicitHeight: Theme.icon.normal
+                    tonal: false
+                    icon: "close"
+                    iconSize: Theme.icon.small * 0.8
+                    iconColor: Theme.colors.textMuted
+                    onClicked: Notifications.dismissApp(root.app)
+
+                    Behavior on opacity {
+                        Anim {
+                            duration: Theme.anim.fast
+                        }
+                    }
+                }
+            }
+        }
+
         RowLayout {
             Layout.fillWidth: true
             Layout.leftMargin: Theme.spacing.lg
             Layout.rightMargin: Theme.spacing.sm
             Layout.topMargin: Theme.spacing.sm
+            visible: !root.mini
             spacing: Theme.spacing.sm
 
             StyledText {
@@ -109,6 +170,18 @@ Card {
                 style: "text"
                 text: root.expanded ? I18n.tr("Show less") : I18n.tr("Show %1 more", root.items.length - root.collapsedCount)
                 onClicked: root.expanded = !root.expanded
+            }
+
+            // Compact mode: fold the group back into its mini row.
+            IconButton {
+                visible: Config.compactNotifications
+                implicitWidth: Theme.icon.large
+                implicitHeight: Theme.icon.large
+                tonal: false
+                icon: "unfold_less"
+                iconSize: Theme.icon.small
+                iconColor: Theme.colors.textMuted
+                onClicked: root.open = false
             }
 
             IconButton {
@@ -134,7 +207,9 @@ Card {
                 required property var modelData
 
                 Layout.fillWidth: true
+                visible: !root.mini
                 notification: modelData
+                allowCompact: false
                 showAppName: false
                 onClicked: item.expanded = !item.expanded
             }

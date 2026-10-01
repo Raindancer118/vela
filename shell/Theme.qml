@@ -166,6 +166,7 @@ Singleton {
         readonly property int notificationWidth: 400
         readonly property int notificationIcon: 40
         readonly property int notificationIconCompact: 24
+        readonly property int notificationIconMini: 18
         // Share of a compact row the title may take before the text.
         readonly property real notificationCompactTitleShare: 0.45
         readonly property int notificationBodyLines: 3
@@ -178,6 +179,8 @@ Singleton {
         readonly property int dragDismissThreshold: 120
 
         readonly property int usageBarHeight: 6
+        // Below this panel height the Claude usage section is left out.
+        readonly property int claudeUsageMinPanelHeight: 800
         readonly property int usageLabelWidth: 28
         readonly property int usagePercentWidth: 40
         readonly property int usageResetWidth: 76

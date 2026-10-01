@@ -17,8 +17,10 @@ Item {
     signal clicked
 
     readonly property bool critical: notification?.urgency === NotificationUrgency.Critical
-    // One line (icon, title, text) until expanded (vela settings → Compact).
-    readonly property bool compact: Config.compactNotifications && !expanded
+    // Mini (vela settings → Compact): just a small icon and the app's name
+    // until expanded. Groups in the panel handle compactness themselves.
+    property bool allowCompact: true
+    readonly property bool compact: allowCompact && Config.compactNotifications && !expanded
     readonly property string plainBody: (notification?.body ?? "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim()
     readonly property var buttons: notification ? notification.actions.filter(a => a.identifier !== "default" && a.text !== "") : []
 
@@ -122,7 +124,7 @@ Item {
             NotificationIcon {
                 Layout.alignment: root.compact ? Qt.AlignVCenter : Qt.AlignTop
                 notification: root.notification
-                size: root.compact ? Theme.size.notificationIconCompact : Theme.size.notificationIcon
+                size: root.compact ? Theme.size.notificationIconMini : Theme.size.notificationIcon
             }
 
             ColumnLayout {
@@ -136,8 +138,9 @@ Item {
                     StyledText {
                         Layout.fillWidth: !root.compact || inlineBody.text === ""
                         Layout.maximumWidth: root.compact ? layout.width * Theme.size.notificationCompactTitleShare : -1
-                        text: root.notification?.summary || root.notification?.appName || ""
-                        color: root.critical ? Theme.colors.error : Theme.colors.text
+                        text: root.compact ? (root.notification ? Notifications.appKey(root.notification) : "") : root.notification?.summary || root.notification?.appName || ""
+                        color: root.critical ? Theme.colors.error : root.compact ? Theme.colors.textMuted : Theme.colors.text
+                        font.pixelSize: root.compact ? Theme.font.small : Theme.font.body
                         font.weight: Theme.font.weightMedium
                     }
 
@@ -146,12 +149,12 @@ Item {
                         id: inlineBody
 
                         Layout.fillWidth: true
-                        visible: root.compact && text !== ""
-                        text: root.compact ? root.plainBody : ""
-                        color: Theme.colors.textMuted
+                        visible: false
+                        text: ""
                     }
 
                     StyledText {
+                        visible: !root.compact
                         text: {
                             const time = root.notification ? Notifications.relativeTime(root.notification) : "";
                             // Compact rows keep the room for the text.
@@ -163,6 +166,7 @@ Item {
                     }
 
                     IconButton {
+                        visible: !root.compact
                         Layout.alignment: Qt.AlignTop
                         implicitWidth: Theme.icon.large
                         implicitHeight: Theme.icon.large
