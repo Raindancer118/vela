@@ -4,8 +4,11 @@
 //! overrides there instead of ~/.config and ~/.local/state, so they are part
 //! of the declarative configuration; Settings offers to commit and rebuild.
 
+use crate::config::Terminal;
+use crate::launch::{self, LaunchError, SpawnSpec};
 use serde::Deserialize;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,9 +90,128 @@ pub fn active() -> Option<&'static NixosMode> {
     }
 }
 
+/// Runs the command given as arguments and keeps the terminal open so its
+/// result (and a sudo prompt) can be read.
+pub const WAIT_SCRIPT: &str = r#""$@"; s=$?; echo; if [ "$s" -eq 0 ]; then echo "vela: rebuild finished"; else echo "vela: rebuild failed ($s)"; fi; printf 'Press Enter to close '; read -r _"#;
+
+pub fn porcelain_dirty(stdout: &str) -> bool {
+    stdout.lines().any(|l| !l.trim().is_empty())
+}
+
+/// Whether the state directory has changes git hasn't committed yet.
+/// None if that can't be told (no git, no repository, no directory).
+pub fn dirty(mode: &NixosMode) -> Option<bool> {
+    if !mode.state_dir.is_dir() {
+        return None;
+    }
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(&mode.state_dir)
+        .args(["status", "--porcelain", "--untracked-files=all", "--", "."])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    out.status.success().then(|| porcelain_dirty(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// `terminal [exec args] sh -c WAIT_SCRIPT sh <rebuild words…>`: the
+/// configured command as argv, never parsed by a shell.
+pub fn rebuild_spec(mode: &NixosMode, term: &Terminal) -> Result<SpawnSpec, LaunchError> {
+    let words = shlex::split(&mode.rebuild)
+        .filter(|w| !w.is_empty())
+        .ok_or_else(|| LaunchError::InvalidExec(format!("rebuild command “{}”", mode.rebuild)))?;
+    let mut command = vec!["sh".to_owned(), "-c".to_owned(), WAIT_SCRIPT.to_owned(), "sh".to_owned()];
+    command.extend(words);
+    Ok(SpawnSpec {
+        argv: launch::in_terminal(term, command)?,
+        cwd: Some(mode.state_dir.clone()),
+        env: Vec::new(),
+        name: "vela-rebuild".into(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn mode(dir: &std::path::Path, rebuild: &str) -> NixosMode {
+        NixosMode {
+            state_dir: dir.to_path_buf(),
+            rebuild: rebuild.into(),
+        }
+    }
+
+    fn term() -> Terminal {
+        Terminal {
+            executable: "/bin/sh".into(),
+            exec_args: Some(vec!["-e".into()]),
+        }
+    }
+
+    #[test]
+    fn porcelain_output_means_dirty() {
+        assert!(!porcelain_dirty(""));
+        assert!(!porcelain_dirty("\n"));
+        assert!(porcelain_dirty(" M config.toml\n"));
+        assert!(porcelain_dirty("?? hyprland.lua\n"));
+    }
+
+    #[test]
+    fn dirty_is_unknown_outside_a_repository_or_without_the_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(dirty(&mode(dir.path(), "rebuild")), None);
+        assert_eq!(dirty(&mode(&dir.path().join("missing"), "rebuild")), None);
+    }
+
+    #[test]
+    fn dirty_follows_git_status_of_the_state_dir() {
+        let repo = tempfile::tempdir().unwrap();
+        let git = |args: &[&str]| {
+            let ok = std::process::Command::new("git")
+                .arg("-C")
+                .arg(repo.path())
+                .args(args)
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "git {args:?}");
+        };
+        git(&["init", "-q"]);
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        git(&["config", "commit.gpgsign", "false"]);
+        let state = repo.path().join("vela");
+        std::fs::create_dir(&state).unwrap();
+        std::fs::write(repo.path().join("other.nix"), "{}").unwrap();
+        // Changes outside the state directory don't count.
+        assert_eq!(dirty(&mode(&state, "rebuild")), Some(false));
+        std::fs::write(state.join("config.toml"), "x").unwrap();
+        assert_eq!(dirty(&mode(&state, "rebuild")), Some(true));
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "c"]);
+        assert_eq!(dirty(&mode(&state, "rebuild")), Some(false));
+    }
+
+    #[test]
+    fn rebuild_runs_split_words_in_the_terminal_and_waits() {
+        let dir = tempfile::tempdir().unwrap();
+        let spec = rebuild_spec(&mode(dir.path(), "rebuild 'vela: apply'"), &term()).unwrap();
+        assert_eq!(spec.argv[..2], ["/bin/sh".to_owned(), "-e".to_owned()]);
+        assert_eq!(spec.argv[2..5], ["sh".to_owned(), "-c".to_owned(), WAIT_SCRIPT.to_owned()]);
+        assert_eq!(spec.argv[5..], ["sh".to_owned(), "rebuild".to_owned(), "vela: apply".to_owned()]);
+        assert_eq!(spec.cwd.as_deref(), Some(dir.path()));
+    }
+
+    #[test]
+    fn empty_or_unbalanced_rebuild_command_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(matches!(rebuild_spec(&mode(dir.path(), "  "), &term()), Err(LaunchError::InvalidExec(_))));
+        assert!(matches!(
+            rebuild_spec(&mode(dir.path(), "rebuild 'x"), &term()),
+            Err(LaunchError::InvalidExec(_))
+        ));
+    }
 
     const NIXOS: &str = "NAME=NixOS\nID=nixos\nVERSION_ID=\"26.11\"\n";
     const ARCH: &str = "NAME=\"Arch Linux\"\nID=arch\n";

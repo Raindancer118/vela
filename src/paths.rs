@@ -22,8 +22,17 @@ pub fn config_dir() -> PathBuf {
     xdg_dir("XDG_CONFIG_HOME", ".config").join(APP_ID)
 }
 
+/// In NixOS mode (see `nixos`) vela's own files live in the state
+/// directory of the user's NixOS repository.
+fn in_state_dir(mode: Option<&crate::nixos::NixosMode>, name: &str, default: PathBuf) -> PathBuf {
+    match mode {
+        Some(m) => m.state_dir.join(name),
+        None => default,
+    }
+}
+
 pub fn config_file() -> PathBuf {
-    config_dir().join("config.toml")
+    in_state_dir(crate::nixos::active(), "config.toml", config_dir().join("config.toml"))
 }
 
 pub fn state_dir() -> PathBuf {
@@ -32,12 +41,13 @@ pub fn state_dir() -> PathBuf {
 
 /// vela's Hyprland overrides (Settings → Hyprland, `vela mcp`).
 pub fn hypr_overrides_file() -> PathBuf {
-    config_dir().join("hyprland.toml")
+    in_state_dir(crate::nixos::active(), "hyprland.toml", config_dir().join("hyprland.toml"))
 }
 
-/// The Lua generated from them; contrib/hyprland/vela.lua loads this path.
+/// The Lua generated from them; contrib/hyprland/vela.lua loads this path
+/// (in NixOS mode the Home Manager module passes it as `settings_file`).
 pub fn hypr_lua_file() -> PathBuf {
-    state_dir().join("hyprland.lua")
+    in_state_dir(crate::nixos::active(), "hyprland.lua", state_dir().join("hyprland.lua"))
 }
 
 pub fn cache_dir() -> PathBuf {
@@ -169,5 +179,21 @@ mod tests {
         let home = home_dir();
         assert_eq!(display_path(&home.join("Docs/a.pdf")), "~/Docs/a.pdf");
         assert_eq!(display_path(Path::new("/etc/fstab")), "/etc/fstab");
+    }
+
+    #[test]
+    fn state_dir_redirects_vela_files_only_in_nixos_mode() {
+        let mode = crate::nixos::NixosMode {
+            state_dir: "/repo/vela".into(),
+            rebuild: "rebuild".into(),
+        };
+        assert_eq!(
+            in_state_dir(Some(&mode), "config.toml", "/home/u/.config/vela/config.toml".into()),
+            PathBuf::from("/repo/vela/config.toml")
+        );
+        assert_eq!(
+            in_state_dir(None, "config.toml", "/home/u/.config/vela/config.toml".into()),
+            PathBuf::from("/home/u/.config/vela/config.toml")
+        );
     }
 }
