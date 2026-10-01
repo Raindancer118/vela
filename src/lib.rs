@@ -22,6 +22,7 @@ pub mod nixos;
 pub mod paths;
 pub mod search;
 pub mod search_terms;
+pub mod selfupdate;
 pub mod sharepick;
 pub mod shell;
 pub mod theme;

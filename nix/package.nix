@@ -12,6 +12,9 @@
   brightnessctl,
   slurp,
   xdg-utils,
+  curl,
+  gnutar,
+  gzip,
 }:
 let
   cargo = (builtins.fromTOML (builtins.readFile ../Cargo.toml)).package;
@@ -56,6 +59,10 @@ rustPlatform.buildRustPackage {
         brightnessctl
         slurp
         xdg-utils
+        # Self-update (Settings → System) and the Claude usage.
+        curl
+        gnutar
+        gzip
       ]
     })
   '';

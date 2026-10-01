@@ -11,6 +11,7 @@ mod hypr_rows;
 mod pages;
 mod search_page;
 mod updates_page;
+mod vela_group;
 
 use super::daemon::Daemon;
 use super::marker::Marker;

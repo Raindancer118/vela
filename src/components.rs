@@ -164,6 +164,41 @@ impl Installed {
         i
     }
 
+    /// The components of a catalog profile (on NixOS without updates).
+    pub fn profile(name: &str, nixos: bool) -> Installed {
+        Installed {
+            profile: Some(name.to_owned()),
+            on: Component::ALL
+                .into_iter()
+                .filter(|c| c.profiles().contains(&name) && !(nixos && *c == Component::Updates))
+                .collect(),
+        }
+    }
+
+    pub fn set(&mut self, c: Component, on: bool) {
+        self.set_nixos(c, on, false);
+    }
+
+    /// Switches one component; the name becomes the profile that has exactly
+    /// these components, else "custom".
+    pub fn set_nixos(&mut self, c: Component, on: bool, nixos: bool) {
+        self.on.retain(|x| *x != c);
+        if on {
+            self.on.push(c);
+        }
+        self.on.sort_by_key(|x| Component::ALL.iter().position(|y| y == x));
+        let same = |p: &Installed| Component::ALL.iter().all(|x| p.has(*x) == self.has(*x));
+        self.profile = Some(
+            catalog()
+                .profiles
+                .iter()
+                .map(|(n, _)| *n)
+                .find(|n| same(&Installed::profile(n, nixos)))
+                .unwrap_or("custom")
+                .to_owned(),
+        );
+    }
+
     pub fn has(&self, c: Component) -> bool {
         self.on.contains(&c)
     }
@@ -279,6 +314,32 @@ mod tests {
         assert!(Installed::all().is_full());
         assert_eq!(Installed::default(), Installed::all());
         assert_eq!(Installed::fallback(false), Installed::all());
+    }
+
+    #[test]
+    fn a_profile_selects_its_components_and_nixos_leaves_out_updates() {
+        let launcher = Installed::profile("launcher", false);
+        assert_eq!(launcher.profile.as_deref(), Some("launcher"));
+        assert!(launcher.has(Component::Launcher) && launcher.has(Component::Updates) && !launcher.has(Component::Panel));
+        assert!(!Installed::profile("launcher", true).has(Component::Updates));
+        assert!(Installed::profile("full", false).is_full());
+    }
+
+    #[test]
+    fn a_hand_picked_selection_is_named_after_the_profile_it_matches() {
+        let mut i = Installed::profile("full", false);
+        i.set(Component::Claude, false);
+        assert_eq!(i.profile.as_deref(), Some("custom"));
+        i.set(Component::Claude, true);
+        assert_eq!(i.profile.as_deref(), Some("full"));
+        let mut m = Installed::only(&[]);
+        m.set(Component::Launcher, true);
+        assert_eq!(m.profile.as_deref(), Some("minimal"));
+        // On NixOS "panel" is the panel set without updates.
+        let mut n = Installed::profile("panel", true);
+        n.set_nixos(Component::Idle, false, true);
+        n.set_nixos(Component::Idle, true, true);
+        assert_eq!(n.profile.as_deref(), Some("panel"));
     }
 
     #[test]

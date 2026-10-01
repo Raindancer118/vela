@@ -20,6 +20,26 @@ pub struct Config {
     pub idle: Idle,
     /// System updates (Settings → Updates).
     pub updates: Updates,
+    /// New vela releases (Settings → System).
+    pub self_update: SelfUpdate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SelfUpdate {
+    /// Look for a new vela release this often; 0 = never.
+    pub check_interval_hours: u32,
+    /// Desktop notification once per new release.
+    pub notify: bool,
+}
+
+impl Default for SelfUpdate {
+    fn default() -> Self {
+        SelfUpdate {
+            check_interval_hours: 12,
+            notify: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

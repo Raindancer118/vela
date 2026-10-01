@@ -5,6 +5,7 @@
 use super::hypr_store::HyprStore;
 use super::icons;
 use super::launcher::{Launcher, Request};
+use super::selfupdate::SelfUpdater;
 use super::settings::SettingsWindow;
 use super::store::ConfigStore;
 use super::updates::Updates;
@@ -36,6 +37,7 @@ pub struct Daemon {
     history: RefCell<History>,
     pub index_status: RefCell<Option<IndexStatus>>,
     pub updates: Rc<Updates>,
+    pub self_update: Rc<SelfUpdater>,
     settings: RefCell<Option<Rc<SettingsWindow>>>,
     status_listeners: RefCell<Vec<StatusListener>>,
     catalog_listeners: RefCell<Vec<CatalogListener>>,
@@ -125,6 +127,7 @@ impl Daemon {
         let use_scope = launch::systemd_scope_available();
         log::info!("systemd scopes for launched apps: {}", if use_scope { "available" } else { "unavailable" });
         let updates = Updates::new(store.clone(), use_scope);
+        let self_update = SelfUpdater::new(store.clone(), use_scope);
 
         let d = Rc::new(Daemon {
             app: app.clone(),
@@ -137,6 +140,7 @@ impl Daemon {
             history: RefCell::new(history),
             index_status: RefCell::default(),
             updates: updates.clone(),
+            self_update: self_update.clone(),
             settings: RefCell::default(),
             status_listeners: RefCell::default(),
             catalog_listeners: RefCell::default(),
@@ -149,6 +153,13 @@ impl Daemon {
         updates.set_open_page(move || {
             if let Some(d) = weak.upgrade() {
                 d.open_settings_page(Some("updates"));
+            }
+        });
+
+        let weak = Rc::downgrade(&d);
+        self_update.set_open_page(move || {
+            if let Some(d) = weak.upgrade() {
+                d.open_settings_page(Some("system"));
             }
         });
 

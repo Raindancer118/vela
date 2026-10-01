@@ -141,6 +141,8 @@ pub fn launcher(b: &Binder) -> adw::PreferencesPage {
 
 pub fn system(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
     let p = page();
+    p.add(&super::vela_group::updates_group(daemon, b));
+    p.add(&super::vela_group::components_group(daemon));
 
     let term = group("Terminal", "Used for Claude and for applications that need a terminal.");
     let mut names: Vec<&str> = TERMINAL_PRESETS.iter().map(|(n, _)| *n).collect();
@@ -286,47 +288,8 @@ pub fn system(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
                 .build(),
         );
     }
-    p.add(&components_group());
     p.add(&about);
     p
-}
-
-/// What install.sh (on NixOS: the Home Manager module) installed.
-fn components_group() -> adw::PreferencesGroup {
-    use crate::components::{self, Component};
-    let installed = components::installed();
-    let nixos = crate::nixos::running_nixos();
-    let profile = match installed.profile.as_deref() {
-        Some("custom") => "Picked by hand".to_string(),
-        Some(p) => components::catalog()
-            .profiles
-            .iter()
-            .find(|(n, _)| *n == p)
-            .map_or_else(|| p.to_string(), |(_, d)| d.to_string()),
-        None if nixos => "NixOS default: everything but updates".to_string(),
-        None => "Everything (no selection from install.sh)".to_string(),
-    };
-    let how = if nixos {
-        "Set programs.vela.components in your Home Manager configuration to add or remove parts of vela."
-    } else {
-        "Run ./install.sh again to add or remove parts of vela."
-    };
-    let g = group("Components", how);
-    g.add(&adw::ActionRow::builder().title("Profile").subtitle(profile).build());
-    for c in Component::ALL {
-        let (title, desc) = c.description().split_once(": ").unwrap_or((c.id(), c.description()));
-        let row = adw::ActionRow::builder().title(title).subtitle(desc).build();
-        let on = installed.has(c);
-        let icon = gtk::Image::from_icon_name(if on { "object-select-symbolic" } else { "list-remove-symbolic" });
-        icon.set_tooltip_text(Some(if on { "Installed" } else { "Not installed" }));
-        if !on {
-            icon.add_css_class("dim-label");
-            row.add_css_class("dim-label");
-        }
-        row.add_suffix(&icon);
-        g.add(&row);
-    }
-    g
 }
 
 /// Shows below an executable entry whether the command can be found.

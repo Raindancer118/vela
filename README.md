@@ -278,6 +278,19 @@ The selection lives in `~/.local/share/vela/components.toml`; vela and
 does *Settings → System*). Without that file, as with the package, everything
 is on.
 
+*Settings → System → Features* changes the selection too: pick a profile,
+switch single parts on or off, **Apply** runs install.sh of the installed
+version with that choice.
+
+**Updating vela itself:** *Settings → System → Vela* shows whether a newer
+release is out (checked every 12 hours, `[self_update]` in config.toml) and a
+desktop notification says so once per version. **Update** downloads the
+release and runs its install.sh with `-y`, so your selection and settings
+stay; the daemon restarts at the end. This works for installs made by
+install.sh; on NixOS it builds the release source with nix, with Home Manager
+**Update & rebuild** runs `nix flake update vela` and your rebuild command in
+a terminal.
+
 </details>
 
 <details>

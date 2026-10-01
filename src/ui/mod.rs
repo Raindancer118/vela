@@ -4,6 +4,7 @@ pub mod hypr_store;
 pub mod icons;
 pub mod launcher;
 pub mod marker;
+pub mod selfupdate;
 pub mod settings;
 pub mod store;
 pub mod style;
