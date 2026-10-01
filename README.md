@@ -1,113 +1,296 @@
-# vela
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/hero-dark.svg">
+  <img alt="vela — launcher, control center and every Hyprland setting" src="docs/readme/hero-light.svg" width="100%">
+</picture>
 
-A fast, Spotlight-style application launcher for **Hyprland**, with file search
-and **Claude Code** built in. Written in Rust with GTK 4, libadwaita and
-gtk4-layer-shell.
+<p align="center">
+  <a href="https://github.com/Raindancer118/vela/releases"><img alt="release" src="https://img.shields.io/github/v/release/Raindancer118/vela?style=for-the-badge&labelColor=0d1330&color=7aa2f7&label=release"></a>
+  <a href="https://github.com/Raindancer118/vela/actions"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/Raindancer118/vela/ci.yml?branch=main&style=for-the-badge&labelColor=0d1330&color=9ece6a&label=ci"></a>
+  <img alt="Hyprland 0.55+" src="https://img.shields.io/badge/hyprland-0.55%2B-a9c1ff?style=for-the-badge&labelColor=0d1330">
+  <img alt="Rust" src="https://img.shields.io/badge/rust-2024-f7a072?style=for-the-badge&labelColor=0d1330&logo=rust&logoColor=f7a072">
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/github/license/Raindancer118/vela?style=for-the-badge&labelColor=0d1330&color=d97757"></a>
+</p>
 
-- **Tap Super** to open it. Super+Q, Super+1 and every other shortcut keep
-  working and never open the launcher by accident.
-- **App grid** when the search is empty: your pinned apps, as many as you like,
-  in a responsive grid that scrolls when it gets tall.
-- **Unified search** as you type: fuzzy app search (with desktop actions such as
-  "New Private Window"), indexed file search, and an **Ask Claude** entry.
-- **Shift+Enter** sends the whole input to Claude Code in your terminal. The
-  prompt is passed as a single argument, never through a shell.
-- **Graphical settings** with live preview: every change applies immediately
-  and is saved to `~/.config/vela/config.toml`.
-- **Instant**: a background daemon keeps everything warm; `vela toggle` answers
-  in about a millisecond.
-- **Control center** (`vela shell`, built on Quickshell): quick settings, sound,
-  Wi-Fi, Bluetooth, notifications with popups, night light and a workspace
-  indicator. It uses the same theme, colours and motion settings as the launcher.
+<p align="center">
+  <b>Tap Super.</b> Find any app, any file, any setting.<br>
+  Change Hyprland with sliders instead of a config file, or just tell Claude what you want.
+</p>
 
-![vela](docs/screenshot.jpg)
+<p align="center">
+  <a href="#the-launcher">Launcher</a> &nbsp;·&nbsp;
+  <a href="#the-control-center">Control center</a> &nbsp;·&nbsp;
+  <a href="#hyprland-without-the-config-file">Hyprland settings</a> &nbsp;·&nbsp;
+  <a href="#just-say-it">Claude</a> &nbsp;·&nbsp;
+  <a href="#get-it">Install</a> &nbsp;·&nbsp;
+  <a href="#under-the-hood">How it works</a>
+</p>
 
-## Installation (Arch Linux)
+<br>
 
-Dependencies:
+<a id="the-launcher"></a>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/h-launcher-dark.svg">
+  <img alt="The launcher" src="docs/readme/h-launcher-light.svg" width="100%">
+</picture>
+
+<img alt="The launcher: app grid, file results and Ask Claude" src="docs/readme/launcher.png" width="100%">
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**Tap, don't hold.**
+A tap on <kbd>Super</kbd> opens it. <kbd>Super</kbd>+<kbd>Q</kbd>, <kbd>Super</kbd>+<kbd>1</kbd> and
+every other shortcut keep working and never open it by accident, even
+combinations that have no bind.
+
+</td>
+<td width="33%" valign="top">
+
+**One field, everything.**
+Fuzzy app search with desktop actions, a file search whose index covers
+100 000 files in about 50 ms, and your pinned apps as a grid while the field
+is empty.
+
+</td>
+<td width="33%" valign="top">
+
+**Ask Claude.**
+Type a question and <kbd>Shift</kbd>+<kbd>Enter</kbd> hands it to Claude Code in
+your terminal, as a single argument, never through a shell.
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary><b>Keys</b></summary>
+
+| Key | Action |
+| --- | --- |
+| type | search apps, files and Claude |
+| <kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> | move in the grid; <kbd>↑</kbd><kbd>↓</kbd> / <kbd>Tab</kbd> in results |
+| <kbd>Enter</kbd> | open the selected entry |
+| <kbd>Shift</kbd>+<kbd>Enter</kbd> | send the whole input to Claude Code |
+| <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | show the selected file in its folder |
+| <kbd>←</kbd> / <kbd>→</kbd> | open the selected result on the monitor left / right of this one |
+| <kbd>Ctrl</kbd>+<kbd>,</kbd> | settings |
+| <kbd>Esc</kbd> | close |
+| right-click | pin / unpin / move tiles |
+
+While the input reads like a prompt ("Explain RSA to me", or anything ending
+in `?`), or while <kbd>Shift</kbd> is held, the search icon turns into the Claude
+logo: <kbd>Enter</kbd> goes to Claude.
+
+</details>
+
+<br>
+
+<a id="the-control-center"></a>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/h-center-dark.svg">
+  <img alt="The control center" src="docs/readme/h-center-light.svg" width="100%">
+</picture>
+
+`vela shell` runs a control center built on Quickshell, in the same theme,
+colours and motion as the launcher:
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+- **Quick settings**: Wi-Fi, Bluetooth, sound, power profile, night light
+- **Notifications**: popups, groups per app, compact rows that unfold when the pointer rests on them
+- **Power & idle**: dim, lock, screen off and sleep, each with its own switch and delay (runs hypridle for you)
+
+</td>
+<td width="50%" valign="top">
+
+- **Workspace dots** when you switch workspaces
+- **Claude usage**: 5-hour and weekly limits of every Claude Code profile, with the plan and the reset time
+- Opens with a shortcut of your choice (`quickshell:panelToggle`, e.g. <kbd>Super</kbd>+<kbd>Space</kbd>) or `vela panel`
+
+</td>
+</tr>
+</table>
+
+<br>
+
+<a id="hyprland-without-the-config-file"></a>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/h-hyprland-dark.svg">
+  <img alt="Hyprland, without the config file" src="docs/readme/h-hyprland-light.svg" width="100%">
+</picture>
+
+The settings open on a single search field. Type what you are looking for, in
+English or German, and the settings appear right below it, ready to use: no
+need to find the page they live on.
+
+<p align="center">
+  <img alt="Typing into the settings search: 'Abstand zwischen Fenstern' finds the gap settings, 'blur' the blur sliders" src="docs/readme/demo-search.webp" width="88%">
+</p>
+
+Every option Hyprland has is in there. The ones you change most have their own
+pages with sliders, switches and colour pickers, and each change shows up on
+screen the moment you make it.
+
+<img alt="Monitors, blur and effects, shortcuts and window rules" src="docs/readme/bento-hyprland.png" width="100%">
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**Windows & gaps** · gaps to the screen edges on or off per edge, their width, gaps between windows, border width and gradient colours, layout, snapping
+
+**Blur & effects** · blurriness, passes, brightness, contrast, vibrancy, noise, rounded corners, transparency, dimming, shadow, glow
+
+**Animations** · on or off, duration, curve (beziers and springs, plus a few of vela's own) and style, for each part: opening, closing, workspaces, fades, layers
+
+**Input** · keyboard layout and repeat, mouse speed and acceleration, touchpad, workspace swipe, cursor hiding and zoom
+
+</td>
+<td width="50%" valign="top">
+
+**Monitors** · drag them into place, resolution, refresh rate, only scales that give sharp pixels, rotation, VRR, on and off, with a 15-second *keep or revert*
+
+**Shortcuts** · record keys and pick from 22 actions or any command; take over or switch off the shortcuts from your hyprland.lua
+
+**Window rules** · pick an open window, then float it, size it, send it to a workspace, pin it, make it opaque … (24 effects)
+
+**Autostart · Layouts · Behaviour · All options** · the rest, down to the last of Hyprland's ~350 options, searchable
+
+</td>
+</tr>
+</table>
+
+> [!TIP]
+> Your `hyprland.lua` is never rewritten. vela keeps what you change in
+> `~/.config/vela/hyprland.toml`, applies it live with `hyprctl eval`, and
+> loads it at the end of your config. Only what you touched is overridden;
+> the ↶ next to a setting gives you your own value back.
+
+<details>
+<summary><b>All options, searchable</b></summary>
+<br>
+<img alt="Every Hyprland option on one page" src="docs/readme/shot-all-options.png" width="100%">
+</details>
+
+<br>
+
+<a id="just-say-it"></a>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/h-claude-dark.svg">
+  <img alt="Just say it" src="docs/readme/h-claude-light.svg" width="100%">
+</picture>
+
+<table>
+<tr>
+<td width="55%" valign="middle">
+<img alt="The settings search with an Ask Claude card above the matching settings" src="docs/readme/shot-search.png" width="100%">
+</td>
+<td width="45%" valign="middle">
+
+Write what you want instead of looking for it:
+
+> *Make the gaps between windows smaller and the blur a bit stronger.*
+
+> *Float pavucontrol, centred, 900 by 600.*
+
+> *Super+B should open Firefox.*
+
+Press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> and Claude Code does it through
+**`vela mcp`**, vela's own MCP server. Every change goes the same way as from
+the settings window: live, kept, and one click away from undone.
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary><b>The MCP tools</b></summary>
+
+`install.sh` registers the server with Claude Code
+(`claude mcp add --scope user vela -- vela mcp`), in the default profile and
+in every ccacct profile (`~/.claude-accounts/*`).
+
+| Tool | What it does |
+| --- | --- |
+| `search_hyprland_options` | find options by words in name or description, with value, default, range and choices |
+| `set_hyprland_options` | set several options at once (numbers, colours, gradients, gaps, choices by name) |
+| `reset_hyprland_options` | give options, animations or monitors back to hyprland.lua |
+| `list_hyprland_animations` · `set_hyprland_animation` | what each animation does, and change it |
+| `list_monitors` · `set_monitor` | modes, valid scales, position, rotation, VRR |
+| `list_shortcuts` · `set_shortcut` · `remove_shortcut` | vela's shortcuts and the keys hyprland.lua uses |
+| `list_window_rules` · `set_window_rule` · `remove_window_rule` | rules, their effects and the windows open now |
+| `set_autostart` | commands started with Hyprland |
+| `get_vela_settings` · `set_vela_setting` · `open_vela_settings` | vela itself |
+
+</details>
+
+<br>
+
+<a id="get-it"></a>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/h-install-dark.svg">
+  <img alt="Get it" src="docs/readme/h-install-light.svg" width="100%">
+</picture>
+
+On Arch Linux, with Hyprland 0.55 or newer (Lua config):
 
 ```sh
-sudo pacman -S --needed gtk4 gtk4-layer-shell libadwaita rust
-# optional
-sudo pacman -S --needed plocate kitty xdg-utils
+sudo pacman -S --needed gtk4 gtk4-layer-shell libadwaita rust   # plocate, quickshell: optional
+git clone https://github.com/Raindancer118/vela && cd vela && ./install.sh --hyprland
 ```
 
-Claude Code must be installed for the Claude action (`claude` in `PATH`, or
-configure its path in the settings).
+That's all: tap <kbd>Super</kbd>. Everything lands in your home directory, and
+`--hyprland` adds one line to the end of `~/.config/hypr/hyprland.lua` (after a
+backup):
 
-### User install (recommended)
-
-```sh
-git clone https://github.com/Raindancer118/vela && cd vela
-./install.sh --hyprland
+```lua
+dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup()
 ```
 
-This builds a release binary and installs, all under your home directory:
+<details>
+<summary><b>What gets installed where</b></summary>
 
 | File | Location |
 | --- | --- |
 | `vela`, `vela-daemon` | `~/.local/bin/` |
 | systemd user unit | `~/.config/systemd/user/vela.service` |
 | Hyprland module | `~/.config/hypr/vela.lua` |
+| control center (QML) | `~/.local/share/vela/shell` |
 | desktop entry, icons | `~/.local/share/applications`, `~/.local/share/icons` |
+| MCP server | registered with Claude Code, if installed |
 
-With `--hyprland` the script also appends one line to
-`~/.config/hypr/hyprland.lua` (after making a backup). Without it, the script
-prints the line so you can add it yourself.
+Claude Code must be installed for the Claude features (`claude` in `PATH`, or
+set its path under *Settings → Claude*).
 
-### Package
-
-`pkg/arch/PKGBUILD` builds a system package (binaries in `/usr/bin`, the
-Hyprland module in `/usr/share/vela/hyprland/vela.lua`):
-
-```sh
-cd pkg/arch && makepkg -si
-```
-
-With the package, load the module from its system path:
+**As a package**: `pkg/arch/PKGBUILD` builds a system package (binaries in
+`/usr/bin`, the module in `/usr/share/vela/hyprland/vela.lua`):
+`cd pkg/arch && makepkg -si`, then load
 `dofile("/usr/share/vela/hyprland/vela.lua").setup()`.
 
-## Hyprland
+**Uninstall**: `./uninstall.sh` (keeps `~/.config/vela`) or
+`./uninstall.sh --purge`. It removes the `dofile` line too, after a backup.
 
-Hyprland ≥ 0.55 uses a Lua configuration. Add this to
-`~/.config/hypr/hyprland.lua`:
+</details>
 
-```lua
-dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup()
-```
+<details>
+<summary><b>What <code>setup()</code> does, and its options</b></summary>
 
-`setup()` does three things:
-
-1. **Super tap detection.** It uses the `input.keyboard.key` event, which Hyprland
-   emits for every key before binds are processed. Pressing Super arms the
-   launcher; any other key pressed while Super is held disarms it, as does
-   holding Super longer than `tap_ms`. Releasing an armed Super runs
-   `vela toggle`. This also covers combinations without a bind, which a plain
-   release bind can't.
-2. **Layer rule** for the `vela` namespace: blur behind the launcher, with
-   `ignore_alpha` set so the soft shadow isn't blurred. Hyprland's own layer
-   animation is off because vela animates itself. A second rule blurs the
-   `vela-backdrop` layer: the optional blurred, dimmed screen behind the
-   launcher (Settings → Appearance → Blur).
-3. **Autostart** of the daemon on `hyprland.start`. It imports the session
-   environment into systemd and restarts `vela.service`, falling back to
-   starting the daemon directly.
-4. **Control center**: starts `vela shell` on `hyprland.start` (`shell = false`
-   to skip) and blurs the `quickshell-panel`, `quickshell-notifications`,
-   `quickshell-osd` and `vela-shell-backdrop` layers. Don't also start `qs`
-   yourself; two notification daemons would fight.
-5. **Idle**: starts `vela idle` (`idle = false` to skip), which runs hypridle
-   with a config generated from `[idle]` and restarts it when that changes.
-   Don't also start hypridle yourself.
-6. **Hyprland settings** made in vela (Settings → Hyprland: gaps, borders,
-   blur, shadows, …; `settings = false` to skip). vela applies a change live
-   with `hyprctl eval` and keeps it in `~/.config/vela/hyprland.toml`;
-   `setup()` loads the Lua generated from it
-   (`~/.local/state/vela/hyprland.lua`), so call it at the **end** of
-   hyprland.lua. Only options changed in vela are overridden; ↶ next to an
-   option drops the override and reloads the config.
-
-Options (all optional):
+1. **Super tap.** It listens to `input.keyboard.key`, which Hyprland emits for
+   every key before binds run. Super arms the launcher; any other key while
+   Super is down disarms it, as does holding it longer than `tap_ms`. Releasing
+   an armed Super runs `vela toggle`.
+2. **Layer rules**: blur behind the launcher, its backdrop and the control
+   center; Hyprland's own layer animation off (vela animates itself).
+3. **Autostart** of the daemon (`vela.service`, or the daemon directly).
+4. **Control center**: `vela shell` (`shell = false` to skip). Don't also start
+   `qs` yourself: two notification daemons would fight.
+5. **Idle**: `vela idle` runs hypridle with the *Power & idle* settings
+   (`idle = false` to skip). Don't also start hypridle yourself.
+6. **Hyprland settings** made in vela (`settings = false` to skip). They
+   override hyprland.lua, so call `setup()` at its **end**.
 
 ```lua
 dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup({
@@ -116,227 +299,208 @@ dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup({
     blur      = true,
     autostart = true,
     shell     = true,         -- start the control center
+    idle      = true,         -- run hypridle with vela's settings
     settings  = true,         -- apply the Hyprland settings made in vela
     binary    = nil,          -- path to `vela`, found automatically
 })
 ```
 
-The control center opens with the global shortcut `quickshell:panelToggle`,
-e.g. `hl.bind("SUPER + SPACE", hl.dsp.global("quickshell:panelToggle"))`, or
-with `vela panel [toggle|open|close]`.
+Still on `hyprland.conf`? A release bind (`bindr = SUPER, SUPER_L, exec, vela toggle`)
+plus a blur `layerrule` for the namespace `vela` comes closest, but can't
+tell combinations without a bind apart and isn't tested. The Hyprland settings
+need the Lua config.
 
-Still on a Hyprland version with `hyprland.conf`? The closest equivalent is a
-release bind, `bindr = SUPER, SUPER_L, exec, vela toggle`, plus a `layerrule`
-that enables blur for the namespace `vela` (check the wiki of your version for
-the exact syntax). A release bind can't detect combinations that have no bind,
-and it isn't tested with vela. Only the Lua module above is.
+</details>
 
-### Hyprland settings and Claude
+<br>
 
-The settings open on a search: every vela and Hyprland setting can be found
-and changed right there. Describe a change instead (“smaller gaps between
-windows”) and press **Ctrl+Enter**: Claude Code starts with that request and
-makes it through `vela mcp`, an MCP server with tools to search and set
-Hyprland options, animations, monitors and vela's own settings. `install.sh`
-registers it (`claude mcp add --scope user vela -- vela mcp`) in the default
-profile and every ccacct profile. The search understands German too
-(“Abstand zwischen Fenstern” finds *Gaps between windows*).
+<a id="under-the-hood"></a>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/h-inside-dark.svg">
+  <img alt="Under the hood" src="docs/readme/h-inside-light.svg" width="100%">
+</picture>
 
-## Usage
-
-| Key | Action |
-| --- | --- |
-| type | search apps, files and Claude |
-| ←↑↓→ | move in the grid; ↑↓ / Tab in results |
-| Enter | open the selected entry |
-| Shift+Enter | send the whole input to Claude Code |
-| Ctrl+Enter | show the selected file in its folder |
-| ← / → | open the selected result on the monitor left / right of this one (in the result list, when there is one) |
-| Ctrl+, | settings |
-| Esc | close |
-| right-click | pin / unpin / move tiles |
-
-While the input reads like a prompt ("Explain RSA to me", or anything ending in
-`?`), or while Shift is held, the search icon turns into the Claude logo to show
-that Enter goes to Claude.
-
-Command line:
-
-```
-vela               toggle (starts the daemon if needed)
-vela show | hide
-vela settings [general|appearance|apps|search|claude]
-vela reload        re-read config, apps and file index
-vela quit | status
-vela default-config
+```mermaid
+flowchart LR
+    tap(["Super tap"]) --> lua["vela.lua<br/><sub>in Hyprland</sub>"]
+    lua -- "vela toggle" --> cli["vela<br/><sub>tiny client, no GTK</sub>"]
+    cli -- "unix socket" --> daemon["vela-daemon<br/><sub>GTK 4 · libadwaita</sub>"]
+    daemon --> launcher["Launcher"]
+    daemon --> settings["Settings"]
+    settings -- "hyprctl eval" --> hypr[("Hyprland")]
+    settings --> toml["hyprland.toml"]
+    toml --> gen["generated Lua"] --> lua
+    claude["Claude Code"] -- "MCP · stdio" --> mcp["vela mcp"]
+    mcp --> toml
+    mcp -- "hyprctl eval" --> hypr
+    daemon -. "vela shell-config --watch" .-> qs["Control center<br/><sub>Quickshell</sub>"]
 ```
 
-## Configuration
+<details>
+<summary><b>How it works, in detail</b></summary>
 
-Use the settings window: `vela settings`, the gear in the launcher, or Ctrl+,.
-Changes apply immediately. The eye button in the header shows a live preview of
-the launcher. **Restore defaults** is under *General*.
+- **`vela`** is a small client without GTK. It sends one line (`toggle`,
+  `show`, …) to `$XDG_RUNTIME_DIR/vela.sock` and answers in about a millisecond.
+- **`vela-daemon`** runs the GTK application: the launcher is a layer-shell
+  overlay on the focused (or main) monitor, the settings a libadwaita window
+  in the same process, which is why changes apply instantly.
+- **Applications** come from the XDG `applications` directories, following the
+  Desktop Entry Specification (`NoDisplay`, `Hidden`, `OnlyShowIn`, `TryExec`,
+  `Terminal`, localized keys). `Exec` is split into arguments by the spec and
+  started directly, never through a shell, in its own systemd scope.
+- **Search** runs on worker threads: nucleo fuzzy matching weighted towards
+  exact and prefix matches plus a launch history; file search debounced, a
+  newer query cancels the running one.
+- **File index**: per search root vela checks whether the plocate database
+  covers it, else it builds its own in-memory index (a parallel walk on the
+  same file system, ~50 ms for 100 000 files).
+- **Hyprland settings**: the option catalogue comes from Hyprland itself
+  (`j/descriptions`, `j/getoption`), so new Hyprland options show up without a
+  vela update. Changes go out with `hyprctl eval` and into
+  `~/.config/vela/hyprland.toml`; the Lua generated from it
+  (`~/.local/state/vela/hyprland.lua`) wraps every entry in `pcall`, so one
+  option an older Hyprland doesn't know can't break your config.
+- **Shortcut recording** briefly enters an empty Hyprland submap, so the keys
+  you press reach vela instead of their bind.
+- **Settings search** borrows the real rows from their pages and puts them
+  back afterwards: what you find is the setting itself, not a copy.
+- **Control center**: `vela shell` runs Quickshell on the QML in `shell/`. It
+  reads the settings through `vela shell-config --watch` (one JSON line per
+  change). The QML started as the Quickshell config of
+  [Luna1506/nixos](https://github.com/Luna1506/nixos).
 
-Settings are stored in `~/.config/vela/config.toml`. You can also edit this file
-by hand; vela notices the change and reloads it. An invalid file is reported in
-the settings window, and vela keeps using the last valid settings. Before
-overwriting an unparsable file, vela backs it up as `config.toml.broken-<time>`.
-`data/config.example.toml` contains every option with its default value.
+</details>
+
+<details>
+<summary><b>Configuration reference</b> (<code>~/.config/vela/config.toml</code>)</summary>
+
+Use the settings window: `vela settings`, the gear in the launcher, or
+<kbd>Ctrl</kbd>+<kbd>,</kbd>. You can also edit the file by hand; vela notices and
+reloads it, reports errors in the settings and keeps the last valid settings
+(an unparsable file is backed up as `config.toml.broken-<time>`).
+`data/config.example.toml` lists every option with its default.
 
 | Section | Key | Meaning |
 | --- | --- | --- |
 | `general` | `width`, `max_height` | size of the launcher (logical px); content scrolls beyond `max_height` |
 | | `vertical_position` | distance from the top of the monitor in % |
 | | `opacity` | background opacity 0–1 |
-| | `close_on_focus_loss` | hide on a click outside the panel (keeps the keyboard while open) |
-| | `main_monitor` | always open on this monitor while connected: `"desc:<make model serial>"` or a connector like `"DP-7"`; empty = focused monitor |
+| | `close_on_focus_loss` | hide on a click outside the panel |
+| | `main_monitor` | always open here while connected: `"desc:<make model serial>"` or a connector like `"DP-7"`; empty = focused monitor |
 | | `max_results` | rows in the result list |
-| | `systemd_scope` | start apps in their own transient scope (`systemd-run --user --scope`) |
+| | `systemd_scope` | start apps in their own transient scope |
 | `appearance` | `theme` | `dark`, `midnight`, `graphite`, `nord`, `light` |
 | | `accent` | `#rrggbb` |
 | | `tile_size`, `icon_size`, `spacing`, `border_radius`, `surface_opacity`, `font_scale` | |
 | | `columns` | fixed column count, `0` = derived from width |
-| | `show_labels` | app names under the icons |
-| | `tile_background`, `tile_outline` | surface behind each grid tile; accent ring around the selected one |
-| | `animations`, `animation_speed` | motion on/off; speed factor (2 = twice as fast) |
-| | `backdrop`, `backdrop_dim` | blur everything else on the launcher's monitor while it is open; darkening 0–0.8 (blur strength = Hyprland's `decoration.blur`) |
+| | `show_labels`, `tile_background`, `tile_outline` | the app grid |
+| | `animations`, `animation_speed` | motion on/off; speed factor |
+| | `backdrop`, `backdrop_dim` | blur and darken the rest of the monitor while the launcher is open |
 | `apps` | `grid` | `pinned`, `pinned_then_all`, `all` |
-| | `pinned` | desktop IDs (`firefox.desktop`), `custom:<id>` or `vela:settings`, in order |
-| | `hidden` | desktop IDs never shown |
+| | `pinned`, `hidden` | desktop IDs (`firefox.desktop`), `custom:<id>` or `vela:settings` |
 | | `desktop_actions` | offer desktop actions in search |
 | | `[[apps.custom]]` | `id`, `name`, `command` (argv array), `icon`, `terminal`, `keywords` |
-| `search` | `apps`, `files`, `claude` | enable the result sources |
-| | `max_app_results`, `max_file_results` | |
+| `search` | `apps`, `files`, `claude` | result sources |
+| | `max_app_results`, `max_file_results`, `min_file_query_len`, `debounce_ms`, `index_interval_minutes` | |
 | | `file_backend` | `auto`, `plocate`, `builtin` |
-| | `file_roots` | folders to search (default `~`) |
-| | `exclude` | folder names to skip (`node_modules`, `.git`, …) |
-| | `include_hidden`, `include_directories` | |
-| | `min_file_query_len`, `debounce_ms`, `index_interval_minutes` | |
-| `claude` | `executable`, `args`, `working_dir` | what runs: `<terminal> <exec args> <executable> <args> -- "<prompt>"` |
-| | `always_visible` | show "Ask Claude" even when other results exist |
-| | `shift_enter` | Shift+Enter sends the input to Claude |
-| | `prefer_for_questions` | put "Ask Claude" first for question-like input |
-| `panel` | `width` | width of the control center (logical px) |
-| | `close_on_focus_loss` | close it on a click elsewhere or when another surface takes the keyboard |
-| | `backdrop` | blur everything else on its monitor while open (own switch; dimming = `appearance.backdrop_dim`) |
-| | `popup_timeout_secs`, `popup_max_visible`, `critical_popups_stay` | notification popups |
-| | `group_collapsed_count` | notifications per app before “Show more” |
-| | `compact_notifications` | one small row per app in the panel; expands on click or when the pointer rests on it (popups stay full size) |
-| | `workspace_osd` | workspace dots when switching workspaces |
-| | `night_light_temperature` | Kelvin (hyprsunset) |
-| | `clock_centered` | clock and date in the middle of the panel |
-| | `claude_usage`, `claude_usage_subtle`, `claude_usage_only_default`, `claude_usage_hidden` | Claude plan usage (5 h / 7 d, plan) at the bottom of the panel; only `~/.claude`; profile names to leave out (`default`, ccacct names) |
-| `idle` | `dim`, `lock`, `screen_off`, `suspend` | switch each step on or off (`suspend = false`: never sleep on its own); `vela idle` runs hypridle with them |
-| | `dim_after_min`, `lock_after_min`, `screen_off_after_min`, `suspend_after_min` | minutes without input |
-| | `lock_before_sleep` | lock the session before suspend |
-| `terminal` | `executable` | default `kitty` |
-| | `exec_args` | arguments before the command; omit to use the known default (`-e` for most, none for kitty/foot, `start --` for wezterm) |
+| | `file_roots`, `exclude`, `include_hidden`, `include_directories` | what the file search covers |
+| `claude` | `executable`, `args`, `working_dir` | runs `<terminal> <exec args> <executable> <args> -- "<prompt>"` |
+| | `always_visible`, `shift_enter`, `prefer_for_questions` | when "Ask Claude" shows and wins |
+| `panel` | `width`, `close_on_focus_loss`, `backdrop` | the control center |
+| | `popup_timeout_secs`, `popup_max_visible`, `critical_popups_stay`, `group_collapsed_count`, `compact_notifications` | notifications |
+| | `workspace_osd`, `night_light_temperature`, `clock_centered` | |
+| | `claude_usage`, `claude_usage_subtle`, `claude_usage_only_default`, `claude_usage_hidden` | Claude plan usage at the bottom of the panel |
+| `idle` | `dim`, `lock`, `screen_off`, `suspend` (+ `*_after_min`), `lock_before_sleep` | what `vela idle` runs hypridle with |
+| `terminal` | `executable`, `exec_args` | default `kitty`; arguments before the command |
 
-Single settings can also be changed from scripts: `vela set idle.suspend false`
-(the value is checked against the setting's type and range).
+From scripts: `vela set idle.suspend false` (checked against type and range).
+The Hyprland side lives in `~/.config/vela/hyprland.toml` (`[options]`,
+`[animations.<leaf>]`, `[monitors."desc:…"]`, `[[shortcuts]]`, `unbind`,
+`[[rules]]`, `[[autostart]]`), also editable by hand.
 
-The control center takes `theme`, `accent`, `border_radius`, `surface_opacity`,
-`font_scale`, `animations`, `animation_speed`, `backdrop_dim` and
-`general.opacity` from the same file.
+</details>
 
-## How it works
+<details>
+<summary><b>Command line</b></summary>
 
-- **Control center**: `vela shell` runs Quickshell on the QML in `shell/`
-  (installed to `/usr/share/vela/shell`, override with `VELA_SHELL_DIR`). The
-  shell doesn't parse TOML: it runs `vela shell-config --watch`, which prints
-  the sanitized settings plus a palette derived from the theme as one JSON
-  line per change. Claude usage comes from `vela claude-usage`: it reads each
-  Claude Code profile's OAuth token, hands it to curl on stdin only and asks
-  the unofficial endpoint behind Claude Code's `/usage` (may change any time).
-  The QML started as the Quickshell config of
-  [Luna1506/nixos](https://github.com/Luna1506/nixos).
+```
+vela                      toggle the launcher (starts the daemon if needed)
+vela show | hide
+vela settings [page]      home, general, apps, search, claude, panel, notifications, power,
+                          hypr-windows, hypr-effects, hypr-animations, hypr-input, hypr-monitors,
+                          hypr-shortcuts, hypr-rules, hypr-autostart, hypr-layouts,
+                          hypr-behaviour, hypr-all, appearance, system
+vela set <section.key> <value>
+vela reload               re-read config, apps and file index
+vela shell | panel [toggle|open|close] | idle
+vela mcp                  MCP server for Claude Code (stdio)
+vela quit | status | default-config
+```
 
-- **`vela`** is a small client without GTK. It sends one line (`toggle`, `show`,
-  …) to `$XDG_RUNTIME_DIR/vela.sock`.
-- **`vela-daemon`** runs the GTK application. The launcher is a layer-shell
-  overlay (`namespace = vela`, keyboard mode *on-demand*) placed on the focused
-  monitor, which vela asks Hyprland for over its IPC socket. The settings window
-  is a regular libadwaita window in the same process, which is why changes
-  apply instantly.
-- **Applications** come from the XDG `applications` directories. Desktop IDs,
-  precedence and localized keys follow the Desktop Entry Specification, and
-  `NoDisplay`, `Hidden`, `OnlyShowIn`/`NotShowIn`, `TryExec` and `Terminal` are
-  honoured. The `Exec` value is split into arguments according to the spec and
-  started directly, never through a shell. The list is rescanned automatically
-  when packages change.
-- **Search** runs on worker threads. App search uses nucleo fuzzy matching,
-  weighted towards exact, prefix and word-prefix matches in the name, plus a
-  launch history (frecency). File search is debounced, and a newer query cancels
-  a running one.
-- **File index:** with `auto`, vela checks for each search root whether the
-  plocate database covers it. Roots that aren't covered use a built-in
-  in-memory index. It is built by a parallel walk that stays on the same file
-  system, is refreshed periodically and whenever the launcher opens, and takes
-  about 50 ms for 100k files. Words shorter than 3 characters are never sent to
-  plocate, because they force a scan of the whole database (seconds on large
-  systems).
+</details>
 
-## Troubleshooting
+<details>
+<summary><b>Troubleshooting</b></summary>
 
 **Tapping Super does nothing.** Run `vela` in a terminal: if the launcher
 appears, the Hyprland side is the problem. Check `hyprctl configerrors`, and
-check that the `dofile` line comes after anything that might unbind keys. If
-your keyboard sends other keycodes for Super, find them with `wev` and set
-`keycodes`.
+that the `dofile` line comes last. If your keyboard sends other keycodes for
+Super, find them with `wev` and set `keycodes`.
 
-**The launcher opens after Super+Q.** Only with an old `bindr` setup; use
-`vela.lua` instead.
+**A Hyprland setting doesn't stick after a restart.** `setup()` must be the
+last line of hyprland.lua (later lines would override vela), and
+`settings = false` must not be set.
 
-**No blur.** Blur needs `decoration.blur.enabled = true` in Hyprland and the
-layer rule from `vela.lua`. With an opacity below `ignore_alpha` (0.3) the blur
-is skipped on purpose.
+**No blur.** Blur needs `decoration.blur.enabled` (Settings → Blur & effects)
+and the layer rules from `vela.lua`.
 
 **Files in my home folder are not found with plocate.** On btrfs, `/home` is a
-subvolume that updatedb skips as a bind mount. With `file_backend = "auto"`
-vela detects this and uses its built-in index. To make plocate cover `/home`,
-set `PRUNE_BIND_MOUNTS = "no"` in `/etc/updatedb.conf` and run
-`sudo updatedb`.
+subvolume that updatedb skips. `file_backend = "auto"` notices and uses the
+built-in index; or set `PRUNE_BIND_MOUNTS = "no"` in `/etc/updatedb.conf` and
+run `sudo updatedb`.
 
-**"Claude executable … was not found".** The daemon's PATH may not contain
-`~/.local/bin`. vela adds `~/.local/bin`, `~/.cargo/bin` and `~/bin` itself; if
-Claude lives somewhere else, set the full path under *Settings → Claude*.
+**"Claude executable … was not found".** vela adds `~/.local/bin`,
+`~/.cargo/bin` and `~/bin` to PATH; elsewhere, set the full path under
+*Settings → Claude*.
 
-**Terminal apps or Claude open the wrong terminal.** Set it under
-*Settings → General → Terminal*. For terminals vela doesn't know, turn off
-"Default arguments" and enter the flag that runs a command (usually `-e`).
+**Wrong terminal.** *Settings → General → Terminal*. For unknown terminals,
+turn off "Default arguments" and enter the flag that runs a command (usually
+`-e`).
 
-**Testing in a nested Hyprland.** Pass `autostart = false` to `setup()` in the
-nested config. The autostart hook imports `WAYLAND_DISPLAY` into the systemd
-user environment, which is right for your real session. In a nested instance it
-would send D-Bus-activated apps of the outer session into the nested one.
+**Testing in a nested Hyprland.** Pass `autostart = false` to `setup()` there,
+or D-Bus activated apps of your real session open in the nested one.
 
 **Logs.** `journalctl --user -u vela -f`, or run `vela-daemon` in a terminal
-(`RUST_LOG=vela=debug` for more detail).
+(`RUST_LOG=vela=debug`).
 
-## Uninstall
+</details>
 
-```sh
-./uninstall.sh          # keeps ~/.config/vela
-./uninstall.sh --purge  # also removes settings, history and cache
-```
-
-The script also removes the `dofile` line from `hyprland.lua` (after making a
-backup). With the package: `sudo pacman -R vela`, then remove the `dofile`
-line.
-
-## Development
+<details>
+<summary><b>Development</b></summary>
 
 ```sh
-cargo test                      # unit + integration tests
+cargo test                                  # unit and integration tests
+cargo test --lib live_ -- --ignored         # against the running Hyprland (no-op changes)
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
-scripts/smoke-test.sh           # start-up test against a Wayland display
-scripts/shell-test.sh           # control center: settings, audio icons, locales, start-up (needs qs)
+scripts/smoke-test.sh                       # start-up test on a Wayland display
+scripts/shell-test.sh                       # control center (needs qs)
 ```
 
-Releases: `git tag X.Y.Z && git push origin X.Y.Z`. GitHub Actions builds and
-publishes the release.
+The README artwork is generated: `scripts/readme-art.py` (hero and headings,
+text set with HarfBuzz and stored as outlines), `scripts/readme-shots.sh`
+(screenshots from a throwaway vela that never takes the focus) and
+`scripts/readme-frame.py` (frames, gallery, the search demo).
 
-## License
+Releases: `git tag X.Y.Z && git push origin X.Y.Z`; GitHub Actions builds and
+publishes them.
 
-MIT
+</details>
+
+<br>
+
+<p align="center">
+  <img alt="" src="docs/readme/vela-mark.svg" width="44"><br>
+  <sub><i>vela</i> — Latin for <i>sails</i>, and the constellation of the sails of the ship Argo.<br>
+  MIT licensed · made for Hyprland</sub>
+</p>
