@@ -291,7 +291,11 @@ mod tests {
         let bin = root.join("bin");
         std::fs::create_dir_all(&state).unwrap();
         std::fs::create_dir_all(&bin).unwrap();
-        let git = std::process::Command::new("git").args(["init", "-q"]).current_dir(root.join("repo")).status().unwrap();
+        let git = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(root.join("repo"))
+            .status()
+            .unwrap();
         assert!(git.success());
         let nix = bin.join("nix");
         std::fs::write(&nix, format!("#!/bin/sh\npwd > '{}'\n", root.join("nix-cwd").display())).unwrap();

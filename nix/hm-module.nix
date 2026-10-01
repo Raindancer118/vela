@@ -41,7 +41,10 @@ in
       type = types.nullOr types.str;
       default = null;
       example = "SUPER + B";
-      description = "Shortcut for the control center: a tap toggles it, holding it peeks.";
+      description = ''
+        Shortcut for the control center: a tap toggles it, holding it peeks.
+        One set in Settings → Shortcuts → Control center takes precedence.
+      '';
     };
 
     components = mkOption {

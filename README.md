@@ -74,6 +74,12 @@ your terminal, as a single argument, never through a shell.
 | <kbd>Esc</kbd> | close |
 | right-click | pin / unpin / move tiles |
 
+A tap on <kbd>Super</kbd> opens the launcher. *Settings → Shortcuts →
+Launcher* adds a shortcut of your own for it (e.g. <kbd>Super</kbd>+<kbd>Space</kbd>)
+and can switch the Super tap off; *Control center* there sets the control
+center's shortcut (tap toggles, hold peeks), which wins over `panel_peek` in
+`setup()`. Both work on NixOS too.
+
 While the input reads like a prompt ("Explain RSA to me", or anything ending
 in `?`), or while <kbd>Shift</kbd> is held, the search icon turns into the Claude
 logo: <kbd>Enter</kbd> goes to Claude.

@@ -107,6 +107,83 @@ pub fn shortcuts(r: &Rows) -> adw::PreferencesPage {
     );
     let store = r.store.clone();
 
+    if crate::components::has(crate::components::Component::Launcher) {
+        let launcher = group("Launcher", "");
+        live_group(&store, &launcher, {
+            let store = store.clone();
+            move |g| {
+                let l = store.extras().launcher;
+                let keys = hyprextra::normalize(&l.keys);
+                let row = adw::ActionRow::builder().title("Open the launcher").build();
+                match &keys {
+                    Some(k) => row.add_prefix(&keys_widget(k)),
+                    None => row.set_subtitle(if l.tap { "No shortcut, Super tap only" } else { "No shortcut" }),
+                }
+                let change = icon_button("document-edit-symbolic", if keys.is_some() { "Change" } else { "Set a shortcut" });
+                {
+                    let store = store.clone();
+                    change.connect_clicked(move |b| own_dialog(b.upcast_ref(), &store, Own::Launcher));
+                }
+                row.add_suffix(&change);
+                if keys.is_some() {
+                    let del = icon_button("user-trash-symbolic", "Remove");
+                    let store = store.clone();
+                    del.connect_clicked(move |_| update(&store, |e| e.launcher.keys.clear()));
+                    row.add_suffix(&del);
+                }
+                g.add(&row);
+                let tap = adw::SwitchRow::builder()
+                    .title("Tap Super")
+                    .subtitle(if !l.tap && keys.is_none() {
+                        "Off: the launcher opens only with `vela toggle` now"
+                    } else {
+                        "Press and release Super alone; Super with other keys stays a shortcut"
+                    })
+                    .active(l.tap)
+                    .build();
+                let store = store.clone();
+                tap.connect_active_notify(move |sw| {
+                    let v = sw.is_active();
+                    update(&store, |e| e.launcher.tap = v);
+                });
+                g.add(&tap);
+            }
+        });
+        p.add(&launcher);
+    }
+
+    if crate::components::has(crate::components::Component::Panel) {
+        let panel = group("Control center", "");
+        live_group(&store, &panel, {
+            let store = store.clone();
+            move |g| {
+                let keys = hyprextra::normalize(&store.extras().panel_keys);
+                let row = adw::ActionRow::builder().title("Open the control center").build();
+                match &keys {
+                    Some(k) => {
+                        row.add_prefix(&keys_widget(k));
+                        row.set_subtitle("Tap toggles, hold to peek");
+                    }
+                    None => row.set_subtitle("No shortcut here (or panel_peek in setup())"),
+                }
+                let change = icon_button("document-edit-symbolic", if keys.is_some() { "Change" } else { "Set a shortcut" });
+                {
+                    let store = store.clone();
+                    change.connect_clicked(move |b| own_dialog(b.upcast_ref(), &store, Own::Panel));
+                }
+                row.add_suffix(&change);
+                if keys.is_some() {
+                    let del = icon_button("user-trash-symbolic", "Remove");
+                    let store = store.clone();
+                    del.connect_clicked(move |_| update(&store, |e| e.panel_keys.clear()));
+                    row.add_suffix(&del);
+                }
+                g.add(&row);
+            }
+        });
+        p.add(&panel);
+    }
+
     let mine = group("Your shortcuts", "");
     let add = adw::ButtonRow::builder().title("Add shortcut").start_icon_name("list-add-symbolic").build();
     {
@@ -275,6 +352,196 @@ impl Recorder {
     }
 }
 
+/// Record button and key capture of a dialog: the next combo pressed goes
+/// into `keys`, then `refresh` runs.
+fn wire_recording(dialog: &adw::Dialog, record: &gtk::Button, keys: Rc<RefCell<String>>, refresh: Rc<dyn Fn()>) {
+    let recorder = Rc::new(Recorder {
+        on: Cell::new(false),
+        timeout: RefCell::default(),
+    });
+    {
+        let (recorder, rb) = (recorder.clone(), record.downgrade());
+        record.connect_clicked(move |b| {
+            if recorder.on.get() {
+                recorder.stop();
+                b.set_label("Record");
+                return;
+            }
+            b.set_label("Press the keys… (Esc cancels)");
+            let rb = rb.clone();
+            recorder.start(move || {
+                if let Some(b) = rb.upgrade() {
+                    b.set_label("Record");
+                }
+            });
+        });
+    }
+    let keyctl = gtk::EventControllerKey::new();
+    keyctl.set_propagation_phase(gtk::PropagationPhase::Capture);
+    {
+        let (recorder, rb) = (recorder.clone(), record.downgrade());
+        keyctl.connect_key_pressed(move |_, keyval, keycode, state| {
+            if !recorder.on.get() {
+                return glib::Propagation::Proceed;
+            }
+            let plain = !state.intersects(gdk::ModifierType::SUPER_MASK | gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::ALT_MASK);
+            if keyval == gdk::Key::Escape && plain {
+                recorder.stop();
+            } else if let Some(c) = combo_from_event(keycode, keyval, state) {
+                *keys.borrow_mut() = c;
+                recorder.stop();
+            } else {
+                // A modifier alone: wait for the key.
+                return glib::Propagation::Stop;
+            }
+            if let Some(b) = rb.upgrade() {
+                b.set_label("Record");
+            }
+            refresh();
+            glib::Propagation::Stop
+        });
+    }
+    dialog.add_controller(keyctl);
+    {
+        let recorder = recorder.clone();
+        dialog.connect_closed(move |_| recorder.stop());
+    }
+}
+
+/// vela's own shortcuts (launcher, control center) next to the others.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Own {
+    Launcher,
+    Panel,
+}
+
+impl Own {
+    fn keys(self, e: &Extras) -> &str {
+        match self {
+            Own::Launcher => &e.launcher.keys,
+            Own::Panel => &e.panel_keys,
+        }
+    }
+
+    fn set(self, e: &mut Extras, keys: String) {
+        match self {
+            Own::Launcher => e.launcher.keys = keys,
+            Own::Panel => e.panel_keys = keys,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Own::Launcher => "Opens the launcher",
+            Own::Panel => "Opens the control center",
+        }
+    }
+}
+
+/// What other than `except` already uses `keys`: vela's own shortcuts or
+/// one from "Your shortcuts" (index `skip` is the one being edited).
+fn used_by(e: &Extras, keys: &str, except: Option<Own>, skip: Option<usize>) -> Option<String> {
+    if keys.is_empty() {
+        return None;
+    }
+    for own in [Own::Launcher, Own::Panel] {
+        if Some(own) != except && hyprextra::same_combo(own.keys(e), keys) {
+            return Some(format!("Already {}", own.label().to_lowercase()));
+        }
+    }
+    e.shortcuts
+        .iter()
+        .enumerate()
+        .find(|(i, x)| Some(*i) != skip && hyprextra::same_combo(&x.keys, keys))
+        .map(|(_, x)| format!("Already used by “{}”", glib::markup_escape_text(&x.summary())))
+}
+
+/// Records the launcher's or the control center's shortcut.
+fn own_dialog(anchor: &gtk::Widget, store: &HyprStore, own: Own) {
+    let extras = store.extras();
+    let (title, description) = match own {
+        Own::Launcher => ("Launcher shortcut", "Toggles the launcher, like a Super tap."),
+        Own::Panel => (
+            "Control center shortcut",
+            "A tap toggles the control center, holding it shows it until you let go.",
+        ),
+    };
+    let dialog = adw::Dialog::builder().title(title).content_width(480).build();
+    let header = adw::HeaderBar::builder().show_end_title_buttons(false).show_start_title_buttons(false).build();
+    let cancel = gtk::Button::with_label("Cancel");
+    let save = gtk::Button::builder().label("Save").css_classes(["suggested-action"]).build();
+    header.pack_start(&cancel);
+    header.pack_end(&save);
+    let keys = Rc::new(RefCell::new(hyprextra::normalize(own.keys(&extras)).unwrap_or_default()));
+    let keys_row = adw::ActionRow::builder().title("Keys").build();
+    let keys_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    keys_box.set_valign(gtk::Align::Center);
+    let record = gtk::Button::builder().label("Record").valign(gtk::Align::Center).build();
+    keys_row.add_suffix(&keys_box);
+    keys_row.add_suffix(&record);
+    let g = adw::PreferencesGroup::builder().description(description).build();
+    g.add(&keys_row);
+    let pg = adw::PreferencesPage::new();
+    pg.add(&g);
+    let view = adw::ToolbarView::new();
+    view.add_top_bar(&header);
+    view.set_content(Some(&pg));
+    dialog.set_child(Some(&view));
+
+    let theirs: Vec<String> = store
+        .binds()
+        .into_iter()
+        .filter(|b| b.submap.is_empty() && !b.description.starts_with("vela: "))
+        .map(|b| b.combo)
+        .collect();
+    let refresh: Rc<dyn Fn()> = {
+        let (keys, keys_box, keys_row, save) = (keys.clone(), keys_box.downgrade(), keys_row.downgrade(), save.downgrade());
+        Rc::new(move || {
+            let (Some(kb), Some(kr), Some(save)) = (keys_box.upgrade(), keys_row.upgrade(), save.upgrade()) else {
+                return;
+            };
+            while let Some(c) = kb.first_child() {
+                kb.remove(&c);
+            }
+            let k = keys.borrow().clone();
+            if k.is_empty() {
+                kb.append(&gtk::Label::builder().label("Not set").css_classes(["dim-label"]).build());
+            } else {
+                kb.append(&keys_widget(&k));
+            }
+            let clash = used_by(&extras, &k, Some(own), None);
+            let replaces = !k.is_empty() && theirs.iter().any(|t| hyprextra::same_combo(t, &k));
+            kr.set_subtitle(&match (&clash, replaces) {
+                (Some(why), _) => why.clone(),
+                (None, true) => "Replaces the shortcut from hyprland.lua on these keys".into(),
+                _ => String::new(),
+            });
+            save.set_sensitive(!k.is_empty() && clash.is_none());
+        })
+    };
+    refresh();
+    wire_recording(&dialog, &record, keys.clone(), refresh);
+    {
+        let d = dialog.downgrade();
+        cancel.connect_clicked(move |_| {
+            if let Some(d) = d.upgrade() {
+                d.close();
+            }
+        });
+    }
+    {
+        let (store, d) = (store.clone(), dialog.downgrade());
+        save.connect_clicked(move |_| {
+            let k = keys.borrow().clone();
+            update(&store, |e| own.set(e, k));
+            if let Some(d) = d.upgrade() {
+                d.close();
+            }
+        });
+    }
+    dialog.present(Some(anchor));
+}
+
 fn shortcut_dialog(anchor: &gtk::Widget, store: &HyprStore, index: Option<usize>) {
     let extras = store.extras();
     let editing = index.and_then(|i| extras.shortcuts.get(i).cloned());
@@ -393,14 +660,10 @@ fn shortcut_dialog(anchor: &gtk::Widget, store: &HyprStore, index: Option<usize>
             } else {
                 kb.append(&keys_widget(&k));
             }
-            let clash = extras
-                .shortcuts
-                .iter()
-                .enumerate()
-                .find(|(i, x)| Some(*i) != index && !k.is_empty() && hyprextra::same_combo(&x.keys, &k));
+            let clash = used_by(&extras, &k, None, index);
             let replaces = !k.is_empty() && theirs.iter().any(|t| hyprextra::same_combo(t, &k));
-            kr.set_subtitle(&match (clash, replaces) {
-                (Some((_, other)), _) => format!("Already used by “{}”", glib::markup_escape_text(&other.summary())),
+            kr.set_subtitle(&match (&clash, replaces) {
+                (Some(why), _) => why.clone(),
                 (None, true) => "Replaces the shortcut from hyprland.lua on these keys".into(),
                 _ => String::new(),
             });
@@ -428,57 +691,7 @@ fn shortcut_dialog(anchor: &gtk::Widget, store: &HyprStore, index: Option<usize>
         arg.connect_changed(move |_| r());
     }
 
-    let recorder = Rc::new(Recorder {
-        on: Cell::new(false),
-        timeout: RefCell::default(),
-    });
-    {
-        let (recorder, rb) = (recorder.clone(), record.downgrade());
-        record.connect_clicked(move |b| {
-            if recorder.on.get() {
-                recorder.stop();
-                b.set_label("Record");
-                return;
-            }
-            b.set_label("Press the keys… (Esc cancels)");
-            let rb = rb.clone();
-            recorder.start(move || {
-                if let Some(b) = rb.upgrade() {
-                    b.set_label("Record");
-                }
-            });
-        });
-    }
-    let keyctl = gtk::EventControllerKey::new();
-    keyctl.set_propagation_phase(gtk::PropagationPhase::Capture);
-    {
-        let (recorder, keys, refresh, rb) = (recorder.clone(), keys.clone(), refresh.clone(), record.downgrade());
-        keyctl.connect_key_pressed(move |_, keyval, keycode, state| {
-            if !recorder.on.get() {
-                return glib::Propagation::Proceed;
-            }
-            let plain = !state.intersects(gdk::ModifierType::SUPER_MASK | gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::ALT_MASK);
-            if keyval == gdk::Key::Escape && plain {
-                recorder.stop();
-            } else if let Some(c) = combo_from_event(keycode, keyval, state) {
-                *keys.borrow_mut() = c;
-                recorder.stop();
-            } else {
-                // A modifier alone: wait for the key.
-                return glib::Propagation::Stop;
-            }
-            if let Some(b) = rb.upgrade() {
-                b.set_label("Record");
-            }
-            refresh();
-            glib::Propagation::Stop
-        });
-    }
-    dialog.add_controller(keyctl);
-    {
-        let recorder = recorder.clone();
-        dialog.connect_closed(move |_| recorder.stop());
-    }
+    wire_recording(&dialog, &record, keys.clone(), refresh.clone());
     {
         let d = dialog.downgrade();
         cancel.connect_clicked(move |_| {
@@ -895,4 +1108,38 @@ pub fn autostart(r: &Rows) -> adw::PreferencesPage {
     adding.add(&add);
     p.add(&adding);
     p
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_can_only_do_one_thing() {
+        let mut e = Extras::default();
+        e.launcher.keys = "SUPER + space".into();
+        e.panel_keys = "SUPER + B".into();
+        e.shortcuts.push(Shortcut {
+            keys: "SUPER + Q".into(),
+            action: "close".into(),
+            arg: String::new(),
+            repeat: false,
+            locked: false,
+            description: String::new(),
+            enabled: true,
+        });
+        assert_eq!(used_by(&e, "super+space", None, None).as_deref(), Some("Already opens the launcher"));
+        assert_eq!(
+            used_by(&e, "SUPER + B", Some(Own::Launcher), None).as_deref(),
+            Some("Already opens the control center")
+        );
+        // Its own keys don't clash with themselves.
+        assert_eq!(used_by(&e, "SUPER + B", Some(Own::Panel), None), None);
+        assert_eq!(
+            used_by(&e, "SUPER + Q", Some(Own::Panel), None).as_deref(),
+            Some("Already used by “Close window”")
+        );
+        assert_eq!(used_by(&e, "SUPER + Q", None, Some(0)), None);
+        assert_eq!(used_by(&e, "", None, None), None);
+    }
 }

@@ -488,9 +488,28 @@ pub struct Autostart {
     pub enabled: bool,
 }
 
+/// How the launcher opens: vela.lua's Super tap and/or a shortcut.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Launcher {
+    pub keys: String,
+    pub tap: bool,
+}
+
+impl Default for Launcher {
+    fn default() -> Self {
+        Launcher {
+            keys: String::new(),
+            tap: true,
+        }
+    }
+}
+
 /// Shortcuts, switched-off binds, rules and autostart in hyprland.toml.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Extras {
+    pub launcher: Launcher,
+    /// Control center: tap toggles, hold peeks (vela.lua binds it).
+    pub panel_keys: String,
     pub shortcuts: Vec<Shortcut>,
     /// Shortcuts from hyprland.lua that vela turns off (`hl.unbind`).
     pub unbind: Vec<String>,
@@ -500,12 +519,27 @@ pub struct Extras {
 
 impl Extras {
     pub fn is_empty(&self) -> bool {
-        self.shortcuts.is_empty() && self.unbind.is_empty() && self.rules.is_empty() && self.autostart.is_empty()
+        self.launcher == Launcher::default()
+            && self.panel_keys.is_empty()
+            && self.shortcuts.is_empty()
+            && self.unbind.is_empty()
+            && self.rules.is_empty()
+            && self.autostart.is_empty()
     }
 
     pub fn read(table: &toml::Table) -> Extras {
         let arr = |k: &str| table.get(k).and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let launcher = table.get("launcher").and_then(|v| v.as_table());
         Extras {
+            launcher: Launcher {
+                keys: launcher.and_then(|t| t.get("keys")?.as_str()).unwrap_or_default().to_owned(),
+                tap: launcher.and_then(|t| t.get("tap")?.as_bool()).unwrap_or(true),
+            },
+            panel_keys: table
+                .get("panel")
+                .and_then(|v| v.as_table()?.get("keys")?.as_str())
+                .unwrap_or_default()
+                .to_owned(),
             shortcuts: arr("shortcuts").iter().filter_map(Shortcut::from_toml).collect(),
             unbind: arr("unbind").iter().filter_map(|v| normalize(v.as_str()?)).collect(),
             rules: arr("rules").iter().filter_map(WindowRule::from_toml).collect(),
@@ -523,6 +557,19 @@ impl Extras {
     }
 
     pub fn write(&self, table: &mut toml::Table) {
+        if self.launcher != Launcher::default() {
+            let mut t = toml::Table::new();
+            if !self.launcher.keys.is_empty() {
+                t.insert("keys".into(), self.launcher.keys.clone().into());
+            }
+            t.insert("tap".into(), self.launcher.tap.into());
+            table.insert("launcher".into(), toml::Value::Table(t));
+        }
+        if !self.panel_keys.is_empty() {
+            let mut t = toml::Table::new();
+            t.insert("keys".into(), self.panel_keys.clone().into());
+            table.insert("panel".into(), toml::Value::Table(t));
+        }
         if !self.shortcuts.is_empty() {
             table.insert("shortcuts".into(), toml::Value::Array(self.shortcuts.iter().map(Shortcut::to_toml).collect()));
         }
@@ -556,9 +603,33 @@ impl Extras {
             let _ = writeln!(out, "try(hl.unbind, {})", lua_string(k));
             taken.push(k.clone());
         }
+        if !self.launcher.tap {
+            out.push_str("vela_super_tap = false\n");
+        }
+        if let Some(keys) = normalize(&self.launcher.keys) {
+            let _ = writeln!(out, "try(hl.unbind, {})", lua_string(&keys));
+            let _ = writeln!(
+                out,
+                "try(hl.bind, {}, hl.dsp.exec_cmd(vela_launcher_command or \"vela toggle\"), {{ description = \"vela: Open the launcher\" }})",
+                lua_string(&keys)
+            );
+            taken.push(keys);
+        }
+        if let Some(keys) = normalize(&self.panel_keys) {
+            if !taken.iter().any(|t| same_combo(t, &keys)) {
+                let _ = writeln!(out, "try(hl.unbind, {})", lua_string(&keys));
+            }
+            let _ = writeln!(out, "vela_panel_keys = {}", lua_string(&keys));
+            taken.push(keys);
+        }
+        let own = [normalize(&self.launcher.keys), normalize(&self.panel_keys)];
         for s in self.shortcuts.iter().filter(|s| s.enabled) {
             let Some(args) = s.bind_lua() else { continue };
             let keys = normalize(&s.keys).unwrap_or_default();
+            // Launcher and control center keys win; the dialogs don't allow both.
+            if own.iter().flatten().any(|o| same_combo(o, &keys)) {
+                continue;
+            }
             // Replaces whatever hyprland.lua bound to these keys.
             if !taken.iter().any(|t| same_combo(t, &keys)) {
                 let _ = writeln!(out, "try(hl.unbind, {})", lua_string(&keys));
@@ -711,5 +782,60 @@ mod tests {
         e.write(&mut t);
         let text = toml::to_string(&t).unwrap();
         assert_eq!(Extras::read(&toml::from_str(&text).unwrap()), e);
+    }
+    #[test]
+    fn the_control_center_gets_a_shortcut() {
+        let mut e = Extras {
+            panel_keys: "super+b".into(),
+            ..Default::default()
+        };
+        assert!(!e.is_empty());
+        let lua = e.lua();
+        assert!(lua.contains("try(hl.unbind, \"SUPER + B\")\nvela_panel_keys = \"SUPER + B\"\n"), "{lua}");
+        // vela.lua binds it (hold to peek), not the generated file.
+        assert!(!lua.contains("hl.bind"));
+        e.shortcuts.push(shortcut("SUPER + B", "exec", "x"));
+        assert!(!e.lua().contains("exec_cmd(\"x\")"));
+        let mut t = toml::Table::new();
+        e.write(&mut t);
+        assert_eq!(Extras::read(&toml::from_str(&toml::to_string(&t).unwrap()).unwrap()), e);
+        e.panel_keys = "SUPER".into();
+        assert!(!e.lua().contains("vela_panel_keys"));
+    }
+
+    #[test]
+    fn the_launcher_gets_a_shortcut_and_the_tap_can_go() {
+        let mut e = Extras::default();
+        assert_eq!(
+            e.launcher,
+            Launcher {
+                keys: String::new(),
+                tap: true
+            }
+        );
+        assert!(e.is_empty());
+        assert!(!e.lua().contains("vela_super_tap"));
+        e.launcher = Launcher {
+            keys: "super+space".into(),
+            tap: false,
+        };
+        assert!(!e.is_empty());
+        let lua = e.lua();
+        assert!(lua.contains("vela_super_tap = false\n"));
+        assert!(lua.contains(r#"try(hl.unbind, "SUPER + space")"#), "{lua}");
+        assert!(lua.contains(
+            r#"try(hl.bind, "SUPER + space", hl.dsp.exec_cmd(vela_launcher_command or "vela toggle"), { description = "vela: Open the launcher" })"#
+        ));
+        // A shortcut on the same keys (hand-edited hyprland.toml) yields to the launcher.
+        e.shortcuts.push(shortcut("SUPER + space", "exec", "x"));
+        assert_eq!(e.lua().matches("try(hl.unbind, \"SUPER + space\")").count(), 1);
+        assert!(!e.lua().contains("exec_cmd(\"x\")"));
+        let mut t = toml::Table::new();
+        e.write(&mut t);
+        assert_eq!(Extras::read(&toml::from_str(&toml::to_string(&t).unwrap()).unwrap()), e);
+        // Unparsable keys bind nothing.
+        e.shortcuts.clear();
+        e.launcher.keys = "SUPER".into();
+        assert!(!e.lua().contains("hl.bind"));
     }
 }

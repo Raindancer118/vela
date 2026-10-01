@@ -19,10 +19,13 @@ local function run(manifest, opts)
     _G.hl = {
         on = function(event, fn)
             seen.on[event] = (seen.on[event] or 0) + 1
+            if event == "input.keyboard.key" and not seen.key then seen.key = fn end
             if event == "hyprland.start" then fn() end
         end,
         exec_cmd = function(cmd) table.insert(seen.exec, cmd) end,
         bind = function(keys) table.insert(seen.binds, keys) end,
+        unbind = function() end,
+        dsp = { exec_cmd = function(cmd) return { exec = cmd } end },
         layer_rule = function(r) seen.rules[r.name] = true end,
         timer = function() return { set_enabled = function() end } end,
     }
@@ -89,6 +92,59 @@ s = run('# written by install.sh\nprofile="custom"\n  panel   =   false  # no\ni
 check("parsing: panel off", not s.shell)
 check("parsing: idle on", s.idle)
 check("parsing: launcher defaults to on", s.tap)
+
+-- A Super tap toggles the launcher, unless Settings → Shortcuts switched the
+-- tap off; the launcher shortcut from there runs the same command.
+local function tap(seen)
+    local before = #seen.exec
+    seen.key(133, nil, 1)
+    seen.key(133, nil, 0)
+    return #seen.exec > before and seen.exec[#seen.exec]:match(" toggle$") ~= nil
+end
+s = run(nil, { binary = "/b/vela" })
+check("tap: toggles by default", tap(s))
+check("tap: command for the shortcut", vela_launcher_command == "/b/vela toggle")
+local settings = tmp .. "/settings.lua"
+local f = assert(io.open(settings, "w"))
+f:write('vela_super_tap = false\n')
+f:close()
+s = run(nil, { binary = "/b/vela", settings_file = settings })
+check("tap: switched off in the settings", not tap(s))
+-- A reload without that line brings the tap back.
+f = assert(io.open(settings, "w"))
+f:write('-- nothing\n')
+f:close()
+s = run(nil, { binary = "/b/vela", settings_file = settings })
+check("tap: back on after the setting is gone", tap(s))
+
+-- The control center shortcut from Settings → Shortcuts wins over setup()'s
+-- panel_peek, and works without it.
+f = assert(io.open(settings, "w"))
+f:write('vela_panel_keys = "SUPER + B"\n')
+f:close()
+s = run(nil, { settings_file = settings })
+check("panel keys: bound from the settings", #s.binds == 1 and s.binds[1] == "SUPER + B")
+s = run(nil, { settings_file = settings, panel_peek = "SUPER + T" })
+check("panel keys: settings win over setup()", #s.binds == 1 and s.binds[1] == "SUPER + B")
+s = run('profile = "minimal"\nlauncher = true\npanel = false\n', { settings_file = settings })
+check("panel keys: nothing without the control center", #s.binds == 0)
+f = assert(io.open(settings, "w"))
+f:write('-- nothing\n')
+f:close()
+s = run(nil, { settings_file = settings, panel_peek = "SUPER + T" })
+check("panel keys: setup() without a setting", #s.binds == 1 and s.binds[1] == "SUPER + T")
+
+-- NixOS: the Home Manager module's call (store binary, settings in the
+-- repository, panelPeek) with shortcuts set in Settings.
+local repo = tmp .. "/nixos-repo-hyprland.lua"
+f = assert(io.open(repo, "w"))
+f:write('vela_super_tap = false\nvela_panel_keys = "SUPER + B"\n')
+f:close()
+s = run('# from Home Manager\nprofile = "custom"\nlauncher = true\npanel = true\nhyprland = true\n',
+    { binary = "/nix/store/x-vela/bin/vela", settings_file = repo, panel_peek = "SUPER + T" })
+check("nixos: Settings' control center keys", #s.binds == 1 and s.binds[1] == "SUPER + B")
+check("nixos: Super tap off from Settings", not tap(s))
+check("nixos: launcher command uses the store binary", vela_launcher_command == "/nix/store/x-vela/bin/vela toggle")
 
 os.execute("rm -rf " .. tmp)
 if failures > 0 then

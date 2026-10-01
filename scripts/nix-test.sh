@@ -14,6 +14,10 @@ for f in bin/vela bin/vela-daemon bin/vela-share-picker share/vela/vela.lua shar
     [[ -e "$out/$f" ]] || { echo "FAIL: package lacks $f"; exit 1; }
 done
 "$out/bin/vela" --version
+# Shortcuts from Settings reach Hyprland through these globals.
+for g in vela_super_tap vela_panel_keys vela_launcher_command vela_settings_file; do
+    grep -q "$g" "$out/share/vela/vela.lua" || { echo "FAIL: packaged vela.lua lacks $g"; exit 1; }
+done
 
 cat >"$tmp/flake.nix" <<NIX
 {

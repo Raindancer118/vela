@@ -86,6 +86,13 @@ function M.setup(opts)
     if not has.panel then o.panel_peek = nil end
     local bin = o.binary or find_binary()
     local command = o.command or (bin .. " toggle")
+    -- For vela's generated settings (Settings → Hyprland → Shortcuts): the
+    -- launcher shortcut runs this, `vela_super_tap = false` turns the tap off,
+    -- `vela_panel_keys` is the control center shortcut. They are loaded
+    -- before the control center shortcut is bound.
+    vela_launcher_command = command
+    vela_super_tap = nil
+    vela_panel_keys = nil
 
     local is_super = {}
     for _, code in ipairs(o.keycodes) do is_super[code] = true end
@@ -104,6 +111,7 @@ function M.setup(opts)
     -- state: 0 = released, 1 = pressed, 2 = repeated
     if o.launcher then
         hl.on("input.keyboard.key", function(keycode, _, state)
+            if vela_super_tap == false then return end
             if is_super[keycode] then
                 if state == 1 then
                     armed = true
@@ -181,28 +189,6 @@ function M.setup(opts)
         end)
     end
 
-    if o.panel_peek then
-        -- Compositor-side key events (they come before binds and reach us
-        -- whatever has the focus, also while the panel has it).
-        local last_key, peek_key, peeking, long, ptimer = nil, nil, false, false, nil
-        hl.on("input.keyboard.key", function(keycode, _, state)
-            if state == 1 then
-                last_key = keycode
-            elseif state == 0 and peeking and (keycode == peek_key or is_super[keycode]) then
-                peeking = false
-                if ptimer then ptimer:set_enabled(false) end
-                ptimer = nil
-                if long then hl.exec_cmd(bin .. " panel close") end
-            end
-        end)
-        hl.bind(o.panel_peek, function()
-            if peeking then return end
-            peeking, long, peek_key = true, false, last_key
-            hl.exec_cmd(bin .. " panel toggle")
-            ptimer = hl.timer(function() long = true end, { timeout = o.peek_ms, type = "oneshot" })
-        end, { description = "vela: control center (hold to peek)" })
-    end
-
     if o.settings then
         local generated = o.settings_file
         if not generated then
@@ -216,6 +202,30 @@ function M.setup(opts)
             local ok, err = pcall(dofile, generated)
             if not ok then print("vela: " .. tostring(err)) end
         end
+    end
+
+    -- Settings → Shortcuts → Control center replaces setup()'s panel_peek.
+    local peek_keys = has.panel and (vela_panel_keys or o.panel_peek) or nil
+    if peek_keys then
+        -- Compositor-side key events (they come before binds and reach us
+        -- whatever has the focus, also while the panel has it).
+        local last_key, peek_key, peeking, long, ptimer = nil, nil, false, false, nil
+        hl.on("input.keyboard.key", function(keycode, _, state)
+            if state == 1 then
+                last_key = keycode
+            elseif state == 0 and peeking and (keycode == peek_key or is_super[keycode]) then
+                peeking = false
+                if ptimer then ptimer:set_enabled(false) end
+                ptimer = nil
+                if long then hl.exec_cmd(bin .. " panel close") end
+            end
+        end)
+        hl.bind(peek_keys, function()
+            if peeking then return end
+            peeking, long, peek_key = true, false, last_key
+            hl.exec_cmd(bin .. " panel toggle")
+            ptimer = hl.timer(function() long = true end, { timeout = o.peek_ms, type = "oneshot" })
+        end, { description = "vela: control center (hold to peek)" })
     end
 
     return M
