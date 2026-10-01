@@ -55,6 +55,8 @@ Singleton {
             workspaceOsd: true,
             nightLightTemperature: 4000,
             clockCentered: false,
+            clockOnBackdrop: false,
+            clockFont: "",
             claudeUsage: true,
             claudeUsageSubtle: false,
             claudeUsageOnlyDefault: false,

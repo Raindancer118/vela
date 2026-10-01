@@ -82,6 +82,14 @@ PanelWindow {
             onClicked: ShellState.closePanel()
         }
 
+        // Centred in the blurred area left of the panel; below the slider so
+        // detail cards cover it.
+        BackdropClock {
+            x: (panel.x - width) / 2
+            anchors.verticalCenter: parent.verticalCenter
+            progress: root.progress
+        }
+
         Item {
             id: slider
 

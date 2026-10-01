@@ -444,6 +444,7 @@ reloads it, reports errors in the settings and keeps the last valid settings
 | `panel` | `width`, `close_on_focus_loss`, `backdrop`, `backdrop_blur` | the control center |
 | | `popup_timeout_secs`, `popup_max_visible`, `critical_popups_stay`, `group_collapsed_count`, `compact_notifications` | notifications |
 | | `workspace_osd`, `night_light_temperature`, `clock_centered` | |
+| | `clock_on_backdrop`, `clock_font` | clock large on the blurred backdrop (needs `backdrop` + `backdrop_blur`); clock font, empty = UI font |
 | | `claude_usage`, `claude_usage_subtle`, `claude_usage_only_default`, `claude_usage_hidden` | Claude plan usage at the bottom of the panel |
 | `idle` | `dim`, `lock`, `screen_off`, `suspend` (+ `*_after_min`), `lock_before_sleep` | what `vela idle` runs hypridle with |
 | `updates` | `check_interval_hours` (0 = never), `aur`, `flatpak` | background checks and sources |

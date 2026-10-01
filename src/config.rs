@@ -152,6 +152,11 @@ pub struct Panel {
     pub night_light_temperature: u32,
     /// Clock and date centred at the top of the panel instead of on the left.
     pub clock_centered: bool,
+    /// Clock and date large in the middle of the blurred backdrop instead of
+    /// in the panel; only with `backdrop` and `backdrop_blur`.
+    pub clock_on_backdrop: bool,
+    /// Font family of the clock and date; empty = the UI font.
+    pub clock_font: String,
     /// Claude plan usage at the bottom of the panel.
     pub claude_usage: bool,
     /// Subtle style: grey text under a line instead of a card.
@@ -180,6 +185,8 @@ impl Default for Panel {
             workspace_osd: true,
             night_light_temperature: 4000,
             clock_centered: false,
+            clock_on_backdrop: false,
+            clock_font: String::new(),
             claude_usage: true,
             claude_usage_subtle: false,
             claude_usage_only_default: false,
@@ -782,6 +789,8 @@ mod tests {
         assert!(p.critical_popups_stay && p.workspace_osd);
         assert_eq!(p.night_light_temperature, 4000);
         assert!(!p.clock_centered, "clock on the left by default");
+        assert!(!p.clock_on_backdrop, "clock stays in the panel by default");
+        assert!(p.clock_font.is_empty(), "clock in the UI font by default");
         assert!(p.claude_usage && !p.claude_usage_only_default && p.claude_usage_hidden.is_empty());
         assert!(!p.claude_usage_subtle, "the card is the default style");
         assert!(p.compact_notifications, "notifications arrive as one line");
