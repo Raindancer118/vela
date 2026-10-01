@@ -11,7 +11,10 @@ let
   setupArgs = {
     binary = lib.getExe cfg.package;
   }
-  // lib.optionalAttrs (cfg.nixos.stateDir != null) { settings_file = "${cfg.nixos.stateDir}/hyprland.lua"; }
+  // lib.optionalAttrs (cfg.nixos.stateDir != null) {
+    settings_file = "${cfg.nixos.stateDir}/hyprland.lua";
+    components_file = "${cfg.nixos.stateDir}/components.toml";
+  }
   // lib.optionalAttrs (cfg.panelPeek != null) { panel_peek = cfg.panelPeek; };
   # Keys of components.toml (data/components.txt, dashes as underscores).
   # updates runs pacman, so it is off by default here.
@@ -59,6 +62,9 @@ in
         hyprland, panel, idle, share_picker (sets vela's picker in
         ~/.config/hypr/xdph.conf) and updates (pacman/Flatpak, off by default).
         Unset ones keep their default; all but share_picker and updates are on.
+        With nixos.stateDir set this is only the default: Settings → System →
+        Features saves its choice as components.toml there, and vela keeps
+        xdph.conf itself.
       '';
     };
 
@@ -69,8 +75,9 @@ in
         example = "/home/me/nixos/home/me/vela";
         description = ''
           Absolute path of a directory in your NixOS repository. vela then keeps
-          config.toml and its Hyprland settings there instead of ~/.config/vela
-          and ~/.local/state/vela, and Settings offers "Apply & rebuild" while
+          config.toml, its Hyprland settings and the choice of components
+          (Settings → System → Features) there instead of ~/.config/vela and
+          ~/.local/state/vela, and Settings offers "Apply & rebuild" while
           git reports uncommitted changes in it. A string, not a Nix path:
           vela writes to it.
         '';
@@ -137,7 +144,9 @@ in
     ''
     + lib.concatStrings (lib.mapAttrsToList (k: v: "${k} = ${lib.boolToString v}\n") components);
 
-    xdg.configFile."hypr/xdph.conf" = mkIf components.share_picker {
+    # With a state directory the selection can change without a rebuild;
+    # the daemon keeps the picker in xdph.conf then.
+    xdg.configFile."hypr/xdph.conf" = mkIf (components.share_picker && cfg.nixos.stateDir == null) {
       text = lib.mkDefault ''
         screencopy {
             custom_picker_binary = ${cfg.package}/bin/vela-share-picker

@@ -29,3 +29,4 @@ pub mod shell;
 pub mod theme;
 pub mod ui;
 pub mod update;
+pub mod xdph;

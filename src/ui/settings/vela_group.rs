@@ -111,13 +111,18 @@ pub fn components_group(daemon: &Rc<Daemon>) -> adw::PreferencesGroup {
     let su = daemon.self_update.clone();
     let installed = components::installed().clone();
     let nixos = crate::nixos::running_nixos();
-    let editable = matches!(su.how, How::Script { .. });
-    let how = match su.how {
-        How::Script { .. } => "What vela offers. Applying runs install.sh of this version with the new choice; settings stay.",
-        How::Nix => "Set programs.vela.components in your Home Manager configuration to add or remove parts of vela.",
-        How::Package => "Installed by a package: everything is there. install.sh installs only some parts.",
+    let mode = crate::nixos::active();
+    let editable = selfupdate::components_editable(&su.how, mode.is_some());
+    let how = match (&su.how, mode) {
+        (How::Script { .. }, _) => "What vela offers. Applying runs install.sh of this version with the new choice; settings stay.".to_owned(),
+        (How::Nix, Some(m)) => format!(
+            "What vela offers. Applying saves the choice in {} (programs.vela.components is only the default) and restarts vela.",
+            components::state_manifest(m).display()
+        ),
+        (How::Nix, None) => "Set programs.vela.components in your Home Manager configuration, or programs.vela.nixos.stateDir to choose here.".to_owned(),
+        (How::Package, _) => "Installed by a package: everything is there. install.sh installs only some parts.".to_owned(),
     };
-    let g = group("Features", how);
+    let g = group("Features", &how);
     let profiles = &components::catalog().profiles;
     let mut labels: Vec<String> = profiles.iter().map(|(_, d)| d.to_string()).collect();
     labels.push("Custom: picked by hand".into());

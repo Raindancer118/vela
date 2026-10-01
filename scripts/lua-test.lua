@@ -146,6 +146,19 @@ check("nixos: Settings' control center keys", #s.binds == 1 and s.binds[1] == "S
 check("nixos: Super tap off from Settings", not tap(s))
 check("nixos: launcher command uses the store binary", vela_launcher_command == "/nix/store/x-vela/bin/vela toggle")
 
+-- NixOS: the selection saved in the state directory wins over Home
+-- Manager's default; until it exists the default counts.
+local chosen = tmp .. "/nixos-repo-components.toml"
+local hm = '# from Home Manager\nprofile = "custom"\nlauncher = true\npanel = true\nidle = true\nhyprland = true\n'
+s = run(hm, { components_file = chosen })
+check("nixos: Home Manager default before Settings saved", s.shell and s.idle)
+f = assert(io.open(chosen, "w"))
+f:write('# Written by vela\nprofile = "custom"\nlauncher = true\npanel = false\nidle = false\nhyprland = true\n')
+f:close()
+s = run(hm, { components_file = chosen })
+check("nixos: Settings' selection wins", not s.shell and not s.idle and tap(s))
+os.remove(chosen)
+
 os.execute("rm -rf " .. tmp)
 if failures > 0 then
     os.exit(1)

@@ -232,6 +232,61 @@ pub fn outcome(installing: Option<&(String, PathBuf)>, running: &str, finished: 
 /// flake.nix upwards itself (it may sit in a subdirectory of the repository).
 pub const NIX_UPDATE_SCRIPT: &str = r#"nix flake update vela && "$@"; s=$?; echo; if [ "$s" -eq 0 ]; then echo "vela: updated"; else echo "vela: update failed ($s)"; fi; printf 'Press Enter to close '; read -r _"#;
 
+/// Whether Settings → Features can change the selection: install.sh's, or
+/// in NixOS mode the one kept in the state directory.
+pub fn components_editable(how: &How, nixos_mode: bool) -> bool {
+    matches!(how, How::Script { .. }) || (*how == How::Nix && nixos_mode)
+}
+
+/// NixOS mode: what a selection saved in the state directory takes to apply.
+/// The package has every part; vela.lua reads the selection when Hyprland
+/// loads it, the daemon when it starts (and then also sets the share picker).
+pub fn nix_component_steps(before: &Installed, after: &Installed, vela: &Path, in_hyprland: bool) -> Vec<Step> {
+    let changed = |c: Component| before.has(c) != after.has(c);
+    let bin = vela.to_string_lossy().into_owned();
+    let mut steps = Vec::new();
+    for (c, word, what) in [(Component::Panel, "shell", "the control center"), (Component::Idle, "idle", "idle handling")] {
+        if before.has(c) && !after.has(c) {
+            steps.push(Step {
+                title: format!("Stopping {what}"),
+                // Exactly how vela.lua started it; none running is fine.
+                argv: vec![
+                    "sh".into(),
+                    "-c".into(),
+                    r#"pkill -f "^$1 $2\$" || true"#.into(),
+                    "sh".into(),
+                    bin.clone(),
+                    word.into(),
+                ],
+            });
+        }
+    }
+    if in_hyprland
+        && [Component::Launcher, Component::Panel, Component::Idle, Component::Hyprland]
+            .into_iter()
+            .any(changed)
+    {
+        steps.push(Step {
+            title: "Reloading Hyprland".into(),
+            argv: vec!["hyprctl".into(), "reload".into(), "config-only".into()],
+        });
+        // vela.lua starts these only with Hyprland.
+        for (c, word, what) in [(Component::Panel, "shell", "the control center"), (Component::Idle, "idle", "idle handling")] {
+            if !before.has(c) && after.has(c) {
+                steps.push(Step {
+                    title: format!("Starting {what}"),
+                    argv: vec!["setsid".into(), "-f".into(), bin.clone(), word.into()],
+                });
+            }
+        }
+    }
+    steps.push(Step {
+        title: "Restarting vela".into(),
+        argv: vec!["systemctl".into(), "--user".into(), "restart".into(), "vela.service".into()],
+    });
+    steps
+}
+
 /// The line under "vela <version>" in Settings → System.
 pub fn describe(status: &Status, checking: bool, step: Option<&(usize, usize, String)>, how: &How) -> String {
     if let Some((i, n, title)) = step {
@@ -313,6 +368,65 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
         assert!(String::from_utf8_lossy(&out.stdout).contains("vela: updated"));
         assert_eq!(cwd, state);
+    }
+
+    #[test]
+    fn home_manager_selections_are_editable_only_with_a_state_directory() {
+        assert!(components_editable(&How::Script { nixos: true }, false));
+        assert!(components_editable(&How::Nix, true));
+        assert!(!components_editable(&How::Nix, false));
+        assert!(!components_editable(&How::Package, true));
+    }
+
+    fn titles(steps: &[Step]) -> Vec<&str> {
+        steps.iter().map(|s| s.title.as_str()).collect()
+    }
+
+    #[test]
+    fn applying_a_nix_selection_stops_starts_reloads_and_restarts() {
+        let vela = Path::new("/nix/store/x-vela/bin/vela");
+        let full = Installed::profile("full", true);
+        let mut less = full.clone();
+        less.set_nixos(Component::Panel, false, true);
+        less.set_nixos(Component::Idle, false, true);
+        let off = nix_component_steps(&full, &less, vela, true);
+        assert_eq!(
+            titles(&off),
+            ["Stopping the control center", "Stopping idle handling", "Reloading Hyprland", "Restarting vela"]
+        );
+        assert_eq!(off[0].argv[4..], ["/nix/store/x-vela/bin/vela".to_owned(), "shell".to_owned()]);
+        let on = nix_component_steps(&less, &full, vela, true);
+        assert_eq!(
+            titles(&on),
+            ["Reloading Hyprland", "Starting the control center", "Starting idle handling", "Restarting vela"]
+        );
+        assert_eq!(on[1].argv, ["setsid", "-f", "/nix/store/x-vela/bin/vela", "shell"]);
+        // Outside Hyprland vela.lua starts them next time.
+        assert_eq!(titles(&nix_component_steps(&less, &full, vela, false)), ["Restarting vela"]);
+        // Only the daemon reads these.
+        let mut no_claude = full.clone();
+        no_claude.set_nixos(Component::Claude, false, true);
+        no_claude.set_nixos(Component::SharePicker, false, true);
+        assert_eq!(titles(&nix_component_steps(&full, &no_claude, vela, true)), ["Restarting vela"]);
+    }
+
+    #[test]
+    fn stopping_matches_only_the_process_vela_lua_started() {
+        let full = Installed::profile("full", true);
+        let mut less = full.clone();
+        less.set_nixos(Component::Panel, false, true);
+        let step = &nix_component_steps(&full, &less, Path::new("/x/vela"), false)[0];
+        // Run it with a pkill that prints its pattern.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("pkill"), "#!/bin/sh\necho \"$2\"\nexit 1\n").unwrap();
+        std::fs::set_permissions(dir.path().join("pkill"), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let out = Command::new(&step.argv[0])
+            .args(&step.argv[1..])
+            .env("PATH", format!("{}:{}", dir.path().display(), std::env::var("PATH").unwrap_or_default()))
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "none running is no failure");
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "^/x/vela shell$\n");
     }
 
     const LATEST: &str = r#"{"tag_name":"0.36.0","assets":[

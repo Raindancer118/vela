@@ -18,6 +18,11 @@ fn xdg_dir(var: &str, fallback: &str) -> PathBuf {
     }
 }
 
+/// `~/.config/hypr`.
+pub fn hypr_config_dir() -> PathBuf {
+    xdg_dir("XDG_CONFIG_HOME", ".config").join("hypr")
+}
+
 pub fn config_dir() -> PathBuf {
     xdg_dir("XDG_CONFIG_HOME", ".config").join(APP_ID)
 }

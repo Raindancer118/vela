@@ -4,7 +4,8 @@
 //! the selection to `<data dir>/vela/components.toml`. Without that file
 //! (package install, running from the source tree) everything is installed;
 //! on NixOS everything but the pacman-based updates. The Home Manager module
-//! writes the file from `programs.vela.components`.
+//! writes the file from `programs.vela.components`; with `nixos.stateDir` the
+//! selection made in Settings is kept there instead (see `state_manifest`).
 
 use crate::paths;
 use std::path::PathBuf;
@@ -207,6 +208,15 @@ impl Installed {
         Component::ALL.iter().all(|c| self.has(*c))
     }
 
+    /// components.toml with every key, so a later default can't change it.
+    pub fn to_toml(&self, comment: &str) -> String {
+        let mut out = format!("# {comment}\nprofile = \"{}\"\n", self.profile.as_deref().unwrap_or("custom"));
+        for c in Component::ALL {
+            out.push_str(&format!("{} = {}\n", c.key(), self.has(c)));
+        }
+        out
+    }
+
     /// Reads components.toml. A component the file doesn't mention (added in
     /// a later version) is installed if the chosen profile contains it.
     pub fn parse(text: &str) -> Result<Installed, String> {
@@ -224,12 +234,35 @@ impl Installed {
 }
 
 /// components.toml of the installation in use: `$VELA_COMPONENTS`, else the
-/// first one in the data directories.
+/// one Settings saved in the NixOS state directory, else the first one in the
+/// data directories (install.sh's, or the Home Manager default).
 pub fn manifest_file() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("VELA_COMPONENTS").filter(|p| !p.is_empty()) {
-        return Some(PathBuf::from(p));
-    }
-    paths::data_dirs().into_iter().map(|d| d.join("vela/components.toml")).find(|p| p.is_file())
+    let env = std::env::var_os("VELA_COMPONENTS").filter(|p| !p.is_empty()).map(PathBuf::from);
+    let state = crate::nixos::active().map(state_manifest);
+    pick_manifest(env, state, paths::data_dirs().into_iter().map(|d| d.join("vela/components.toml")))
+}
+
+fn pick_manifest(env: Option<PathBuf>, state: Option<PathBuf>, data: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
+    env.or_else(|| state.filter(|p| p.is_file())).or_else(|| data.into_iter().find(|p| p.is_file()))
+}
+
+/// NixOS mode: the selection made in Settings, versioned with the rest of the
+/// state directory. Home Manager's `programs.vela.components` is the default
+/// until it exists.
+pub fn state_manifest(mode: &crate::nixos::NixosMode) -> PathBuf {
+    mode.state_dir.join("components.toml")
+}
+
+pub const STATE_MARKER: &str = "Written by vela (Settings → System → Features)";
+
+pub fn save_state_manifest(mode: &crate::nixos::NixosMode, selection: &Installed) -> Result<PathBuf, String> {
+    let path = state_manifest(mode);
+    crate::config::write_atomic(
+        &path,
+        &selection.to_toml(&format!("{STATE_MARKER}; programs.vela.components is only the default.")),
+    )
+    .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    Ok(path)
 }
 
 pub fn load() -> Installed {
@@ -340,6 +373,46 @@ mod tests {
         n.set_nixos(Component::Idle, false, true);
         n.set_nixos(Component::Idle, true, true);
         assert_eq!(n.profile.as_deref(), Some("panel"));
+    }
+
+    #[test]
+    fn a_saved_selection_reads_back_the_same() {
+        let mut i = Installed::profile("full", true);
+        i.set_nixos(Component::Claude, false, true);
+        let text = i.to_toml("note");
+        assert!(text.starts_with("# note\n"));
+        assert!(text.contains("updates = false\n") && text.contains("share_picker = true\n"));
+        assert_eq!(Installed::parse(&text).unwrap(), i);
+    }
+
+    #[test]
+    fn the_selection_in_the_state_directory_wins_over_home_managers_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let (state, hm, other) = (dir.path().join("state.toml"), dir.path().join("hm.toml"), dir.path().join("other.toml"));
+        std::fs::write(&hm, "").unwrap();
+        let data = || vec![dir.path().join("missing.toml"), hm.clone()];
+        // Not saved yet: Home Manager's file.
+        assert_eq!(pick_manifest(None, Some(state.clone()), data()), Some(hm.clone()));
+        std::fs::write(&state, "").unwrap();
+        assert_eq!(pick_manifest(None, Some(state.clone()), data()), Some(state.clone()));
+        assert_eq!(pick_manifest(Some(other.clone()), Some(state), data()), Some(other));
+        assert_eq!(pick_manifest(None, None, data()), Some(hm));
+        assert_eq!(pick_manifest(None, None, Vec::new()), None);
+    }
+
+    #[test]
+    fn saving_writes_the_state_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let mode = crate::nixos::NixosMode {
+            state_dir: dir.path().join("vela"),
+            rebuild: "x".into(),
+        };
+        let sel = Installed::profile("minimal", true);
+        let path = save_state_manifest(&mode, &sel).unwrap();
+        assert_eq!(path, dir.path().join("vela/components.toml"));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(STATE_MARKER));
+        assert_eq!(Installed::parse(&text).unwrap(), sel);
     }
 
     #[test]

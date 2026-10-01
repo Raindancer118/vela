@@ -40,6 +40,28 @@ pub struct SelfUpdater {
     open_page: RefCell<Option<Rc<dyn Fn()>>>,
 }
 
+/// NixOS mode: Home Manager leaves xdph.conf to vela, which follows the
+/// selection (the picker's store path changes with every update).
+fn sync_share_picker() {
+    let picker = crate::components::has(crate::components::Component::SharePicker)
+        .then(|| std::env::current_exe().ok().map(|e| e.with_file_name("vela-share-picker")))
+        .flatten();
+    match crate::xdph::sync(&crate::xdph::path(), picker.as_deref()) {
+        Ok(false) => {}
+        Ok(true) => {
+            log::info!("share picker: updated {}", crate::xdph::path().display());
+            // xdph reads its config only at start.
+            std::thread::spawn(|| {
+                let _ = std::process::Command::new("systemctl")
+                    .args(["--user", "try-restart", "xdg-desktop-portal-hyprland.service"])
+                    .stdin(std::process::Stdio::null())
+                    .status();
+            });
+        }
+        Err(e) => log::warn!("share picker: {e}"),
+    }
+}
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -70,6 +92,9 @@ impl SelfUpdater {
             open_page: RefCell::default(),
         });
         u.report_restart();
+        if u.how == How::Nix && crate::nixos::active().is_some() {
+            sync_share_picker();
+        }
         let weak = Rc::downgrade(&u);
         glib::timeout_add_local(Duration::from_secs(60), move || {
             let Some(u) = weak.upgrade() else { return glib::ControlFlow::Break };
@@ -217,8 +242,22 @@ impl SelfUpdater {
         self.install(release, None)
     }
 
-    /// This version again, with another selection of components.
+    /// This version again, with another selection of components. In NixOS
+    /// mode the selection is saved in the state directory and applied as is.
     pub fn change_components(self: &Rc<Self>, target: &Installed) -> Result<(), String> {
+        if self.how == How::Nix {
+            let mode = crate::nixos::active().ok_or("Set programs.vela.nixos.stateDir to choose the parts here")?;
+            if self.state.borrow().running() {
+                return Err("vela is already being installed".into());
+            }
+            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+            let vela = exe.with_file_name("vela");
+            let in_hyprland = std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some();
+            let steps = selfupdate::nix_component_steps(crate::components::installed(), target, &vela, in_hyprland);
+            let path = crate::components::save_state_manifest(mode, target)?;
+            log::info!("components: saved {}", path.display());
+            return self.run(VERSION.to_owned(), steps);
+        }
         self.install(selfupdate::release_of(VERSION, std::env::consts::ARCH), Some(target))
     }
 
@@ -234,11 +273,16 @@ impl SelfUpdater {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
         let steps = selfupdate::plan(&release, nixos, &dir, target)?;
+        self.run(release.version, steps)
+    }
+
+    /// Runs the steps on a worker thread; the last one usually restarts vela.
+    fn run(self: &Rc<Self>, version: String, steps: Vec<update::Step>) -> Result<(), String> {
         let log_path = update::new_log_path(&crate::paths::state_dir().join("self-update-logs"), (now_ms() / 1000) as u64, 10);
         {
             let mut s = self.state.borrow_mut();
             s.status.failed = None;
-            s.status.installing = Some((release.version.clone(), log_path.clone()));
+            s.status.installing = Some((version.clone(), log_path.clone()));
             s.step = Some((0, steps.len(), steps[0].title.clone()));
         }
         self.changed();
@@ -250,7 +294,7 @@ impl SelfUpdater {
         let (tx, rx) = async_channel::unbounded();
         let use_scope = self.use_scope;
         std::thread::spawn(move || {
-            let result = update::run(&format!("vela {}", release.version), &steps, &log_path, use_scope, &mut |e| {
+            let result = update::run(&format!("vela {}", version), &steps, &log_path, use_scope, &mut |e| {
                 if let Event::Step { index, count, title } = e {
                     let _ = tx.send_blocking(Msg::Step(index, count, title));
                 }

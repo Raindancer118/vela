@@ -46,6 +46,7 @@ cat >"$tmp/flake.nix" <<NIX
         programs.vela.components = { claude = false; share_picker = true; };
         programs.vela.nixos.stateDir = "/home/u/nixos/vela";
       }];
+      picker = home [{ programs.vela.components.share_picker = true; }];
       typo = home [{ programs.vela.components.lancher = false; }];
     };
 }
@@ -66,12 +67,18 @@ expect "default: no share picker" 'share_picker = false' "$c"
 c="$(file custom dataFile vela/components.toml)"
 expect "custom: claude off" 'claude = false' "$c"
 expect "custom: share picker" 'share_picker = true' "$c"
-grep -q 'custom_picker_binary = /nix/store/.*/bin/vela-share-picker' <<<"$(file custom configFile hypr/xdph.conf)" ||
-    { echo "FAIL: custom: xdph.conf"; fails=$((fails + 1)); }
+grep -q 'custom_picker_binary = /nix/store/.*/bin/vela-share-picker' <<<"$(file picker configFile hypr/xdph.conf)" ||
+    { echo "FAIL: picker: xdph.conf"; fails=$((fails + 1)); }
+# With a state directory the daemon keeps xdph.conf (the choice may change there).
+[[ "$(nix eval "path:$tmp#custom.config.xdg.configFile" --apply 'f: f ? "hypr/xdph.conf"')" == false ]] ||
+    { echo "FAIL: custom: xdph.conf written by Home Manager"; fails=$((fails + 1)); }
 expect "custom: pointer" 'state_dir = "/home/u/nixos/vela"' "$(file custom configFile vela/nixos.toml)"
 grep -q 'settings_file.*= "/home/u/nixos/vela/hyprland.lua"' \
     <<<"$(nix eval --raw "path:$tmp#custom.config.wayland.windowManager.hyprland.extraConfig")" ||
     { echo "FAIL: custom: settings_file in setup()"; fails=$((fails + 1)); }
+grep -q 'components_file.*= "/home/u/nixos/vela/components.toml"' \
+    <<<"$(nix eval --raw "path:$tmp#custom.config.wayland.windowManager.hyprland.extraConfig")" ||
+    { echo "FAIL: custom: components_file in setup()"; fails=$((fails + 1)); }
 
 if nix eval --raw "path:$tmp#typo.activationPackage.drvPath" >"$tmp/typo.log" 2>&1; then
     echo "FAIL: typo: unknown component accepted"

@@ -23,13 +23,14 @@ local function find_binary()
     return "vela"
 end
 
--- install.sh's selection (<data dir>/vela/components.toml); missing file or
--- key = installed. Only `key = true|false` lines matter here.
-local function installed_components()
+-- install.sh's selection (<data dir>/vela/components.toml), or `file` if it
+-- exists (NixOS: the one Settings saves in the state directory); missing
+-- file or key = installed. Only `key = true|false` lines matter here.
+local function installed_components(file)
     local data = os.getenv("XDG_DATA_HOME")
     if not data or data == "" then data = os.getenv("HOME") .. "/.local/share" end
     local has = setmetatable({}, { __index = function() return true end })
-    local f = io.open(data .. "/vela/components.toml", "r")
+    local f = file and io.open(file, "r") or io.open(data .. "/vela/components.toml", "r")
     if not f then return has end
     for line in f:lines() do
         local key, value = line:match("^%s*([%w_]+)%s*=%s*(%a+)")
@@ -71,6 +72,9 @@ local defaults = {
     -- Lua file with those settings; nil = $XDG_STATE_HOME/vela/hyprland.lua.
     -- The NixOS Home Manager module points it into your repository.
     settings_file = nil,
+    -- components.toml that wins over the one in the data directory when it
+    -- exists; the Home Manager module points it into your repository.
+    components_file = nil,
 }
 
 function M.setup(opts)
@@ -78,7 +82,7 @@ function M.setup(opts)
     for k, v in pairs(defaults) do o[k] = v end
     for k, v in pairs(opts or {}) do o[k] = v end
     -- Options can switch parts off, but not on when they aren't installed.
-    local has = installed_components()
+    local has = installed_components(o.components_file)
     o.launcher = o.launcher and has.launcher
     o.shell = o.shell and has.panel
     o.idle = o.idle and has.idle

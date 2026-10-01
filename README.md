@@ -374,6 +374,12 @@ you make them; while git reports uncommitted changes there, *Settings* shows
 everywhere else and says so in *Settings*. The pointer to the directory is
 `~/.config/vela/nixos.toml`.
 
+*Settings → System → Features* then works on NixOS too: Apply saves the choice
+as `components.toml` in that directory (`components` above is only the default
+until then), stops or starts the control center and idle handling, reloads
+Hyprland and restarts vela; no rebuild needed. vela then keeps its picker in
+`~/.config/hypr/xdph.conf` itself instead of Home Manager.
+
 Register the MCP server yourself:
 `claude mcp add --scope user vela -- vela mcp`.
 
