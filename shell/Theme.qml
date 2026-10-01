@@ -181,6 +181,8 @@ Singleton {
         readonly property int sliderHeightCompact: 34
         readonly property int sliderTrack: 4
         readonly property int sliderKnob: 18
+        readonly property int mediaCover: 56
+        readonly property int mediaKnob: 12
         readonly property int iconButton: 34
         readonly property int pillButton: 32
         readonly property int listRow: 56

@@ -789,12 +789,89 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
     ));
     p.add(&behaviour);
 
+    p.add(&media_player_group(b));
     p.add(&claude_usage_group(b));
 
     let actions = group("", "");
     actions.add(&open_control_center_row());
     p.add(&actions);
     p
+}
+
+/// Mini player: on/off, which players, where (only with the clock on the
+/// blur, which frees the top and is when the Claude card may give way) and
+/// how it looks.
+fn media_player_group(b: &Binder) -> adw::PreferencesGroup {
+    use crate::config::MediaPosition;
+    let g = group("Mini player", "Title, controls and progress of the music playing (MPRIS).");
+    let on = b.switch("Show the mini player", "", |c| c.panel.media_player, |c, v| c.panel.media_player = v);
+    let any = b.switch(
+        "Any player",
+        "Off: only Spotify. On: whatever plays, browsers included",
+        |c| c.panel.media_player_any,
+        |c, v| c.panel.media_player_any = v,
+    );
+    let top = b.switch(
+        "Above the volume",
+        "Where the clock was; needs Clock on the blur",
+        |c| c.panel.media_player_position == MediaPosition::Top,
+        |c, v| set_media_position(c, MediaPosition::Top, v),
+    );
+    let bottom = b.switch(
+        "Instead of the Claude card",
+        "At the bottom while something plays; needs Clock on the blur",
+        |c| c.panel.media_player_position == MediaPosition::Bottom,
+        |c, v| set_media_position(c, MediaPosition::Bottom, v),
+    );
+    let cover = b.switch(
+        "Album art",
+        "Next to the title",
+        |c| c.panel.media_player_cover,
+        |c, v| c.panel.media_player_cover = v,
+    );
+    let cover_bg = b.switch(
+        "Album art as background",
+        "Blurred behind the whole card",
+        |c| c.panel.media_player_cover_background,
+        |c, v| c.panel.media_player_cover_background = v,
+    );
+    let progress = b.switch(
+        "Progress bar",
+        "Elapsed time and length; click or drag to seek",
+        |c| c.panel.media_player_progress,
+        |c, v| c.panel.media_player_progress = v,
+    );
+    for r in [&on, &any, &top, &bottom, &cover, &cover_bg, &progress] {
+        g.add(r);
+    }
+    let sync = {
+        let rows = [&any, &top, &bottom, &cover, &cover_bg, &progress].map(|r| r.downgrade());
+        move |c: &Config| {
+            let [any, top, bottom, cover, cover_bg, progress] = &rows;
+            let movable = c.panel.media_player && c.panel.clock_on_backdrop && c.panel.backdrop && c.panel.backdrop_blur;
+            for r in [any, cover, cover_bg, progress].into_iter().filter_map(|w| w.upgrade()) {
+                r.set_sensitive(c.panel.media_player);
+            }
+            // One switch flipping the position flips the other one off.
+            for (w, pos) in [(top, MediaPosition::Top), (bottom, MediaPosition::Bottom)] {
+                if let Some(r) = w.upgrade() {
+                    r.set_sensitive(movable);
+                    r.set_active(c.panel.media_player_position == pos);
+                }
+            }
+        }
+    };
+    sync(&b.store.get());
+    b.store.subscribe(move |_, c| sync(c));
+    g
+}
+
+fn set_media_position(c: &mut Config, pos: crate::config::MediaPosition, on: bool) {
+    if on {
+        c.panel.media_player_position = pos;
+    } else if c.panel.media_player_position == pos {
+        c.panel.media_player_position = crate::config::MediaPosition::Tiles;
+    }
 }
 
 /// Font family of the panel clock: the current time as a preview in it, GTK's

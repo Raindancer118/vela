@@ -159,6 +159,18 @@ pub struct Panel {
     pub clock_font: String,
     /// Height of the time on the backdrop in logical pixels, 48–320; the date scales along.
     pub backdrop_clock_size: u32,
+    /// Mini player for Spotify (or any MPRIS player) in the panel.
+    pub media_player: bool,
+    /// Any MPRIS player instead of only Spotify.
+    pub media_player_any: bool,
+    /// Top and Bottom only apply while the clock is on the blur.
+    pub media_player_position: MediaPosition,
+    /// Album art next to the title.
+    pub media_player_cover: bool,
+    /// Album art blurred behind the whole card.
+    pub media_player_cover_background: bool,
+    /// Progress bar with seeking.
+    pub media_player_progress: bool,
     /// Claude plan usage at the bottom of the panel.
     pub claude_usage: bool,
     /// Subtle style: grey text under a line instead of a card.
@@ -190,6 +202,12 @@ impl Default for Panel {
             clock_on_backdrop: false,
             clock_font: String::new(),
             backdrop_clock_size: 128,
+            media_player: true,
+            media_player_any: false,
+            media_player_position: MediaPosition::Tiles,
+            media_player_cover: true,
+            media_player_cover_background: false,
+            media_player_progress: true,
             claude_usage: true,
             claude_usage_subtle: false,
             claude_usage_only_default: false,
@@ -279,6 +297,29 @@ pub struct Apps {
     /// Offer desktop actions (e.g. "New Private Window") in search results.
     pub desktop_actions: bool,
     pub custom: Vec<CustomAction>,
+}
+
+/// Where the panel's mini player sits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MediaPosition {
+    /// Below the quick settings tiles.
+    #[default]
+    Tiles,
+    /// Above the volume, where the clock was.
+    Top,
+    /// In place of the Claude usage card while something plays.
+    Bottom,
+}
+
+impl MediaPosition {
+    pub fn id(self) -> &'static str {
+        match self {
+            MediaPosition::Tiles => "tiles",
+            MediaPosition::Top => "top",
+            MediaPosition::Bottom => "bottom",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -796,6 +837,11 @@ mod tests {
         assert!(!p.clock_on_backdrop, "clock stays in the panel by default");
         assert!(p.clock_font.is_empty(), "clock in the UI font by default");
         assert_eq!(p.backdrop_clock_size, 128);
+        assert!(p.media_player && !p.media_player_any, "Spotify's mini player by default");
+        assert_eq!(p.media_player_position, MediaPosition::Tiles);
+        assert!(p.media_player_cover && !p.media_player_cover_background && p.media_player_progress);
+        let cfg = Config::from_toml("[panel]\nmedia_player_position = \"bottom\"\n").unwrap();
+        assert_eq!(cfg.panel.media_player_position, MediaPosition::Bottom);
         assert!(p.claude_usage && !p.claude_usage_only_default && p.claude_usage_hidden.is_empty());
         assert!(!p.claude_usage_subtle, "the card is the default style");
         assert!(p.compact_notifications, "notifications arrive as one line");

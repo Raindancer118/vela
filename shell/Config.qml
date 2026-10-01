@@ -23,6 +23,13 @@ Singleton {
     readonly property bool clockCentered: vp.clockCentered
     // Already false without a blurred backdrop (src/shell.rs).
     readonly property bool clockOnBackdrop: vp.clockOnBackdrop ?? false
+    // Mini player; the position is already "tiles" unless the clock is on the blur.
+    readonly property bool mediaPlayer: vp.mediaPlayer ?? true
+    readonly property bool mediaPlayerAny: vp.mediaPlayerAny ?? false
+    readonly property string mediaPlayerPosition: vp.mediaPlayerPosition ?? "tiles"
+    readonly property bool mediaPlayerCover: vp.mediaPlayerCover ?? true
+    readonly property bool mediaPlayerCoverBackground: vp.mediaPlayerCoverBackground ?? false
+    readonly property bool mediaPlayerProgress: vp.mediaPlayerProgress ?? true
     readonly property bool claudeUsage: vp.claudeUsage
     readonly property bool claudeUsageSubtle: vp.claudeUsageSubtle
     readonly property bool claudeUsageOnlyDefault: vp.claudeUsageOnlyDefault

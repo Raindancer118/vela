@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs
 import qs.components
 import qs.notifications
+import qs.services
 
 Rectangle {
     id: root
@@ -33,6 +34,12 @@ Rectangle {
 
         Divider {
             Layout.fillWidth: true
+            visible: !Config.clockOnBackdrop
+        }
+
+        MediaPlayer {
+            Layout.fillWidth: true
+            visible: Media.available && Config.mediaPlayerPosition === "top"
         }
 
         SlidersSection {
@@ -41,6 +48,11 @@ Rectangle {
 
         QuickSettingsGrid {
             Layout.fillWidth: true
+        }
+
+        MediaPlayer {
+            Layout.fillWidth: true
+            visible: Media.available && Config.mediaPlayerPosition === "tiles"
         }
 
         Divider {
@@ -55,7 +67,15 @@ Rectangle {
         // Low screens (laptop at 1.5x): notifications need the room more.
         ClaudeUsageSection {
             Layout.fillWidth: true
-            visible: Config.claudeUsage && accounts.length > 0 && root.height >= Theme.size.claudeUsageMinPanelHeight
+            visible: Config.claudeUsage && accounts.length > 0 && root.height >= Theme.size.claudeUsageMinPanelHeight && !bottomPlayer.visible
+        }
+
+        // In place of the Claude card while something plays.
+        MediaPlayer {
+            id: bottomPlayer
+
+            Layout.fillWidth: true
+            visible: Media.available && Config.mediaPlayerPosition === "bottom"
         }
     }
 }

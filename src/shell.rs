@@ -2,7 +2,7 @@
 //! from `vela shell-config` instead of parsing the TOML itself: sanitized
 //! values plus a ready-made colour palette derived from the vela theme.
 
-use crate::config::Config;
+use crate::config::{Config, MediaPosition};
 use crate::theme::{self, Rgb, hex, mix, on_color, palette, parse_hex};
 use serde_json::json;
 use std::ffi::OsStr;
@@ -97,6 +97,8 @@ pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) ->
     let animation_scale = if a.animations { 1.0 / a.animation_speed } else { 0.0 };
     let pn = &cfg.panel;
     let backdrop = pn.backdrop && theme::backdrop_visible(a.backdrop_dim, pn.backdrop_blur);
+    let clock_on_backdrop = pn.clock_on_backdrop && backdrop && pn.backdrop_blur;
+    let media_position = if clock_on_backdrop { pn.media_player_position } else { MediaPosition::Tiles };
     json!({
         "idle": {
             "suspend": cfg.idle.suspend,
@@ -128,7 +130,13 @@ pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) ->
             "workspaceOsd": pn.workspace_osd,
             "nightLightTemperature": pn.night_light_temperature,
             "clockCentered": pn.clock_centered,
-            "clockOnBackdrop": pn.clock_on_backdrop && backdrop && pn.backdrop_blur,
+            "clockOnBackdrop": clock_on_backdrop,
+            "mediaPlayer": pn.media_player,
+            "mediaPlayerAny": pn.media_player_any,
+            "mediaPlayerPosition": media_position.id(),
+            "mediaPlayerCover": pn.media_player_cover,
+            "mediaPlayerCoverBackground": pn.media_player_cover_background,
+            "mediaPlayerProgress": pn.media_player_progress,
             "backdropClockSize": pn.backdrop_clock_size,
             "clockFont": Some(pn.clock_font.trim()).filter(|f| !f.is_empty()).map_or_else(system_font, str::to_string),
             "claudeUsage": pn.claude_usage && installed.has(Component::Claude),
@@ -317,6 +325,32 @@ mod tests {
         cfg.panel.backdrop_blur = true;
         cfg.panel.clock_on_backdrop = false;
         assert_eq!(json(&cfg)["panel"]["clockOnBackdrop"], false);
+    }
+
+    #[test]
+    fn media_player_moves_only_with_the_clock_on_the_blur() {
+        let mut cfg = Config::default();
+        let j = json(&cfg);
+        assert_eq!(j["panel"]["mediaPlayer"], true);
+        assert_eq!(j["panel"]["mediaPlayerAny"], false);
+        assert_eq!(j["panel"]["mediaPlayerPosition"], "tiles");
+        assert_eq!(
+            (
+                j["panel"]["mediaPlayerCover"].clone(),
+                j["panel"]["mediaPlayerCoverBackground"].clone(),
+                j["panel"]["mediaPlayerProgress"].clone()
+            ),
+            (true.into(), false.into(), true.into())
+        );
+        cfg.panel.media_player_position = MediaPosition::Top;
+        assert_eq!(json(&cfg)["panel"]["mediaPlayerPosition"], "tiles", "the clock still sits at the top");
+        cfg.panel.backdrop = true;
+        cfg.panel.clock_on_backdrop = true;
+        assert_eq!(json(&cfg)["panel"]["mediaPlayerPosition"], "top");
+        cfg.panel.media_player_position = MediaPosition::Bottom;
+        assert_eq!(json(&cfg)["panel"]["mediaPlayerPosition"], "bottom");
+        cfg.panel.backdrop_blur = false;
+        assert_eq!(json(&cfg)["panel"]["mediaPlayerPosition"], "tiles");
     }
 
     #[test]
