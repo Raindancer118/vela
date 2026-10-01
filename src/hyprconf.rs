@@ -437,6 +437,8 @@ pub struct Overrides {
     pub options: BTreeMap<String, Value>,
     /// `hl.animation` per leaf, e.g. `windowsIn`.
     pub animations: BTreeMap<String, crate::hypranim::Anim>,
+    /// Full `hl.monitor` rules by output (`desc:…` or connector).
+    pub monitors: BTreeMap<String, crate::hyprmon::MonitorRule>,
     pub remember: BTreeMap<String, i64>,
 }
 
@@ -467,6 +469,16 @@ impl Overrides {
                 }
             }
         }
+        if let Some(mons) = table.get("monitors").and_then(|v| v.as_table()) {
+            for (k, v) in mons {
+                match crate::hyprmon::MonitorRule::from_toml(k, v) {
+                    Some(r) => {
+                        o.monitors.insert(k.clone(), r);
+                    }
+                    None => log::warn!("hyprland.toml: ignoring unreadable monitor {k}"),
+                }
+            }
+        }
         if let Some(rem) = table.get("remember").and_then(|v| v.as_table()) {
             for (k, v) in rem {
                 if let Some(i) = v.as_integer() {
@@ -484,6 +496,10 @@ impl Overrides {
         if !self.animations.is_empty() {
             let anims: toml::Table = self.animations.iter().map(|(k, a)| (k.clone(), a.to_toml())).collect();
             table.insert("animations".into(), toml::Value::Table(anims));
+        }
+        if !self.monitors.is_empty() {
+            let mons: toml::Table = self.monitors.iter().map(|(k, r)| (k.clone(), r.to_toml())).collect();
+            table.insert("monitors".into(), toml::Value::Table(mons));
         }
         if !self.remember.is_empty() {
             let rem: toml::Table = self.remember.iter().map(|(k, v)| (k.clone(), toml::Value::Integer(*v))).collect();
@@ -510,6 +526,9 @@ impl Overrides {
         }
         for (leaf, anim) in &self.animations {
             let _ = writeln!(out, "try(hl.animation, {})", anim.to_lua(leaf));
+        }
+        for rule in self.monitors.values() {
+            let _ = writeln!(out, "try(hl.monitor, {})", rule.to_lua());
         }
         out
     }
@@ -714,6 +733,18 @@ mod tests {
         );
         o.options.insert("decoration:shadow:offset".into(), Value::Vec2([1.0, 2.0]));
         o.remember.insert("edge_gap".into(), 12);
+        o.monitors.insert(
+            "desc:HP Inc. HP E243i".into(),
+            crate::hyprmon::MonitorRule {
+                output: "desc:HP Inc. HP E243i".into(),
+                mode: "1920x1200@59.95".into(),
+                position: (1920, 0),
+                scale: 1.0,
+                transform: 0,
+                vrr: Some(1),
+                disabled: false,
+            },
+        );
         o.animations.insert(
             "windowsIn".into(),
             crate::hypranim::Anim {

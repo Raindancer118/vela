@@ -7,6 +7,7 @@
 use crate::config::write_atomic;
 use crate::hypranim::{Anim, AnimState};
 use crate::hyprconf::{OptionInfo, Overrides, Value};
+use crate::hyprmon::{MonitorInfo, MonitorRule};
 use crate::{hyprland, paths};
 use gtk::gio;
 use gtk::glib;
@@ -29,6 +30,13 @@ struct Inner {
     current: RefCell<BTreeMap<String, Value>>,
     anims: RefCell<BTreeMap<String, AnimState>>,
     curves: RefCell<Vec<String>>,
+    monitors: RefCell<Vec<MonitorInfo>>,
+    /// Values from before vela's first change this session: setting an
+    /// option back to it drops the override again.
+    baseline: RefCell<BTreeMap<String, Value>>,
+    baseline_anims: RefCell<BTreeMap<String, Anim>>,
+    pending_monitors: RefCell<Vec<MonitorRule>>,
+    monitor_refresh: RefCell<Option<glib::SourceId>>,
     loaded: Cell<bool>,
     pending_apply: RefCell<BTreeMap<String, Value>>,
     pending_anims: RefCell<BTreeMap<String, Anim>>,
@@ -69,6 +77,11 @@ impl HyprStore {
             current: RefCell::default(),
             anims: RefCell::default(),
             curves: RefCell::default(),
+            monitors: RefCell::default(),
+            baseline: RefCell::default(),
+            baseline_anims: RefCell::default(),
+            pending_monitors: RefCell::default(),
+            monitor_refresh: RefCell::default(),
             loaded: Cell::new(false),
             pending_apply: RefCell::default(),
             pending_anims: RefCell::default(),
@@ -137,7 +150,68 @@ impl HyprStore {
             *self.0.anims.borrow_mut() = anims;
             *self.0.curves.borrow_mut() = curves;
         }
+        if let Some(m) = hyprland::monitors_all() {
+            *self.0.monitors.borrow_mut() = m;
+        }
         self.0.loaded.set(true);
+    }
+
+    pub fn monitors(&self) -> Vec<MonitorInfo> {
+        self.0.monitors.borrow().clone()
+    }
+
+    /// Re-reads the monitors (after a change Hyprland needs a moment).
+    pub fn refresh_monitors(&self) {
+        if let Some(m) = hyprland::monitors_all() {
+            let changed = *self.0.monitors.borrow() != m;
+            *self.0.monitors.borrow_mut() = m;
+            if changed {
+                self.notify(Some("monitor:*"));
+            }
+        }
+    }
+
+    pub fn monitor_overrides(&self) -> BTreeMap<String, MonitorRule> {
+        self.0.overrides.borrow().monitors.clone()
+    }
+
+    /// Applies full monitor rules live and keeps them.
+    pub fn set_monitors(&self, rules: Vec<MonitorRule>) {
+        if rules.is_empty() {
+            return;
+        }
+        {
+            let mut o = self.0.overrides.borrow_mut();
+            for r in &rules {
+                o.monitors.insert(r.output.clone(), r.clone());
+            }
+        }
+        self.0.pending_monitors.borrow_mut().extend(rules);
+        self.schedule_apply();
+        self.schedule_save();
+        self.schedule_monitor_refresh();
+    }
+
+    /// Puts the monitor overrides back as they were and applies `rules`
+    /// (the state before a change that wasn't kept).
+    pub fn restore_monitors(&self, overrides: BTreeMap<String, MonitorRule>, rules: Vec<MonitorRule>) {
+        self.0.overrides.borrow_mut().monitors = overrides;
+        self.0.pending_monitors.borrow_mut().extend(rules);
+        self.schedule_apply();
+        self.save_now();
+        self.schedule_monitor_refresh();
+    }
+
+    fn schedule_monitor_refresh(&self) {
+        if let Some(id) = self.0.monitor_refresh.borrow_mut().take() {
+            id.remove();
+        }
+        let this = self.clone();
+        let id = glib::timeout_add_local_once(Duration::from_millis(700), move || {
+            this.0.monitor_refresh.borrow_mut().take();
+            this.refresh_monitors();
+        });
+        *self.0.monitor_refresh.borrow_mut() = Some(id);
     }
 
     /// What an animation does now (its own settings or inherited ones).
@@ -154,6 +228,12 @@ impl HyprStore {
         if self.anim(leaf).as_ref() == Some(&anim) && self.0.overrides.borrow().animations.contains_key(leaf) {
             return;
         }
+        if !self.is_overridden(&format!("anim:{leaf}"))
+            && let Some(before) = self.anim(leaf)
+        {
+            self.0.baseline_anims.borrow_mut().entry(leaf.to_owned()).or_insert(before);
+        }
+        let was_own = self.0.anims.borrow().get(leaf).is_some_and(|s| s.overridden);
         self.0.anims.borrow_mut().insert(
             leaf.to_owned(),
             AnimState {
@@ -161,7 +241,11 @@ impl HyprStore {
                 anim: anim.clone(),
             },
         );
-        self.0.overrides.borrow_mut().animations.insert(leaf.to_owned(), anim.clone());
+        if self.0.baseline_anims.borrow().get(leaf) == Some(&anim) && was_own {
+            self.0.overrides.borrow_mut().animations.remove(leaf);
+        } else {
+            self.0.overrides.borrow_mut().animations.insert(leaf.to_owned(), anim.clone());
+        }
         self.0.pending_anims.borrow_mut().insert(leaf.to_owned(), anim);
         self.schedule_apply();
         self.schedule_save();
@@ -188,16 +272,24 @@ impl HyprStore {
     /// `name` is an option or `anim:<leaf>`.
     pub fn is_overridden(&self, name: &str) -> bool {
         let o = self.0.overrides.borrow();
-        match name.strip_prefix("anim:") {
-            Some(leaf) => o.animations.contains_key(leaf),
-            None => o.options.contains_key(name),
+        if let Some(leaf) = name.strip_prefix("anim:") {
+            return o.animations.contains_key(leaf);
         }
+        if let Some(out) = name.strip_prefix("monitor:") {
+            return o.monitors.contains_key(out);
+        }
+        o.options.contains_key(name)
     }
 
     /// Everything vela overrides (options and `anim:<leaf>`), for "reset all".
     pub fn overridden(&self) -> Vec<String> {
         let o = self.0.overrides.borrow();
-        o.options.keys().cloned().chain(o.animations.keys().map(|l| format!("anim:{l}"))).collect()
+        o.options
+            .keys()
+            .cloned()
+            .chain(o.animations.keys().map(|l| format!("anim:{l}")))
+            .chain(o.monitors.keys().map(|m| format!("monitor:{m}")))
+            .collect()
     }
 
     pub fn remembered(&self, key: &str) -> Option<i64> {
@@ -252,8 +344,18 @@ impl HyprStore {
         if unchanged {
             return;
         }
+        if !self.is_overridden(name)
+            && let Some(before) = self.value(name)
+        {
+            self.0.baseline.borrow_mut().entry(name.to_owned()).or_insert(before);
+        }
         self.0.current.borrow_mut().insert(name.to_owned(), value.clone());
-        self.0.overrides.borrow_mut().options.insert(name.to_owned(), value.clone());
+        if self.0.baseline.borrow().get(name) == Some(&value) {
+            // Back where hyprland.lua had it: nothing to override any more.
+            self.0.overrides.borrow_mut().options.remove(name);
+        } else {
+            self.0.overrides.borrow_mut().options.insert(name.to_owned(), value.clone());
+        }
         self.0.pending_apply.borrow_mut().insert(name.to_owned(), value);
         self.schedule_apply();
         self.schedule_save();
@@ -281,6 +383,7 @@ impl HyprStore {
             code.extend(crate::hypranim::curves_lua());
         }
         code.extend(anims.iter().map(|(leaf, a)| a.eval_code(leaf)));
+        code.extend(self.0.pending_monitors.borrow_mut().drain(..).map(|r| r.eval_code()));
         match hyprland::eval(&code) {
             Ok(()) => self.set_error(None),
             Err(e) => {
@@ -297,12 +400,18 @@ impl HyprStore {
             let mut o = self.0.overrides.borrow_mut();
             names
                 .iter()
-                .filter(|n| match n.strip_prefix("anim:") {
-                    Some(leaf) => o.animations.remove(leaf).is_some(),
-                    None => o.options.remove(n.as_str()).is_some(),
+                .filter(|n| {
+                    if let Some(leaf) = n.strip_prefix("anim:") {
+                        o.animations.remove(leaf).is_some()
+                    } else if let Some(out) = n.strip_prefix("monitor:") {
+                        o.monitors.remove(out).is_some()
+                    } else {
+                        o.options.remove(n.as_str()).is_some()
+                    }
                 })
                 .count()
         };
+        let monitors = names.iter().any(|n| n.starts_with("monitor:"));
         if removed == 0 {
             return;
         }
@@ -317,8 +426,15 @@ impl HyprStore {
             }
         }
         self.save_now();
-        if !hyprland::reload_config() {
+        let reloaded = if monitors { hyprland::reload_all() } else { hyprland::reload_config() };
+        if !reloaded {
             self.set_error(Some("Hyprland did not reload its config"));
+        }
+        for n in names {
+            self.0.baseline.borrow_mut().remove(n);
+            if let Some(leaf) = n.strip_prefix("anim:") {
+                self.0.baseline_anims.borrow_mut().remove(leaf);
+            }
         }
         self.refresh_from_hyprland();
         self.notify(None);

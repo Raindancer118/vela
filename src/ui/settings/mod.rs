@@ -4,6 +4,7 @@
 
 mod apps_page;
 mod binder;
+mod hypr_monitors;
 mod hypr_pages;
 mod hypr_rows;
 mod pages;
@@ -16,7 +17,7 @@ use gtk::{gdk, glib};
 use std::rc::Rc;
 
 /// Sidebar entries: (section, page id, title, icon). Ids are `SETTINGS_PAGES`.
-const ENTRIES: [(&str, &str, &str, &str); 16] = [
+const ENTRIES: [(&str, &str, &str, &str); 17] = [
     ("Launcher", "general", "Launcher", "system-search-symbolic"),
     ("Launcher", "apps", "Applications", "view-grid-symbolic"),
     ("Launcher", "search", "Search", "edit-find-symbolic"),
@@ -28,6 +29,7 @@ const ENTRIES: [(&str, &str, &str, &str); 16] = [
     ("Hyprland", "hypr-effects", "Blur & effects", "vela-blur-symbolic"),
     ("Hyprland", "hypr-animations", "Animations", "vela-animations-symbolic"),
     ("Hyprland", "hypr-input", "Input", "input-keyboard-symbolic"),
+    ("Hyprland", "hypr-monitors", "Monitors", "vela-monitors-symbolic"),
     ("Hyprland", "hypr-layouts", "Layouts", "vela-layouts-symbolic"),
     ("Hyprland", "hypr-behaviour", "Behaviour", "vela-behaviour-symbolic"),
     ("Hyprland", "hypr-all", "All options", "vela-all-options-symbolic"),
@@ -81,6 +83,7 @@ impl SettingsWindow {
                 "hypr-effects" => hypr_pages::effects(&hypr).upcast(),
                 "hypr-animations" => hypr_pages::animations(&hypr).upcast(),
                 "hypr-input" => hypr_pages::input(&hypr).upcast(),
+                "hypr-monitors" => hypr_monitors::monitors(&hypr).upcast(),
                 "hypr-layouts" => hypr_pages::layouts(&hypr).upcast(),
                 "hypr-behaviour" => hypr_pages::behaviour(&hypr).upcast(),
                 "hypr-all" => hypr_pages::all_options(&hypr).upcast(),

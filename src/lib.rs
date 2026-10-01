@@ -11,6 +11,7 @@ pub mod history;
 pub mod hypranim;
 pub mod hyprconf;
 pub mod hyprland;
+pub mod hyprmon;
 pub mod idle;
 pub mod ipc;
 pub mod launch;

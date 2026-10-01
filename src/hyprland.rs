@@ -176,6 +176,16 @@ pub fn animations() -> Option<(std::collections::BTreeMap<String, crate::hyprani
     Some(crate::hypranim::parse(&json))
 }
 
+/// Every monitor, disabled ones included.
+pub fn monitors_all() -> Option<Vec<crate::hyprmon::MonitorInfo>> {
+    Some(crate::hyprmon::parse_monitors(&request_timeout("j/monitors all", 1000)?))
+}
+
+/// Full reload: monitor rules only take effect again with this.
+pub fn reload_all() -> bool {
+    request_timeout("reload", 5000).is_some_and(|r| r.trim() == "ok")
+}
+
 /// Current value of one option.
 pub fn option_value(info: &crate::hyprconf::OptionInfo) -> Option<crate::hyprconf::Value> {
     let out = request(&format!("j/getoption {}", info.name))?;
@@ -298,5 +308,19 @@ mod live {
             }
         }
         assert!(failed.is_empty(), "{}", failed.join("\n"));
+    }
+
+    #[test]
+    #[ignore]
+    fn live_monitor_rules_are_accepted() {
+        let monitors = super::monitors_all().expect("Hyprland reachable");
+        assert!(!monitors.is_empty());
+        for m in monitors {
+            // A made-up output: checks the rule without touching a screen.
+            let mut rule = m.current_rule();
+            rule.output = format!("desc:vela live test {}", m.name);
+            rule.vrr = Some(0);
+            super::eval(&[rule.eval_code()]).unwrap_or_else(|e| panic!("{}: {e}", rule.eval_code()));
+        }
     }
 }

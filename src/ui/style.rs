@@ -128,6 +128,12 @@ pub fn settings_css(accents: &[&str]) -> String {
 .vela-settings .vela-swatch { border-radius: 10px; box-shadow: inset 0 0 0 1px alpha(currentColor, 0.15); }
 .vela-settings .vela-accent-dot { min-width: 22px; min-height: 22px; padding: 0; border-radius: 99px; border: none; }
 .vela-settings .vela-accent-dot:checked { box-shadow: 0 0 0 2px @window_bg_color, 0 0 0 4px @window_fg_color; }
+.vela-settings .vela-monitor-canvas { background: alpha(@window_fg_color, 0.04); border-radius: 12px; padding: 16px; }
+.vela-settings .vela-monitor-tile { background: alpha(@accent_bg_color, 0.22); border-radius: 8px; box-shadow: inset 0 0 0 1px alpha(@accent_bg_color, 0.6); transition: background-color 140ms ease; }
+.vela-settings .vela-monitor-tile:hover { background: alpha(@accent_bg_color, 0.32); }
+.vela-settings .vela-monitor-tile.dragging { background: alpha(@accent_bg_color, 0.45); box-shadow: inset 0 0 0 2px @accent_bg_color, 0 6px 18px alpha(black, 0.3); }
+.vela-settings .vela-monitor-tile label.title { font-weight: 700; }
+.vela-settings .vela-monitor-tile label.caption { opacity: 0.7; }
 "#,
     );
     for t in Theme::ALL {
