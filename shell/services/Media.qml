@@ -22,6 +22,17 @@ Singleton {
         return list.find(p => p.isPlaying) ?? list.find(p => p.trackTitle) ?? list[0] ?? null;
     }
 
+    // Repeat button: off → playlist → track → off.
+    function nextLoop(state: int): int {
+        if (state === MprisLoopState.None)
+            return MprisLoopState.Playlist;
+        return state === MprisLoopState.Playlist ? MprisLoopState.Track : MprisLoopState.None;
+    }
+
+    function loopIcon(state: int): string {
+        return state === MprisLoopState.Track ? "repeat_one" : "repeat";
+    }
+
     function time(seconds: real): string {
         const s = Math.max(0, Math.floor(seconds));
         const two = n => String(n).padStart(2, "0");

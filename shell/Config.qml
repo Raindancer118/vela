@@ -30,6 +30,11 @@ Singleton {
     readonly property bool mediaPlayerCover: vp.mediaPlayerCover ?? true
     readonly property bool mediaPlayerCoverBackground: vp.mediaPlayerCoverBackground ?? false
     readonly property bool mediaPlayerProgress: vp.mediaPlayerProgress ?? true
+    readonly property bool mediaPlayerShuffleRepeat: vp.mediaPlayerShuffleRepeat ?? true
+    readonly property real mediaPlayerScale: vp.mediaPlayerScale ?? 1
+    readonly property real mediaPlayerCoverBlur: vp.mediaPlayerCoverBlur ?? 0.75
+    readonly property real mediaPlayerButtonScale: vp.mediaPlayerButtonScale ?? 1
+    readonly property bool mediaPlayerButtonBackground: vp.mediaPlayerButtonBackground ?? true
     readonly property bool claudeUsage: vp.claudeUsage
     readonly property bool claudeUsageSubtle: vp.claudeUsageSubtle
     readonly property bool claudeUsageOnlyDefault: vp.claudeUsageOnlyDefault

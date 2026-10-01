@@ -137,6 +137,11 @@ pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) ->
             "mediaPlayerCover": pn.media_player_cover,
             "mediaPlayerCoverBackground": pn.media_player_cover_background,
             "mediaPlayerProgress": pn.media_player_progress,
+            "mediaPlayerShuffleRepeat": pn.media_player_shuffle_repeat,
+            "mediaPlayerScale": pn.media_player_scale,
+            "mediaPlayerCoverBlur": pn.media_player_cover_blur,
+            "mediaPlayerButtonScale": pn.media_player_button_scale,
+            "mediaPlayerButtonBackground": pn.media_player_button_background,
             "backdropClockSize": pn.backdrop_clock_size,
             "clockFont": Some(pn.clock_font.trim()).filter(|f| !f.is_empty()).map_or_else(system_font, str::to_string),
             "claudeUsage": pn.claude_usage && installed.has(Component::Claude),
@@ -341,6 +346,15 @@ mod tests {
                 j["panel"]["mediaPlayerProgress"].clone()
             ),
             (true.into(), false.into(), true.into())
+        );
+        assert_eq!(j["panel"]["mediaPlayerShuffleRepeat"], true);
+        assert_eq!(
+            (j["panel"]["mediaPlayerScale"].clone(), j["panel"]["mediaPlayerCoverBlur"].clone()),
+            (1.0.into(), 0.75.into())
+        );
+        assert_eq!(
+            (j["panel"]["mediaPlayerButtonScale"].clone(), j["panel"]["mediaPlayerButtonBackground"].clone()),
+            (1.0.into(), true.into())
         );
         cfg.panel.media_player_position = MediaPosition::Top;
         assert_eq!(json(&cfg)["panel"]["mediaPlayerPosition"], "tiles", "the clock still sits at the top");

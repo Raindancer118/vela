@@ -145,7 +145,7 @@ pub struct Appearance {
     pub backdrop_blur: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Panel {
     /// Width of the control center in logical pixels.
@@ -191,6 +191,17 @@ pub struct Panel {
     pub media_player_cover_background: bool,
     /// Progress bar with seeking.
     pub media_player_progress: bool,
+    /// Shuffle and repeat buttons next to the progress bar.
+    pub media_player_shuffle_repeat: bool,
+    /// Size of the whole mini player, 0.75–1.75.
+    pub media_player_scale: f64,
+    /// Blur of the album art background, 0 (sharp) – 1.
+    pub media_player_cover_blur: f64,
+    /// Size of the buttons relative to the player, 0.6–1.25.
+    pub media_player_button_scale: f64,
+    /// Round backgrounds behind play/pause and the active shuffle/repeat;
+    /// off = icons only, active ones in the accent colour.
+    pub media_player_button_background: bool,
     /// Claude plan usage at the bottom of the panel.
     pub claude_usage: bool,
     /// Subtle style: grey text under a line instead of a card.
@@ -228,6 +239,11 @@ impl Default for Panel {
             media_player_cover: true,
             media_player_cover_background: false,
             media_player_progress: true,
+            media_player_shuffle_repeat: true,
+            media_player_scale: 1.0,
+            media_player_cover_blur: 0.75,
+            media_player_button_scale: 1.0,
+            media_player_button_background: true,
             claude_usage: true,
             claude_usage_subtle: false,
             claude_usage_only_default: false,
@@ -635,6 +651,9 @@ impl Config {
         p.group_collapsed_count = p.group_collapsed_count.clamp(1, 10);
         p.night_light_temperature = p.night_light_temperature.clamp(1000, 6500);
         p.backdrop_clock_size = p.backdrop_clock_size.clamp(48, 320);
+        p.media_player_scale = finite_or(p.media_player_scale, 1.0).clamp(0.75, 1.75);
+        p.media_player_cover_blur = finite_or(p.media_player_cover_blur, 0.75).clamp(0.0, 1.0);
+        p.media_player_button_scale = finite_or(p.media_player_button_scale, 1.0).clamp(0.6, 1.25);
 
         let i = &mut self.idle;
         for m in [
@@ -860,6 +879,18 @@ mod tests {
         assert!(p.media_player && !p.media_player_any, "Spotify's mini player by default");
         assert_eq!(p.media_player_position, MediaPosition::Tiles);
         assert!(p.media_player_cover && !p.media_player_cover_background && p.media_player_progress);
+        assert!(p.media_player_shuffle_repeat);
+        assert_eq!((p.media_player_scale, p.media_player_cover_blur), (1.0, 0.75));
+        assert_eq!(p.media_player_button_scale, 1.0);
+        assert!(p.media_player_button_background);
+        let cfg = Config::from_toml("[panel]\nmedia_player_button_scale = 0.1\n").unwrap();
+        assert_eq!(cfg.panel.media_player_button_scale, 0.6);
+        let cfg = Config::from_toml("[panel]\nmedia_player_button_scale = 3.0\n").unwrap();
+        assert_eq!(cfg.panel.media_player_button_scale, 1.25);
+        let cfg = Config::from_toml("[panel]\nmedia_player_scale = 9.0\nmedia_player_cover_blur = -1.0\n").unwrap();
+        assert_eq!((cfg.panel.media_player_scale, cfg.panel.media_player_cover_blur), (1.75, 0.0));
+        let cfg = Config::from_toml("[panel]\nmedia_player_scale = 0.1\nmedia_player_cover_blur = 7.0\n").unwrap();
+        assert_eq!((cfg.panel.media_player_scale, cfg.panel.media_player_cover_blur), (0.75, 1.0));
         let cfg = Config::from_toml("[panel]\nmedia_player_position = \"bottom\"\n").unwrap();
         assert_eq!(cfg.panel.media_player_position, MediaPosition::Bottom);
         assert!(p.claude_usage && !p.claude_usage_only_default && p.claude_usage_hidden.is_empty());

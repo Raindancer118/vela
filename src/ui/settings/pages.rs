@@ -804,16 +804,73 @@ fn media_player_group(b: &Binder) -> adw::PreferencesGroup {
         |c| c.panel.media_player_progress,
         |c, v| c.panel.media_player_progress = v,
     );
-    for r in [&on, &any, &top, &bottom, &cover, &cover_bg, &progress] {
+    let shuffle_repeat = b.switch(
+        "Shuffle and repeat",
+        "Buttons next to the progress bar, when the player supports them",
+        |c| c.panel.media_player_shuffle_repeat,
+        |c, v| c.panel.media_player_shuffle_repeat = v,
+    );
+    let size = b.spin(
+        "Size",
+        "1 = normal; album art, text and buttons scale along",
+        0.75,
+        1.75,
+        0.05,
+        2,
+        |c| c.panel.media_player_scale,
+        |c, v| c.panel.media_player_scale = v,
+    );
+    let blur = b.spin(
+        "Album art blur",
+        "0 = sharp, 1 = strongest",
+        0.0,
+        1.0,
+        0.05,
+        2,
+        |c| c.panel.media_player_cover_blur,
+        |c, v| c.panel.media_player_cover_blur = v,
+    );
+    let button_size = b.spin(
+        "Button size",
+        "Relative to the player; 1 = normal",
+        0.6,
+        1.25,
+        0.05,
+        2,
+        |c| c.panel.media_player_button_scale,
+        |c, v| c.panel.media_player_button_scale = v,
+    );
+    let button_bg = b.switch(
+        "Button backgrounds",
+        "Off: icons only; shuffle and repeat show they're on in the accent colour",
+        |c| c.panel.media_player_button_background,
+        |c, v| c.panel.media_player_button_background = v,
+    );
+    for r in [&on, &any, &top, &bottom, &cover, &cover_bg] {
         g.add(r);
     }
+    g.add(&blur);
+    g.add(&progress);
+    g.add(&shuffle_repeat);
+    g.add(&size);
+    g.add(&button_size);
+    g.add(&button_bg);
     let sync = {
-        let rows = [&any, &top, &bottom, &cover, &cover_bg, &progress].map(|r| r.downgrade());
+        let rows = [&any, &top, &bottom, &cover, &cover_bg, &progress, &shuffle_repeat, &button_bg].map(|r| r.downgrade());
+        let (size, blur, button_size) = (size.downgrade(), blur.downgrade(), button_size.downgrade());
         move |c: &Config| {
-            let [any, top, bottom, cover, cover_bg, progress] = &rows;
+            let [any, top, bottom, cover, cover_bg, progress, shuffle_repeat, button_bg] = &rows;
             let movable = c.panel.media_player && c.panel.clock_on_backdrop && c.panel.backdrop && c.panel.backdrop_blur;
-            for r in [any, cover, cover_bg, progress].into_iter().filter_map(|w| w.upgrade()) {
+            for r in [any, cover, cover_bg, progress, shuffle_repeat, button_bg]
+                .into_iter()
+                .filter_map(|w| w.upgrade())
+            {
                 r.set_sensitive(c.panel.media_player);
+            }
+            if let (Some(size), Some(blur), Some(button_size)) = (size.upgrade(), blur.upgrade(), button_size.upgrade()) {
+                size.set_sensitive(c.panel.media_player);
+                button_size.set_sensitive(c.panel.media_player);
+                blur.set_sensitive(c.panel.media_player && c.panel.media_player_cover_background);
             }
             // One switch flipping the position flips the other one off.
             for (w, pos) in [(top, MediaPosition::Top), (bottom, MediaPosition::Bottom)] {

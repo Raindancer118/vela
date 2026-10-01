@@ -515,7 +515,7 @@ reloads it, reports errors in the settings and keeps the last valid settings
 | | `workspace_osd`, `night_light_temperature`, `clock_centered` | |
 | | `clock_on_backdrop`, `backdrop_clock_size`, `clock_font` | clock large on the blurred backdrop (needs `backdrop` + `backdrop_blur`), its size in px (48–320); clock font, empty = UI font |
 | | `claude_usage`, `claude_usage_subtle`, `claude_usage_only_default`, `claude_usage_hidden` | Claude plan usage at the bottom of the panel |
-| | `media_player`, `media_player_any`, `media_player_position` (`tiles`, `top`, `bottom`; the last two need the clock on the blur), `media_player_cover`, `media_player_cover_background`, `media_player_progress` | mini player (Spotify, or any MPRIS player) |
+| | `media_player`, `media_player_any`, `media_player_position` (`tiles`, `top`, `bottom`; the last two need the clock on the blur), `media_player_cover`, `media_player_cover_background`, `media_player_cover_blur` (0–1), `media_player_progress`, `media_player_shuffle_repeat`, `media_player_scale` (0.75–1.75), `media_player_button_scale` (0.6–1.25), `media_player_button_background` | mini player (Spotify, or any MPRIS player) |
 | `idle` | `dim`, `lock`, `screen_off`, `suspend` (+ `*_after_min`), `lock_before_sleep` | what `vela idle` runs hypridle with |
 | `updates` | `check_interval_hours` (0 = never), `aur`, `flatpak` | background checks and sources |
 | | `claude_workspace` | where "Fix with Claude" opens, silently; empty = a normal window |

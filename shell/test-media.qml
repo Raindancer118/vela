@@ -2,6 +2,7 @@
 //   qs -p test-media.qml   (scripts/shell-test.sh); prints PASS or FAIL
 import QtQuick
 import Quickshell
+import Quickshell.Services.Mpris
 import qs
 import qs.services
 
@@ -19,9 +20,12 @@ ShellRoot {
             name(Media.pick([idle], true)),
             name(Media.pick([], true)),
             Media.isSpotify(spotify), Media.isSpotify(brave),
-            Media.time(0), Media.time(65.4), Media.time(3725), Media.time(-1)
+            Media.time(0), Media.time(65.4), Media.time(3725), Media.time(-1),
+            Media.nextLoop(MprisLoopState.None), Media.nextLoop(MprisLoopState.Playlist), Media.nextLoop(MprisLoopState.Track),
+            Media.loopIcon(MprisLoopState.None), Media.loopIcon(MprisLoopState.Playlist), Media.loopIcon(MprisLoopState.Track)
         ];
-        const expected = ["Spotify", null, "Brave", "Spotify", "mpv", null, true, false, "0:00", "1:05", "1:02:05", "0:00"];
+        const expected = ["Spotify", null, "Brave", "Spotify", "mpv", null, true, false, "0:00", "1:05", "1:02:05", "0:00",
+            MprisLoopState.Playlist, MprisLoopState.Track, MprisLoopState.None, "repeat", "repeat", "repeat_one"];
         const ok = JSON.stringify(got) === JSON.stringify(expected);
         console.log((ok ? "PASS " : "FAIL ") + JSON.stringify(got) + (ok ? "" : "\n  expected " + JSON.stringify(expected)));
         Qt.callLater(Qt.quit);
