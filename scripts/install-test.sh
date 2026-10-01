@@ -67,6 +67,7 @@ check "minimal: share_picker off" key share_picker false
 check "minimal: no MCP" test ! -e "$HOME/.mcp-registered"
 check "minimal: no xdph.conf" test ! -e "$HOME/.config/hypr/xdph.conf"
 check "minimal: vela reads it" sh -c "'$BIN/vela' components | grep -q '\[ \] panel'"
+check "components: closed pipe is no panic" sh -c "! ( '$BIN/vela' components | head -1 >/dev/null ) 2>&1 | grep -q panicked"
 check "minimal: vela sees the launcher" sh -c "'$BIN/vela' components | grep -q '\[x\] launcher'"
 
 # full: everything.

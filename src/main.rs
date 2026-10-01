@@ -192,14 +192,17 @@ fn main() -> ExitCode {
 }
 
 fn print_components() {
+    use std::io::Write;
     use vela::components::{self, Component};
     let installed = components::installed();
-    match components::manifest_file() {
-        Some(f) => println!("profile: {} ({})", installed.profile.as_deref().unwrap_or("?"), f.display()),
-        None => println!("profile: full (no selection from install.sh)"),
-    }
+    // A closed pipe (`vela components | head -1`) is no error.
+    let mut out = std::io::stdout().lock();
+    let _ = match components::manifest_file() {
+        Some(f) => writeln!(out, "profile: {} ({})", installed.profile.as_deref().unwrap_or("?"), f.display()),
+        None => writeln!(out, "profile: full (no selection from install.sh)"),
+    };
     for c in Component::ALL {
-        println!("  [{}] {:<13} {}", if installed.has(c) { 'x' } else { ' ' }, c.id(), c.description());
+        let _ = writeln!(out, "  [{}] {:<13} {}", if installed.has(c) { 'x' } else { ' ' }, c.id(), c.description());
     }
 }
 
