@@ -5,40 +5,23 @@ import Quickshell
 import Quickshell.Io
 import qs
 
-// Claude plan usage per Claude Code profile, from `vela claude-usage`
-// (unofficial endpoint, see src/claude_usage.rs; the token never reaches
-// QML). Fetched when the panel opens and the data is older than
-// refreshInterval, and periodically while it stays open; the last result
-// is cached so the section shows numbers right away.
+// Claude plan usage per Claude Code profile. vela-daemon polls in the
+// background as often as the endpoint allows (src/claude_usage.rs) and
+// writes ~/.cache/vela/claude-usage.json; this only reads that file through
+// `vela claude-usage --watch` and never asks the endpoint itself.
 Singleton {
     id: root
 
-    readonly property int refreshInterval: 300000
-    // Cached numbers of an account older than this are no longer shown.
-    readonly property int maxAge: 3600000
-
-    // [{ name, session: { utilization, resetsAt } | null, week: … }]
+    // [{ name, plan, status: "ok", fetchedAt, session: { utilization, resetsAt } | null, week }]
     property var accounts: []
-    // The last answer as it came (all statuses), for hasNew().
-    property var lastAnswer: null
-    property string lastHidden: ""
-
-    // Filtered by the current settings right away (the fetch for a newly
-    // shown account follows in the background).
-    readonly property var shown: select(accounts, Config.claudeUsageOnlyDefault, Config.claudeUsageHidden)
-    property var raw: null
-    property real lastAttempt: 0
+    // Numbers older than this are not shown (the account then has no data).
+    readonly property int maxAge: 300000
+    // Filtered by age and the current settings right away.
+    readonly property var shown: select(fresh(accounts, now), Config.claudeUsageOnlyDefault, Config.claudeUsageHidden)
     property real now: Date.now()
-    readonly property bool loading: proc.running
 
-    readonly property string cachePath: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/vela/claude-usage.json"
-
-    // A logged-in profile the last answer didn't mention at all. Accounts that
-    // came back unavailable (expired, rate limited) count as known: refetching
-    // them on every open is what gets the endpoint to answer HTTP 429.
-    function hasNew(names: var, lastAnswer: var): bool {
-        const known = (lastAnswer?.accounts ?? []).map(a => a.name);
-        return names.some(n => !known.includes(n));
+    function fresh(list: var, nowMs: real): var {
+        return list.filter(a => nowMs - (a.fetchedAt ?? 0) <= root.maxAge);
     }
 
     function select(list: var, onlyDefault: bool, hidden: var): var {
@@ -61,130 +44,37 @@ Singleton {
         return d.toDateString() === new Date(nowMs).toDateString() ? time : Config.locale.toString(d, "ddd") + " " + time;
     }
 
-    // Fresh results win; an account that is temporarily unavailable keeps
-    // its cached numbers while they are younger than maxAge. Accounts that
-    // are no longer listed (hidden in the settings) disappear.
-    function merge(cached: var, fresh: var, nowMs: real): var {
-        const old = {};
-        for (const a of cached?.accounts ?? [])
-            if (a.status === "ok")
-                old[a.name] = { account: a, at: a.fetchedAt ?? cached.fetchedAt };
-        return (fresh?.accounts ?? []).map(a => {
-            if (a.status === "ok")
-                return Object.assign({ fetchedAt: fresh.fetchedAt }, a);
-            const o = old[a.name];
-            return o && nowMs - o.at < root.maxAge ? Object.assign({ fetchedAt: o.at }, o.account) : null;
-        }).filter(a => a !== null);
-    }
-
-    function refreshIfStale(): void {
-        now = Date.now();
-        if (now - lastAttempt >= refreshInterval)
-            refresh();
-    }
-
-    function refresh(): void {
-        if (proc.running || !Config.claudeUsage)
-            return;
-        lastAttempt = Date.now();
-        proc.running = true;
-    }
-
-    Connections {
-        target: ShellState
-
-        function onPanelOpenChanged(): void {
-            if (!ShellState.panelOpen)
-                return;
-            root.refreshIfStale();
-            // Cheap check (no request) for accounts added, logged in or hidden.
-            if (!proc.running)
-                listProc.running = true;
-        }
-    }
-
-    // An account shown again needs numbers; other settings changes (only
-    // the default account, style) are applied without a request.
-    Connections {
-        target: VelaConfig
-
-        function onPanelChanged(): void {
-            const hidden = JSON.stringify(Config.claudeUsageHidden ?? []);
-            const changed = hidden !== root.lastHidden;
-            root.lastHidden = hidden;
-            if (changed && root.raw !== null) {
-                root.lastAttempt = 0;
-                root.refresh();
-            }
-        }
-    }
-
-    Timer {
-        interval: root.refreshInterval
-        repeat: true
-        running: ShellState.panelOpen && Config.claudeUsage
-        onTriggered: root.refresh()
+    function apply(line: string): void {
+        try {
+            const data = JSON.parse(line);
+            root.accounts = (data.accounts ?? []).filter(a => a.status === "ok");
+            root.now = Date.now();
+        } catch (e) {}
     }
 
     Timer {
         interval: Config.relativeTimeInterval
         repeat: true
         running: ShellState.panelOpen
+        triggeredOnStart: true
         onTriggered: root.now = Date.now()
     }
 
     Process {
         id: proc
 
-        command: [Quickshell.env("VELA_BIN") || "vela", "claude-usage"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                let fresh = null;
-                try {
-                    fresh = JSON.parse(text);
-                } catch (e) {
-                    return;
-                }
-                root.lastAnswer = fresh;
-                const merged = root.merge(root.raw, fresh, Date.now());
-                root.accounts = merged;
-                root.raw = { fetchedAt: fresh.fetchedAt, accounts: merged };
-                cache.setText(JSON.stringify(root.raw));
-            }
+        command: [Quickshell.env("VELA_BIN") || "vela", "claude-usage", "--watch"]
+        running: Config.claudeUsage
+        stdout: SplitParser {
+            onRead: line => root.apply(line)
         }
+        onExited: retry.start()
     }
 
-    Process {
-        id: listProc
+    Timer {
+        id: retry
 
-        command: [Quickshell.env("VELA_BIN") || "vela", "claude-usage", "--list"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                let names = null;
-                try {
-                    names = JSON.parse(text);
-                } catch (e) {
-                    return;
-                }
-                if (root.hasNew(names, root.lastAnswer)) {
-                    root.lastAttempt = 0;
-                    root.refresh();
-                }
-            }
-        }
-    }
-
-    FileView {
-        id: cache
-
-        path: root.cachePath
-        printErrors: false
-        onLoaded: {
-            try {
-                const c = JSON.parse(text());
-                root.raw = c;
-                root.accounts = root.merge(c, { fetchedAt: c.fetchedAt, accounts: c.accounts.map(a => ({ name: a.name, status: "unavailable" })) }, Date.now());
-            } catch (e) {}
-        }
+        interval: 3000
+        onTriggered: proc.running = Config.claudeUsage
     }
 }

@@ -60,6 +60,10 @@ enum Cmd {
         /// Only the names of the shown profiles that are logged in (no request).
         #[arg(long)]
         list: bool,
+        /// Print the background poller's results whenever they change (used
+        /// by the panel; no requests of its own).
+        #[arg(long)]
+        watch: bool,
     },
     /// Print the control center settings as JSON (used by the shell).
     ShellConfig {
@@ -117,7 +121,8 @@ fn main() -> ExitCode {
         Cmd::Panel { action } => return run_qs(&["ipc", "call", "panel", &action]),
         Cmd::ShellConfig { watch } => return shell_config(watch),
         Cmd::Idle => return run_idle(),
-        Cmd::ClaudeUsage { list } => {
+        Cmd::ClaudeUsage { watch: true, .. } => return watch_usage(),
+        Cmd::ClaudeUsage { list, .. } => {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_millis() as i64);
@@ -270,6 +275,27 @@ impl Lifecycle {
         before();
         let err = std::process::Command::new(exe).args(std::env::args_os().skip(1)).exec();
         eprintln!("vela: cannot restart after update: {err}");
+    }
+}
+
+fn watch_usage() -> ExitCode {
+    use std::io::Write;
+    let life = Lifecycle::start(true);
+    let file = vela::claude_usage::cache_file();
+    let mut stamp = None;
+    let mut out = std::io::stdout();
+    loop {
+        let now = std::fs::metadata(&file).ok().and_then(|m| m.modified().ok());
+        if now.is_some() && now != stamp {
+            stamp = now;
+            if let Ok(text) = std::fs::read_to_string(&file)
+                && writeln!(out, "{}", text.trim()).and_then(|()| out.flush()).is_err()
+            {
+                return ExitCode::SUCCESS;
+            }
+        }
+        life.reexec_if_updated(|| {});
+        std::thread::sleep(Duration::from_millis(500));
     }
 }
 

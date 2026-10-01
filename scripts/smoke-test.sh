@@ -10,6 +10,8 @@ BIN="$(realpath "${1:-target/release/vela}")"
 tmp="$(mktemp -d)"
 export XDG_CONFIG_HOME="$tmp/config" XDG_STATE_HOME="$tmp/state" XDG_CACHE_HOME="$tmp/cache"
 export VELA_SOCKET="$tmp/vela.sock" RUST_LOG=vela=info
+# The real home is shared: don't poll the real Claude accounts.
+export VELA_NO_CLAUDE_USAGE=1
 weston_pid=""
 cleanup() {
     [[ -n "${daemon_pid:-}" ]] && kill "$daemon_pid" 2>/dev/null || true

@@ -153,35 +153,196 @@ pub fn select(profiles: Vec<(String, PathBuf)>, panel: &Panel) -> Vec<(String, P
     profiles.into_iter().filter(|(name, _)| !panel.claude_usage_hidden.contains(name)).collect()
 }
 
-fn fetch(token: &str) -> Result<String, String> {
+/// Why a request failed; `retry_after_ms` from the Retry-After header.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FetchError {
+    pub reason: String,
+    pub retry_after_ms: Option<i64>,
+}
+
+impl FetchError {
+    fn new(reason: &str) -> FetchError {
+        FetchError {
+            reason: reason.into(),
+            retry_after_ms: None,
+        }
+    }
+}
+
+/// The usage request with curl; the token only travels through its stdin.
+pub fn fetch(token: &str) -> Result<String, FetchError> {
     let mut child = Command::new("curl")
-        .args(["-q", "--silent", "--config", "-", "--max-time", "10", "--write-out", "\n%{http_code}"])
+        .args(["-q", "--silent", "--config", "-", "--max-time", "10"])
+        .args(["--write-out", "\n%{http_code} %header{retry-after}"])
         .args(["--header", "anthropic-beta: oauth-2025-04-20", "--header", "Accept: application/json"])
         .args(["--user-agent", "vela-claude-usage", ENDPOINT])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|_| "no-curl".to_owned())?;
-    // The token only travels through this pipe.
+        .map_err(|_| FetchError::new("no-curl"))?;
     child
         .stdin
         .take()
-        .ok_or("no-curl")?
+        .ok_or_else(|| FetchError::new("no-curl"))?
         .write_all(format!("header = \"Authorization: Bearer {token}\"\n").as_bytes())
-        .map_err(|_| "offline".to_owned())?;
-    let out = child.wait_with_output().map_err(|_| "offline".to_owned())?;
+        .map_err(|_| FetchError::new("offline"))?;
+    let out = child.wait_with_output().map_err(|_| FetchError::new("offline"))?;
     let text = String::from_utf8_lossy(&out.stdout);
-    let (body, status) = text.rsplit_once('\n').ok_or("offline")?;
-    match status.trim() {
+    let (body, tail) = text.rsplit_once('\n').ok_or_else(|| FetchError::new("offline"))?;
+    let mut parts = tail.split_whitespace();
+    let status = parts.next().unwrap_or("");
+    let retry_after_ms = parts.next().and_then(|s| s.parse::<i64>().ok()).map(|s| s * 1000);
+    match status {
         "200" => Ok(body.to_owned()),
-        "000" | "" => Err("offline".into()),
-        code => Err(format!("http-{code}")),
+        "000" | "" => Err(FetchError::new("offline")),
+        code => Err(FetchError {
+            reason: format!("http-{code}"),
+            retry_after_ms,
+        }),
+    }
+}
+
+/// Shortest pause between two requests for one account, and the longest
+/// back-off after repeated rate limiting.
+pub const MIN_INTERVAL_MS: i64 = 60_000;
+pub const MAX_INTERVAL_MS: i64 = 15 * 60_000;
+/// Last good numbers are shown at most this long after they were fetched;
+/// the panel applies the same limit (services/ClaudeUsage.qml).
+pub const MAX_AGE_MS: i64 = 5 * 60_000;
+
+/// (5-hour, 7-day) windows of one answer.
+type Windows = (Option<Window>, Option<Window>);
+
+#[derive(Default)]
+struct AccountState {
+    plan: Option<String>,
+    /// Last successful windows and when they were fetched.
+    last_ok: Option<(Windows, i64)>,
+    reason: Option<String>,
+    interval_ms: i64,
+    next_at: i64,
+}
+
+/// Background polling (`vela-daemon`): each account on its own schedule, as
+/// often as the endpoint allows. Starts at MIN_INTERVAL_MS, doubles on
+/// HTTP 429 (or waits Retry-After) up to MAX_INTERVAL_MS, and speeds up again
+/// after successes. Expired or hidden accounts cost no request.
+#[derive(Default)]
+pub struct Poller {
+    accounts: std::collections::BTreeMap<String, AccountState>,
+    order: Vec<String>,
+}
+
+impl Poller {
+    pub fn next_at(&self, name: &str) -> Option<i64> {
+        self.accounts.get(name).map(|a| a.next_at)
+    }
+
+    /// One round; true if the snapshot changed.
+    pub fn tick(&mut self, home: &Path, panel: &Panel, now_ms: i64, fetch: &mut dyn FnMut(&str) -> Result<String, FetchError>) -> bool {
+        let selected = select(profiles(home), panel);
+        let names: Vec<String> = selected.iter().map(|(n, _)| n.clone()).collect();
+        let mut changed = names != self.order;
+        self.accounts.retain(|n, _| names.contains(n));
+        self.order = names;
+        for (name, dir) in selected {
+            let acc = self.accounts.entry(name).or_default();
+            if now_ms < acc.next_at {
+                continue;
+            }
+            let creds = std::fs::read_to_string(dir.join(".credentials.json")).ok();
+            let plan = creds.as_deref().and_then(plan_of);
+            changed |= plan != acc.plan;
+            acc.plan = plan;
+            let token = creds.ok_or("no-credentials").and_then(|c| read_token(&c, now_ms));
+            let interval = acc.interval_ms.max(MIN_INTERVAL_MS);
+            match token {
+                // No request: look again soon (Claude Code may log in or refresh).
+                Err(reason) => {
+                    changed |= acc.reason.as_deref() != Some(reason);
+                    acc.reason = Some(reason.into());
+                    acc.next_at = now_ms + MIN_INTERVAL_MS;
+                }
+                Ok(token) => match fetch(&token).and_then(|b| parse_usage(&b).ok_or_else(|| FetchError::new("no-data"))) {
+                    Ok(windows) => {
+                        changed = true;
+                        acc.last_ok = Some((windows, now_ms));
+                        acc.reason = None;
+                        acc.interval_ms = (interval * 3 / 4).max(MIN_INTERVAL_MS);
+                        acc.next_at = now_ms + acc.interval_ms;
+                    }
+                    Err(e) => {
+                        changed |= acc.reason.as_deref() != Some(e.reason.as_str());
+                        let limited = e.reason == "http-429";
+                        acc.interval_ms = if limited { (interval * 2).min(MAX_INTERVAL_MS) } else { interval };
+                        acc.next_at = now_ms + acc.interval_ms.max(e.retry_after_ms.unwrap_or(0));
+                        acc.reason = Some(e.reason);
+                    }
+                },
+            }
+        }
+        changed
+    }
+
+    /// The cache file content the panel reads.
+    pub fn snapshot(&self, now_ms: i64) -> String {
+        let accounts: Vec<Value> = self
+            .order
+            .iter()
+            .filter_map(|name| {
+                let a = self.accounts.get(name)?;
+                Some(match a.last_ok {
+                    Some(((s, w), at)) if now_ms - at <= MAX_AGE_MS => json!({
+                        "name": name, "plan": a.plan, "status": "ok", "fetchedAt": at,
+                        "session": window_json(s), "week": window_json(w), "problem": a.reason,
+                    }),
+                    _ => json!({ "name": name, "plan": a.plan, "status": "unavailable", "reason": a.reason }),
+                })
+            })
+            .collect();
+        json!({ "fetchedAt": now_ms, "accounts": accounts }).to_string()
     }
 }
 
 fn window_json(w: Option<Window>) -> Value {
     w.map_or(Value::Null, |w| json!({ "utilization": w.utilization, "resetsAt": w.resets_at }))
+}
+
+/// Where the background poller keeps its results (read by the panel).
+pub fn cache_file() -> PathBuf {
+    crate::paths::cache_dir().join("claude-usage.json")
+}
+
+/// Starts the background poller thread (in `vela-daemon`). Set
+/// VELA_NO_CLAUDE_USAGE=1 for test daemons that share the real home.
+pub fn spawn_poller() {
+    if std::env::var_os("VELA_NO_CLAUDE_USAGE").is_some_and(|v| !v.is_empty()) {
+        return;
+    }
+    std::thread::Builder::new()
+        .name("claude-usage".into())
+        .spawn(|| {
+            let mut poller = Poller::default();
+            loop {
+                let cfg = std::fs::read_to_string(crate::paths::config_file())
+                    .ok()
+                    .and_then(|t| crate::config::Config::from_toml(&t).ok())
+                    .unwrap_or_default();
+                if cfg.panel.claude_usage {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |d| d.as_millis() as i64);
+                    if poller.tick(&crate::paths::home_dir(), &cfg.panel, now, &mut |t| fetch(t)) {
+                        if let Err(e) = crate::config::write_atomic(&cache_file(), &poller.snapshot(now)) {
+                            log::warn!("claude usage: cannot write cache: {e:#}");
+                        }
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_secs(5));
+            }
+        })
+        .expect("spawn claude-usage thread");
 }
 
 /// Shown profiles that currently have a usable token, without any request
@@ -204,7 +365,7 @@ pub fn report(home: &Path, panel: &Panel, now_ms: i64) -> String {
             let result = creds
                 .ok_or_else(|| "no-credentials".to_owned())
                 .and_then(|c| read_token(&c, now_ms).map_err(str::to_owned))
-                .and_then(|t| fetch(&t))
+                .and_then(|t| fetch(&t).map_err(|e| e.reason))
                 .and_then(|body| parse_usage(&body).ok_or_else(|| "no-data".to_owned()));
             match result {
                 Ok((s, w)) => json!({ "name": name, "plan": plan, "status": "ok", "session": window_json(s), "week": window_json(w) }),
@@ -336,6 +497,104 @@ mod tests {
             ..Panel::default()
         };
         assert_eq!(usable_names(h, &panel, 1000), vec!["default", "new"]);
+    }
+
+    fn creds(dir: &Path, exp: i64) {
+        std::fs::create_dir_all(dir).unwrap();
+        let c = format!(r#"{{"claudeAiOauth":{{"accessToken":"tok","expiresAt":{exp},"subscriptionType":"pro"}}}}"#);
+        std::fs::write(dir.join(".credentials.json"), c).unwrap();
+    }
+
+    const BODY: &str = r#"{"five_hour":{"utilization":10.0,"resets_at":null},"seven_day":{"utilization":20.0,"resets_at":null}}"#;
+
+    #[test]
+    fn poller_fetches_each_account_on_its_own_schedule() {
+        let home = tempfile::tempdir().unwrap();
+        let h = home.path();
+        creds(&h.join(".claude"), 10_000_000);
+        creds(&h.join(".claude-accounts/old"), 5);
+        let mut p = Poller::default();
+        let calls = std::cell::Cell::new(0);
+        let mut ok = |_: &str| -> Result<String, FetchError> {
+            calls.set(calls.get() + 1);
+            Ok(BODY.into())
+        };
+        let panel = Panel::default();
+        assert!(p.tick(h, &panel, 1_000, &mut ok), "first tick fetches and changes the snapshot");
+        assert_eq!(calls.get(), 1, "expired accounts are never fetched");
+        assert!(!p.tick(h, &panel, 1_000 + MIN_INTERVAL_MS - 1, &mut ok));
+        assert_eq!(calls.get(), 1, "not before the interval");
+        p.tick(h, &panel, 1_000 + MIN_INTERVAL_MS, &mut ok);
+        assert_eq!(calls.get(), 2);
+        let snap: Value = serde_json::from_str(&p.snapshot(2_000)).unwrap();
+        let names: Vec<&str> = snap["accounts"].as_array().unwrap().iter().map(|a| a["name"].as_str().unwrap()).collect();
+        assert_eq!(names, vec!["default", "old"]);
+        assert_eq!(snap["accounts"][0]["status"], "ok");
+        assert_eq!(snap["accounts"][0]["plan"], "Pro");
+        assert_eq!(snap["accounts"][0]["session"]["utilization"], 0.1);
+        assert_eq!(snap["accounts"][1]["status"], "unavailable");
+    }
+
+    #[test]
+    fn poller_backs_off_on_429_and_honours_retry_after() {
+        let home = tempfile::tempdir().unwrap();
+        let h = home.path();
+        creds(&h.join(".claude"), i64::MAX / 2);
+        let mut p = Poller::default();
+        let panel = Panel::default();
+        let mut limited = |_: &str| -> Result<String, FetchError> {
+            Err(FetchError {
+                reason: "http-429".into(),
+                retry_after_ms: None,
+            })
+        };
+        p.tick(h, &panel, 0, &mut limited);
+        assert_eq!(p.next_at("default"), Some(2 * MIN_INTERVAL_MS), "doubled after a 429");
+        p.tick(h, &panel, 2 * MIN_INTERVAL_MS, &mut limited);
+        assert_eq!(p.next_at("default"), Some(2 * MIN_INTERVAL_MS + 4 * MIN_INTERVAL_MS));
+        let mut told = |_: &str| -> Result<String, FetchError> {
+            Err(FetchError {
+                reason: "http-429".into(),
+                retry_after_ms: Some(3_600_000),
+            })
+        };
+        let t = 6 * MIN_INTERVAL_MS;
+        p.tick(h, &panel, t, &mut told);
+        assert_eq!(p.next_at("default"), Some(t + 3_600_000), "Retry-After wins when longer");
+        // Success afterwards keeps the last numbers and speeds up again.
+        let mut ok = |_: &str| -> Result<String, FetchError> { Ok(BODY.into()) };
+        let t = t + 3_600_000;
+        p.tick(h, &panel, t, &mut ok);
+        assert!(p.next_at("default").unwrap() - t < MAX_INTERVAL_MS);
+    }
+
+    #[test]
+    fn poller_keeps_last_numbers_through_failures_and_skips_hidden() {
+        let home = tempfile::tempdir().unwrap();
+        let h = home.path();
+        creds(&h.join(".claude"), i64::MAX / 2);
+        creds(&h.join(".claude-accounts/work"), i64::MAX / 2);
+        let mut p = Poller::default();
+        let mut panel = Panel::default();
+        let mut ok = |_: &str| -> Result<String, FetchError> { Ok(BODY.into()) };
+        p.tick(h, &panel, 0, &mut ok);
+        let mut down = |_: &str| -> Result<String, FetchError> {
+            Err(FetchError {
+                reason: "offline".into(),
+                retry_after_ms: None,
+            })
+        };
+        p.tick(h, &panel, MIN_INTERVAL_MS, &mut down);
+        let snap: Value = serde_json::from_str(&p.snapshot(MIN_INTERVAL_MS)).unwrap();
+        assert_eq!(snap["accounts"][0]["status"], "ok", "last good numbers stay");
+        assert_eq!(snap["accounts"][0]["fetchedAt"], 0);
+        panel.claude_usage_hidden = vec!["work".into()];
+        p.tick(h, &panel, 2 * MIN_INTERVAL_MS, &mut down);
+        let snap: Value = serde_json::from_str(&p.snapshot(2 * MIN_INTERVAL_MS)).unwrap();
+        assert_eq!(snap["accounts"].as_array().unwrap().len(), 1, "hidden accounts drop out");
+        // Numbers older than MAX_AGE are not shown as current anymore.
+        let snap: Value = serde_json::from_str(&p.snapshot(MAX_AGE_MS + 1)).unwrap();
+        assert_eq!(snap["accounts"][0]["status"], "unavailable");
     }
 
     #[test]
