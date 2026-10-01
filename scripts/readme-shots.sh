@@ -120,6 +120,37 @@ for mon in json.load(sys.stdin).values():
     echo "  $1"
 }
 
+# The running control center with four made-up notifications (removed again
+# afterwards), the sound detail and the popups. The panel opens on the
+# focused monitor; readme-frame.py expects the laptop screen at scale 1.2.
+if [[ "${CC:-0}" == 1 ]]; then
+    D="$HOME/.local/share/vela/shell"
+    layer() {
+        hyprctl layers -j | python3 -c "
+import json,sys
+for m in json.load(sys.stdin).values():
+    for lv in m['levels'].values():
+        for l in lv:
+            if l['namespace']=='$1': print(f\"{l['x']},{l['y']} {l['w']}x{l['h']}\")" | head -1
+    }
+    apps=(Calendar "Claude Code" Firefox Spotify)
+    notify-send -a Calendar -i x-office-calendar "Design review in 10 minutes" "Room 2 · with Ana and Lukas"; sleep 0.3
+    notify-send -a "Claude Code" "Claude Code" "Done: all 162 tests pass and the release is tagged."; sleep 0.3
+    notify-send -a Firefox -i firefox "Download complete" "vela-0.28.1.tar.gz · 2.4 MB"; sleep 0.3
+    notify-send -a Spotify -i spotify "Now playing" "Roxette — It Must Have Been Love"; sleep 1.2
+    grim -g "$(layer quickshell-notifications)" "$OUT/cc-popups.png"
+    sleep 6
+    qs ipc -p "$D" call panel open; sleep 1.5
+    geom=$(layer quickshell-panel)
+    grim -g "$geom" "$OUT/cc-panel.png"
+    qs ipc -p "$D" call panel detail audio; sleep 1.2
+    grim -g "$geom" "$OUT/cc-audio.png"
+    qs ipc -p "$D" call panel close
+    for a in "${apps[@]}"; do qs ipc -p "$D" call notifications dismissApp "$a"; done
+    echo "  control center"
+    exit 0
+fi
+
 if [[ "${LAUNCHER:-0}" == 1 ]]; then
     hyprctl monitors -j | python3 -c "import json,sys;print(next(m['scale'] for m in json.load(sys.stdin) if m['name']=='$MON'))" >"$OUT/scale"
     launcher launcher-grid ""

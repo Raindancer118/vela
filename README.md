@@ -86,23 +86,27 @@ logo: <kbd>Enter</kbd> goes to Claude.
 <img alt="The control center" src="docs/readme/h-center-light.svg#gh-light-mode-only" width="100%">
 <img alt="The control center" src="docs/readme/h-center-dark.svg#gh-dark-mode-only" width="100%">
 
-`vela shell` runs a control center built on Quickshell, in the same theme,
-colours and motion as the launcher:
+`vela shell` runs a control center built on Quickshell, in exactly the look
+of the launcher and the settings: the same font, the same Adwaita icons, the
+same accent selection, sliders and boxed lists.
+
+<img alt="Notification popups, the sound detail view and the control center panel" src="docs/readme/control-center.png" width="100%">
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-- **Quick settings**: Wi-Fi, Bluetooth, sound, power profile, night light
+- **Quick settings**: Wi-Fi, Bluetooth, sound, power profile, night light, do not disturb; each tile opens its details
 - **Notifications**: popups, groups per app, compact rows that unfold when the pointer rests on them
 - **Power & idle**: dim, lock, screen off and sleep, each with its own switch and delay (runs hypridle for you)
 
 </td>
 <td width="50%" valign="top">
 
+- **Claude usage**: 5-hour and weekly limits of every Claude Code profile, with the plan as Anthropic has it now and the reset time
 - **Workspace dots** when you switch workspaces
-- **Claude usage**: 5-hour and weekly limits of every Claude Code profile, with the plan and the reset time
-- Opens with a shortcut of your choice (`quickshell:panelToggle`, e.g. <kbd>Super</kbd>+<kbd>Space</kbd>) or `vela panel`
+- **Tap or hold** a shortcut (`panel_peek`, e.g. <kbd>Super</kbd>+<kbd>T</kbd>): a tap keeps it open, holding shows it until you let go
+- Speaks your language (German above)
 
 </td>
 </tr>

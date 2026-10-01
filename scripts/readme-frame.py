@@ -138,6 +138,37 @@ def launcher_strip():
     return canvas
 
 
+def control_center():
+    """Popups, a detail view and the panel from one screenshot set
+    (readme-shots.sh CC=1), cut out by their geometry: scale 1.2 on the
+    laptop screen, panel 420 + detail 380 logical px, margins from Theme.qml."""
+    sc = 1.2
+    shot = Image.open(SHOTS / "cc-audio.png").convert("RGB")
+    W, H = shot.size
+    m = round(10 * sc)
+    pw, dw = round(420 * sc), round(380 * sc)
+    panel = shot.crop((W - m - pw, m, W - m, H - m))
+    dx1 = W - m - pw - round(12 * sc)
+    detail = shot.crop((dx1 - dw, m, dx1, H - m))
+    pop = Image.open(SHOTS / "cc-popups.png").convert("RGB")
+    cards = [pop.crop((2, a, pop.width - 2, b)) for a, b in ((2, 82), (95, 176), (188, 294), (306, 388))]
+    pad, gap = 80, 56
+    stack_h = sum(c.height for c in cards) + 16 * (len(cards) - 1)
+    Wc = pad * 2 + cards[0].width + detail.width + panel.width + gap * 2
+    Hc = pad * 2 + panel.height
+    canvas = backdrop(Wc, Hc, seed=21).convert("RGBA")
+    x = pad
+    y = pad + (panel.height - stack_h) // 3
+    for c in cards:
+        place(canvas, c, x, y, r=round(13 * sc))
+        y += c.height + 16
+    x += cards[0].width + gap
+    place(canvas, detail, x, pad, r=round(22 * sc))
+    x += detail.width + gap
+    place(canvas, panel, x, pad, r=round(22 * sc))
+    return canvas
+
+
 def demo_webp():
     frames = sorted(SHOTS.glob("demo-*.png"))
     if not frames:
@@ -182,6 +213,8 @@ def main():
     save(framed("all"), "shot-all-options.png")
     save(bento(), "bento-hyprland.png")
     save(launcher_strip(), "launcher.png")
+    if (SHOTS / "cc-audio.png").exists():
+        save(control_center(), "control-center.png")
     demo_webp()
 
 

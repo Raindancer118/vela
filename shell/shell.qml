@@ -81,4 +81,17 @@ ShellRoot {
             NightLight.toggle();
         }
     }
+
+    // qs -p <dir> ipc call notifications dismissApp <app> | clearAll
+    IpcHandler {
+        target: "notifications"
+
+        function dismissApp(app: string): void {
+            Notifications.dismissApp(app);
+        }
+
+        function clearAll(): void {
+            Notifications.clearAll();
+        }
+    }
 }
