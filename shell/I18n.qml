@@ -159,7 +159,28 @@ Singleton {
                 "Charging · %1 until full": "Lädt · voll in %1",
                 "Plugged in": "Angeschlossen",
                 "%1 left": "Noch %1",
-                "On battery": "Akkubetrieb"
+                "On battery": "Akkubetrieb",
+                "Share your screen": "Bildschirm teilen",
+                "An app wants to record your screen. Choose what it may see.": "Eine App möchte deinen Bildschirm aufnehmen. Wähle, was sie sehen darf.",
+                "Screen": "Bildschirm",
+                "Window": "Fenster",
+                "Region": "Bereich",
+                "Search windows": "Fenster suchen",
+                "Active": "Aktiv",
+                "Built-in display": "Eingebautes Display",
+                "Minimized": "Minimiert",
+                "Special workspace": "Spezial-Arbeitsfläche",
+                "Workspace %1": "Arbeitsfläche %1",
+                "No windows to share": "Keine Fenster zum Teilen",
+                "No matching windows": "Keine passenden Fenster",
+                "Open the window first, or share a whole screen.": "Öffne das Fenster zuerst oder teile einen ganzen Bildschirm.",
+                "Draw a region": "Bereich aufziehen",
+                "After “Select region”, drag a rectangle with the mouse. It may not span several screens. Esc cancels.": "Nach „Bereich wählen“ ziehst du mit der Maus ein Rechteck auf. Es darf nicht über mehrere Bildschirme reichen. Esc bricht ab.",
+                "Remember this choice": "Auswahl merken",
+                "The app may share it again without asking": "Die App darf sie beim nächsten Mal ohne Nachfrage teilen",
+                "Tab switches · Enter shares · Esc cancels": "Tab wechselt · Enter teilt · Esc bricht ab",
+                "Select region": "Bereich wählen",
+                "Share": "Teilen"
             }
         })
 }

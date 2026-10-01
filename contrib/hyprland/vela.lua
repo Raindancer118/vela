@@ -112,11 +112,12 @@ function M.setup(opts)
         blur  = o.blur,
     })
 
-    -- Control center: translucent panel, popups and workspace dots get
-    -- blurred behind their visible parts; they animate themselves.
+    -- Control center: translucent panel, popups, workspace dots and the
+    -- screen-share picker get blurred behind their visible parts; they
+    -- animate themselves.
     hl.layer_rule({
         name         = "vela-shell",
-        match        = { namespace = "^quickshell-(panel|notifications|osd)$" },
+        match        = { namespace = "^quickshell-(panel|notifications|osd|share)$" },
         blur         = o.blur,
         ignore_alpha = o.ignore_alpha,
         no_anim      = true,

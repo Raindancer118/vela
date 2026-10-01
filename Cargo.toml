@@ -1,6 +1,6 @@
 [package]
 name = "vela"
-version = "0.28.2"
+version = "0.29.0"
 edition = "2024"
 rust-version = "1.85"
 description = "A fast Spotlight-style application launcher for Hyprland with file search and Claude Code integration"

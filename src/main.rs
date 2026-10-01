@@ -68,6 +68,13 @@ enum Cmd {
     /// MCP server on stdin/stdout: lets Claude change Hyprland and vela
     /// settings (`claude mcp add vela -- vela mcp`).
     Mcp,
+    /// Screen-share picker for xdg-desktop-portal-hyprland; prints the
+    /// selection for xdph (`vela-share-picker` is the same for its config).
+    SharePicker {
+        /// Preselect "remember this choice" (xdph: allow_token_by_default).
+        #[arg(long)]
+        allow_token: bool,
+    },
     /// Print the control center settings as JSON (used by the shell).
     ShellConfig {
         /// Keep running and print a new line whenever the config changes.
@@ -133,6 +140,10 @@ fn main() -> ExitCode {
         Cmd::Panel { action } => return run_qs(&["ipc", "call", "panel", &action]),
         Cmd::ShellConfig { watch } => return shell_config(watch),
         Cmd::Idle => return run_idle(),
+        Cmd::SharePicker { allow_token } => {
+            let exe = std::env::current_exe().unwrap_or_else(|_| "vela".into());
+            return share_picker(&exe, allow_token);
+        }
         Cmd::ClaudeUsage { watch: true, .. } => return watch_usage(),
         Cmd::ClaudeUsage { list, .. } => {
             let now = std::time::SystemTime::now()
@@ -402,6 +413,20 @@ fn run_idle() -> ExitCode {
             }
         });
         std::thread::sleep(Duration::from_millis(1000));
+    }
+}
+
+fn share_picker(vela_bin: &std::path::Path, allow_token: bool) -> ExitCode {
+    match vela::sharepick::run(vela_bin, allow_token) {
+        Ok(Some(line)) => {
+            print!("{line}");
+            ExitCode::SUCCESS
+        }
+        Ok(None) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("vela share-picker: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 

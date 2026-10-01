@@ -1,6 +1,6 @@
 # Maintainer: Raindancer118 <tom560stieh@gmail.com>
 pkgname=vela
-pkgver=0.20.0
+pkgver=0.29.0
 pkgrel=1
 pkgdesc="Spotlight-style application launcher for Hyprland with file search and Claude Code integration"
 arch=('x86_64' 'aarch64')
@@ -19,7 +19,9 @@ optdepends=('plocate: indexed system-wide file search'
             'hyprsunset: night light in the control center'
             'power-profiles-daemon: power mode tile in the control center'
             'hypridle: dimming, locking and suspend while away (vela idle)'
-            'brightnessctl: dimming while away')
+            'brightnessctl: dimming while away'
+            'xdg-desktop-portal-hyprland: screen sharing with vela-share-picker'
+            'slurp: sharing a screen region')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$pkgver.tar.gz")
 sha256sums=('SKIP')
 
@@ -45,9 +47,10 @@ package() {
   cd "$pkgname-$pkgver"
   install -Dm755 target/release/vela "$pkgdir/usr/bin/vela"
   install -Dm755 target/release/vela-daemon "$pkgdir/usr/bin/vela-daemon"
+  install -Dm755 target/release/vela-share-picker "$pkgdir/usr/bin/vela-share-picker"
   sed 's|@BINDIR@|/usr/bin|' contrib/systemd/vela.service.in | install -Dm644 /dev/stdin "$pkgdir/usr/lib/systemd/user/vela.service"
   install -Dm644 contrib/hyprland/vela.lua "$pkgdir/usr/share/vela/hyprland/vela.lua"
-  find shell -type f \( -name '*.qml' -o -name '*.svg' \) ! -name 'test-*' -exec install -Dm644 {} "$pkgdir/usr/share/vela/{}" \;
+  find shell -type f \( -name '*.qml' -o -name '*.js' -o -name '*.svg' \) ! -name 'test-*' -exec install -Dm644 {} "$pkgdir/usr/share/vela/{}" \;
   install -Dm644 data/config.example.toml "$pkgdir/usr/share/vela/config.example.toml"
   install -Dm644 data/vela.desktop "$pkgdir/usr/share/applications/vela.desktop"
   for icon in data/icons/*.svg; do

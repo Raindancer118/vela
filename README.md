@@ -105,6 +105,7 @@ same accent selection, sliders and boxed lists.
 
 - **Claude usage**: 5-hour and weekly limits of every Claude Code profile, with the plan as Anthropic has it now and the reset time
 - **Workspace dots** when you switch workspaces
+- **Screen-share picker** for xdg-desktop-portal-hyprland: screens as they stand on your desk, windows and a region, all with live previews
 - **Tap or hold** a shortcut (`panel_peek`, e.g. <kbd>Super</kbd>+<kbd>T</kbd>): a tap keeps it open, holding shows it until you let go
 - Speaks your language (German above)
 
@@ -360,6 +361,10 @@ flowchart LR
   reads the settings through `vela shell-config --watch` (one JSON line per
   change). The QML started as the Quickshell config of
   [Luna1506/nixos](https://github.com/Luna1506/nixos).
+- **Screen sharing**: `install.sh` sets `custom_picker_binary =
+  …/vela-share-picker` in `~/.config/hypr/xdph.conf` (if no other picker is
+  set) and restarts the portal. It runs `shell/share-picker.qml` as its own
+  Quickshell instance and answers xdph on stdout; regions are drawn with slurp.
 
 </details>
 

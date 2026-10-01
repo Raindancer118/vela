@@ -15,7 +15,7 @@ say() { printf '\033[1;34m::\033[0m %s\n' "$*"; }
 "$PREFIX/bin/vela" quit 2>/dev/null || true
 systemctl --user stop vela.service 2>/dev/null || true
 
-rm -f "$PREFIX/bin/vela" "$PREFIX/bin/vela-daemon" \
+rm -f "$PREFIX/bin/vela" "$PREFIX/bin/vela-daemon" "$PREFIX/bin/vela-share-picker" \
     "$DATADIR/applications/vela.desktop" \
     "$DATADIR/icons/hicolor/scalable/apps/vela.svg" \
     "$DATADIR/icons/hicolor/scalable/apps/vela-claude-symbolic.svg" \
@@ -30,6 +30,12 @@ if command -v claude >/dev/null; then
     done
 fi
 systemctl --user daemon-reload 2>/dev/null || true
+if grep -qs '# vela share picker' "$HYPRDIR/xdph.conf"; then
+    sed -i '/# vela share picker/,/^}/d' "$HYPRDIR/xdph.conf"
+    [[ -s "$HYPRDIR/xdph.conf" ]] || rm -f "$HYPRDIR/xdph.conf"
+    systemctl --user try-restart xdg-desktop-portal-hyprland.service 2>/dev/null || true
+    say "screen sharing uses xdph's own picker again"
+fi
 
 if [[ -f "$HYPRDIR/hyprland.lua" ]] && grep -qF 'hypr/vela.lua' "$HYPRDIR/hyprland.lua"; then
     cp "$HYPRDIR/hyprland.lua" "$HYPRDIR/hyprland.lua.bak-vela-$(date +%s)"

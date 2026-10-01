@@ -42,6 +42,7 @@ cargo build --release --locked
 say "installing to $PREFIX"
 install -Dm755 target/release/vela "$BINDIR/vela"
 install -Dm755 target/release/vela-daemon "$BINDIR/vela-daemon"
+install -Dm755 target/release/vela-share-picker "$BINDIR/vela-share-picker"
 for icon in data/icons/*.svg; do
     install -Dm644 "$icon" "$DATADIR/icons/hicolor/scalable/apps/$(basename "$icon")"
 done
@@ -51,13 +52,13 @@ install -Dm644 contrib/hyprland/vela.lua "$HYPRDIR/vela.lua"
 # Overwrite in place (cp keeps the files) so a running shell notices the
 # change and reloads itself; drop files that no longer exist.
 mkdir -p "$DATADIR/vela/shell"
-(cd shell && find . -type f \( -name '*.qml' -o -name '*.svg' \) ! -name 'test-*' ! -path ./shell.qml -exec sh -c 'mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2"' _ "$DATADIR/vela/shell" {} \;)
+(cd shell && find . -type f \( -name '*.qml' -o -name '*.js' -o -name '*.svg' \) ! -name 'test-*' ! -path ./shell.qml -exec sh -c 'mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2"' _ "$DATADIR/vela/shell" {} \;)
 # shell.qml last, after a pause and always different: the running shell may
 # have reloaded mid-copy (old and new files mixed); this separate change makes
 # it reload once more with every file in place.
 sleep 1
 { cat shell/shell.qml; printf '// installed %s\n' "$(date +%s)"; } >"$DATADIR/vela/shell/shell.qml"
-(cd "$DATADIR/vela/shell" && find . -type f \( -name '*.qml' -o -name '*.svg' \) | while read -r f; do [[ -f "$OLDPWD/shell/$f" ]] || rm -f "$f"; done)
+(cd "$DATADIR/vela/shell" && find . -type f \( -name '*.qml' -o -name '*.js' -o -name '*.svg' \) | while read -r f; do [[ -f "$OLDPWD/shell/$f" ]] || rm -f "$f"; done)
 command -v qs >/dev/null || warn "Quickshell (qs) not found — the control center (vela shell) needs it"
 # Lets Claude Code change Hyprland/vela settings (Settings search → Ask Claude),
 # in the default profile and every ccacct profile (~/.claude-accounts/<name>,
@@ -99,6 +100,19 @@ if [[ -f "$HYPRDIR/hyprland.lua" ]]; then
 else
     warn "no Lua Hyprland config found; see README → Hyprland for hyprland.conf users"
 fi
+
+# Screen sharing: vela's picker for xdg-desktop-portal-hyprland, unless
+# another one is configured. xdph reads its config only at start.
+XDPH="$HYPRDIR/xdph.conf"
+if grep -qs 'custom_picker_binary' "$XDPH" && ! grep -qs 'vela-share-picker' "$XDPH"; then
+    warn "$XDPH already sets another share picker; vela's: custom_picker_binary = $BINDIR/vela-share-picker"
+elif ! grep -qs "custom_picker_binary = $BINDIR/vela-share-picker" "$XDPH"; then
+    [[ -f "$XDPH" ]] && sed -i '/# vela share picker/,/^}/d' "$XDPH"
+    printf '# vela share picker (removed by uninstall.sh)\nscreencopy {\n    custom_picker_binary = %s\n}\n' "$BINDIR/vela-share-picker" >>"$XDPH"
+    say "screen sharing now uses vela's picker ($XDPH)"
+    systemctl --user try-restart xdg-desktop-portal-hyprland.service 2>/dev/null || true
+fi
+command -v slurp >/dev/null || warn "slurp not found — sharing a region needs it"
 
 # Restart a running daemon so the new binary is used.
 if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then

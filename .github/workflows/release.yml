@@ -23,7 +23,7 @@ jobs:
         run: |
           name="vela-${GITHUB_REF_NAME}-x86_64-linux"
           mkdir -p "dist/$name/target/release"
-          cp target/release/vela target/release/vela-daemon "dist/$name/target/release/"
+          cp target/release/vela target/release/vela-daemon target/release/vela-share-picker "dist/$name/target/release/"
           cp -r contrib data shell install.sh uninstall.sh README.md LICENSE Cargo.toml Cargo.lock "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
       - name: Publish

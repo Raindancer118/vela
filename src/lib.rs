@@ -20,6 +20,7 @@ pub mod mcp;
 pub mod paths;
 pub mod search;
 pub mod search_terms;
+pub mod sharepick;
 pub mod shell;
 pub mod theme;
 pub mod ui;
