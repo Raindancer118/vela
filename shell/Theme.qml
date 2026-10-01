@@ -55,6 +55,8 @@ Singleton {
         readonly property color usageLow: root.va.light ? "#2e7d32" : "#9ece6a"
         readonly property color usageMid: root.va.light ? "#b26a00" : "#e0af68"
         readonly property color usageHigh: error
+        // Claude brand orange (also vela's Claude accents).
+        readonly property color claude: "#d97757"
 
         // Workspace OSD dots.
         readonly property color dotEmpty: root.withAlpha(text, 0.22)
@@ -184,6 +186,8 @@ Singleton {
         readonly property int usageLabelWidth: 28
         readonly property int usagePercentWidth: 40
         readonly property int usageResetWidth: 76
+        // Percent, reset icon and time (or "Unavailable") together.
+        readonly property int usageInfoWidth: 148
 
         readonly property int osdTopMargin: 14
         readonly property int osdPadding: 10

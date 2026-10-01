@@ -17,10 +17,16 @@ ShellRoot {
             ClaudeUsage.resetLabel(at(1, 14, 0) - 100, now) === Config.locale.toString(new Date(at(1, 14, 0)), Config.timeFormat),
             ClaudeUsage.select([{ name: "default" }, { name: "a" }, { name: "b" }], false, ["a"]).map(a => a.name),
             ClaudeUsage.select([{ name: "default" }, { name: "a" }], true, []).map(a => a.name),
-            // At most 5 minutes old, otherwise no numbers for that account.
-            ClaudeUsage.fresh([{ name: "new", fetchedAt: now - 4 * 60000 }, { name: "old", fetchedAt: now - 6 * 60000 }], now).map(a => a.name)
+            // Numbers count as current for at most 5 minutes.
+            ClaudeUsage.isCurrent({ status: "ok", fetchedAt: now - 4 * 60000 }, now),
+            ClaudeUsage.isCurrent({ status: "ok", fetchedAt: now - 6 * 60000 }, now),
+            ClaudeUsage.isCurrent({ status: "unavailable", reason: "http-429" }, now),
+            // Logged-in accounts stay listed without current data; logged-out ones don't.
+            ClaudeUsage.listed([{ name: "ok", status: "ok" }, { name: "limited", status: "unavailable", reason: "http-429" },
+                { name: "offline", status: "unavailable", reason: "offline" }, { name: "gone", status: "unavailable", reason: "expired" },
+                { name: "out", status: "unavailable", reason: "http-401" }]).map(a => a.name)
         ];
-        const expected = ["low", "mid", "mid", "high", "high", true, true, "", true, ["default", "b"], ["default"], ["new"]];
+        const expected = ["low", "mid", "mid", "high", "high", true, true, "", true, ["default", "b"], ["default"], true, false, false, ["ok", "limited", "offline"]];
         const pass = JSON.stringify(got) === JSON.stringify(expected);
         console.log((pass ? "PASS " : "FAIL ") + JSON.stringify(got) + (pass ? "" : "\n  expected " + JSON.stringify(expected)));
         Qt.callLater(Qt.quit);

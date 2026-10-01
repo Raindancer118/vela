@@ -12,16 +12,24 @@ import qs
 Singleton {
     id: root
 
-    // [{ name, plan, status: "ok", fetchedAt, session: { utilization, resetsAt } | null, week }]
+    // [{ name, plan, status: "ok" | "unavailable", reason?, fetchedAt?, session, week }]
     property var accounts: []
-    // Numbers older than this are not shown (the account then has no data).
+    // Numbers older than this are not current anymore.
     readonly property int maxAge: 300000
-    // Filtered by age and the current settings right away.
-    readonly property var shown: select(fresh(accounts, now), Config.claudeUsageOnlyDefault, Config.claudeUsageHidden)
+    // Logged-in accounts, filtered by the current settings right away; each
+    // is shown with numbers if isCurrent(), otherwise as "no current data".
+    readonly property var shown: select(listed(accounts), Config.claudeUsageOnlyDefault, Config.claudeUsageHidden)
+
+    // Reasons that mean "logged out", not "temporarily no data".
+    readonly property var loggedOut: ["expired", "no-credentials", "bad-credentials", "http-401", "http-403"]
     property real now: Date.now()
 
-    function fresh(list: var, nowMs: real): var {
-        return list.filter(a => nowMs - (a.fetchedAt ?? 0) <= root.maxAge);
+    function isCurrent(a: var, nowMs: real): bool {
+        return a?.status === "ok" && nowMs - (a.fetchedAt ?? 0) <= root.maxAge;
+    }
+
+    function listed(list: var): var {
+        return list.filter(a => a.status === "ok" || !root.loggedOut.includes(a.reason));
     }
 
     function select(list: var, onlyDefault: bool, hidden: var): var {
@@ -47,7 +55,7 @@ Singleton {
     function apply(line: string): void {
         try {
             const data = JSON.parse(line);
-            root.accounts = (data.accounts ?? []).filter(a => a.status === "ok");
+            root.accounts = data.accounts ?? [];
             root.now = Date.now();
         } catch (e) {}
     }

@@ -57,9 +57,16 @@ Card {
 
         property string label
         property var window: null
+        // No current numbers: the bar "dances" in Claude orange instead.
+        property bool current: true
+        // Rhythm of the dance, different per row so they don't move in step.
+        property int beat: 1000
+        property real dance: 0.5
         // A window whose reset has passed is empty again.
-        readonly property real value: !window ? 0 : window.resetsAt > 0 && window.resetsAt <= ClaudeUsage.now ? 0 : window.utilization
+        readonly property real value: !current ? dance : !window ? 0 : window.resetsAt > 0 && window.resetsAt <= ClaudeUsage.now ? 0 : window.utilization
         readonly property color tone: {
+            if (!current)
+                return Theme.colors.claude;
             switch (ClaudeUsage.level(value)) {
             case "high":
                 return Theme.colors.usageHigh;
@@ -70,8 +77,34 @@ Card {
             }
         }
 
-        visible: window !== null
+        visible: window !== null || !current
         spacing: Theme.spacing.sm
+
+        SequentialAnimation on dance {
+            running: !row.current && ShellState.panelOpen && Config.animationScale > 0
+            loops: Animation.Infinite
+
+            NumberAnimation {
+                to: 0.85
+                duration: row.beat
+                easing.type: Easing.InOutSine
+            }
+            NumberAnimation {
+                to: 0.3
+                duration: row.beat * 0.8
+                easing.type: Easing.InOutSine
+            }
+            NumberAnimation {
+                to: 0.65
+                duration: row.beat * 0.7
+                easing.type: Easing.InOutSine
+            }
+            NumberAnimation {
+                to: 0.15
+                duration: row.beat * 0.9
+                easing.type: Easing.InOutSine
+            }
+        }
 
         StyledText {
             Layout.preferredWidth: Theme.size.usageLabelWidth
@@ -98,6 +131,8 @@ Card {
                 }
 
                 Behavior on width {
+                    enabled: row.current
+
                     Anim {}
                 }
 
@@ -107,30 +142,52 @@ Card {
             }
         }
 
-        StyledText {
-            Layout.preferredWidth: Theme.size.usagePercentWidth
-            horizontalAlignment: Text.AlignRight
-            text: Math.round(row.value * 100) + " %"
-            color: root.subtle ? Theme.colors.textMuted : row.tone
-            font.pixelSize: Theme.font.small
-            font.weight: Theme.font.weightMedium
-        }
+        // Fixed width, numbers or not: every bar keeps the same length.
+        Item {
+            Layout.preferredWidth: Theme.size.usageInfoWidth
+            implicitHeight: info.implicitHeight
 
-        // Hidden, not removed: every bar keeps the same length.
-        MaterialIcon {
-            opacity: reset.text !== "" ? 1 : 0
-            icon: "restart_alt"
-            size: Theme.icon.small * 0.8
-            color: Theme.colors.textMuted
-        }
+            RowLayout {
+                id: info
 
-        StyledText {
-            id: reset
+                anchors.fill: parent
+                visible: row.current
+                spacing: Theme.spacing.sm
 
-            Layout.preferredWidth: Theme.size.usageResetWidth
-            text: ClaudeUsage.resetLabel(row.window?.resetsAt ?? 0, ClaudeUsage.now)
-            color: Theme.colors.textMuted
-            font.pixelSize: Theme.font.small
+                StyledText {
+                    Layout.preferredWidth: Theme.size.usagePercentWidth
+                    horizontalAlignment: Text.AlignRight
+                    text: Math.round(row.value * 100) + " %"
+                    color: root.subtle ? Theme.colors.textMuted : row.tone
+                    font.pixelSize: Theme.font.small
+                    font.weight: Theme.font.weightMedium
+                }
+
+                MaterialIcon {
+                    opacity: reset.text !== "" ? 1 : 0
+                    icon: "restart_alt"
+                    size: Theme.icon.small * 0.8
+                    color: Theme.colors.textMuted
+                }
+
+                StyledText {
+                    id: reset
+
+                    Layout.fillWidth: true
+                    text: ClaudeUsage.resetLabel(row.window?.resetsAt ?? 0, ClaudeUsage.now)
+                    color: Theme.colors.textMuted
+                    font.pixelSize: Theme.font.small
+                }
+            }
+
+            StyledText {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !row.current
+                text: I18n.tr("Unavailable")
+                color: Theme.colors.textMuted
+                font.pixelSize: Theme.font.small
+            }
         }
     }
 
@@ -177,11 +234,13 @@ Card {
                 id: account
 
                 required property var modelData
+                readonly property bool current: ClaudeUsage.isCurrent(modelData, ClaudeUsage.now)
 
                 Layout.fillWidth: true
                 spacing: Theme.spacing.xs
 
                 RowLayout {
+                    Layout.fillWidth: true
                     visible: root.accounts.length > 1
                     spacing: Theme.spacing.sm
 
@@ -202,13 +261,17 @@ Card {
                 UsageRow {
                     Layout.fillWidth: true
                     label: "5 h"
-                    window: account.modelData.session
+                    window: account.modelData.session ?? null
+                    current: account.current
+                    beat: 1100
                 }
 
                 UsageRow {
                     Layout.fillWidth: true
                     label: I18n.tr("7 d")
-                    window: account.modelData.week
+                    window: account.modelData.week ?? null
+                    current: account.current
+                    beat: 1450
                 }
             }
         }

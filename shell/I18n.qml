@@ -93,6 +93,7 @@ Singleton {
                 "Muted": "Stumm",
                 "Power mode": "Energiemodus",
                 "Default": "Standard",
+                "Unavailable": "Nicht verfügbar",
                 "Sleep automatically": "Automatisch schlafen",
                 "After %1 min": "Nach %1 Min.",
                 "Never": "Nie",

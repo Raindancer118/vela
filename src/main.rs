@@ -288,8 +288,11 @@ fn watch_usage() -> ExitCode {
         let now = std::fs::metadata(&file).ok().and_then(|m| m.modified().ok());
         if now.is_some() && now != stamp {
             stamp = now;
-            if let Ok(text) = std::fs::read_to_string(&file)
-                && writeln!(out, "{}", text.trim()).and_then(|()| out.flush()).is_err()
+            // Re-serialized: the panel reads one JSON document per line.
+            if let Some(line) = std::fs::read_to_string(&file)
+                .ok()
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                && writeln!(out, "{line}").and_then(|()| out.flush()).is_err()
             {
                 return ExitCode::SUCCESS;
             }
