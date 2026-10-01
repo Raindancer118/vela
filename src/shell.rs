@@ -109,10 +109,10 @@ pub fn shell_json(cfg: &Config) -> String {
         "panel": {
             "width": pn.width,
             "closeOnFocusLoss": pn.close_on_focus_loss,
-            "backdrop": pn.backdrop && theme::backdrop_visible(a.backdrop_dim, a.backdrop_blur),
-            "backdropBlur": a.backdrop_blur,
-            "backdropLayers": theme::backdrop_layers(pn.backdrop_strength, a.backdrop_blur),
-            "backdropLayerAlpha": theme::backdrop_alpha(a.backdrop_dim, pn.backdrop_strength, a.backdrop_blur),
+            "backdrop": pn.backdrop && theme::backdrop_visible(a.backdrop_dim, pn.backdrop_blur),
+            "backdropBlur": pn.backdrop_blur,
+            "backdropLayers": theme::backdrop_layers(pn.backdrop_strength, pn.backdrop_blur),
+            "backdropLayerAlpha": theme::backdrop_alpha(a.backdrop_dim, pn.backdrop_strength, pn.backdrop_blur),
             "popupTimeoutMs": pn.popup_timeout_secs * 1000,
             "popupMaxVisible": pn.popup_max_visible,
             "criticalPopupsStay": pn.critical_popups_stay,
@@ -272,6 +272,8 @@ mod tests {
         assert_eq!(j["panel"]["backdropLayerAlpha"], crate::theme::backdrop_layer_alpha(0.3, 3));
         assert_eq!(j["panel"]["backdropBlur"], true);
         cfg.appearance.backdrop_blur = false;
+        assert_eq!(json(&cfg)["panel"]["backdropBlur"], true, "the launcher's switch");
+        cfg.panel.backdrop_blur = false;
         let j = json(&cfg);
         assert_eq!(
             (j["panel"]["backdropBlur"].clone(), j["panel"]["backdropLayers"].clone()),

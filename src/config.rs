@@ -121,7 +121,7 @@ pub struct Appearance {
     pub backdrop_dim: f64,
     /// Blur strength of the launcher's backdrop, 1–4 (1 = Hyprland's blur).
     pub backdrop_strength: u32,
-    /// Off = the launcher's and the panel's backdrop only dim.
+    /// Off = the launcher's backdrop only dims.
     pub backdrop_blur: bool,
 }
 
@@ -135,6 +135,8 @@ pub struct Panel {
     pub backdrop: bool,
     /// Blur strength of that backdrop, 1–4 (1 = Hyprland's blur).
     pub backdrop_strength: u32,
+    /// Off = that backdrop only dims.
+    pub backdrop_blur: bool,
     /// How long a notification popup stays (apps may ask for less).
     pub popup_timeout_secs: u32,
     pub popup_max_visible: u32,
@@ -169,6 +171,7 @@ impl Default for Panel {
             close_on_focus_loss: true,
             backdrop: false,
             backdrop_strength: 1,
+            backdrop_blur: true,
             popup_timeout_secs: 5,
             popup_max_visible: 4,
             critical_popups_stay: true,
@@ -756,9 +759,12 @@ mod tests {
         assert_eq!((a.backdrop_strength, Panel::default().backdrop_strength), (1, 1), "1 = Hyprland's blur as is");
         let cfg = Config::from_toml("[appearance]\nbackdrop_strength = 9\n[panel]\nbackdrop_strength = 0\n").unwrap();
         assert_eq!((cfg.appearance.backdrop_strength, cfg.panel.backdrop_strength), (4, 1));
-        assert!(a.backdrop_blur, "the backdrop blurs unless switched off");
+        assert!(a.backdrop_blur && Panel::default().backdrop_blur, "the backdrop blurs unless switched off");
         let cfg = Config::from_toml("[appearance]\nbackdrop_blur = false\n").unwrap();
         assert!(!cfg.appearance.backdrop_blur);
+        assert!(cfg.panel.backdrop_blur, "launcher and panel blur are independent");
+        let cfg = Config::from_toml("[panel]\nbackdrop_blur = false\n").unwrap();
+        assert!(!cfg.panel.backdrop_blur && cfg.appearance.backdrop_blur);
     }
 
     #[test]

@@ -506,7 +506,16 @@ fn accent_row(b: &Binder) -> adw::ActionRow {
     row
 }
 
-fn strength_row(b: &Binder, get: fn(&Config) -> f64, set: fn(&mut Config, f64)) -> adw::SpinRow {
+/// Blur switch and strength of one backdrop; strength only matters with blur.
+fn backdrop_rows(
+    b: &Binder,
+    expander: &adw::ExpanderRow,
+    blur: fn(&Config) -> bool,
+    set_blur: fn(&mut Config, bool),
+    strength: fn(&Config) -> f64,
+    set_strength: fn(&mut Config, f64),
+) {
+    expander.add_row(&b.switch("Blur", "Off = only dim the rest of the screen", blur, set_blur));
     let row = b.spin(
         "Strength",
         "1 = Hyprland's blur; each step blurs once more (and a little darker)",
@@ -514,17 +523,17 @@ fn strength_row(b: &Binder, get: fn(&Config) -> f64, set: fn(&mut Config, f64)) 
         4.0,
         1.0,
         0,
-        get,
-        set,
+        strength,
+        set_strength,
     );
-    row.set_sensitive(b.store.get().appearance.backdrop_blur);
+    row.set_sensitive(blur(&b.store.get()));
     let w = row.downgrade();
     b.on_refresh(move |c| {
         if let Some(r) = w.upgrade() {
-            r.set_sensitive(c.appearance.backdrop_blur);
+            r.set_sensitive(blur(c));
         }
     });
-    row
+    expander.add_row(&row);
 }
 
 pub fn appearance(b: &Binder) -> adw::PreferencesPage {
@@ -603,25 +612,25 @@ pub fn appearance(b: &Binder) -> adw::PreferencesPage {
         "Blur behind",
         "Blurs and dims everything else on the monitor while open. Hyprland renders the blur (decoration.blur, via vela.lua); it has no per-surface strength, so stronger levels stack blurred layers.",
     );
-    blur.add(&b.switch(
-        "Blur",
-        "Off = only dim the rest of the screen",
+    let launcher = b.expander("The launcher", "", |c| c.appearance.backdrop, |c, v| c.appearance.backdrop = v);
+    backdrop_rows(
+        b,
+        &launcher,
         |c| c.appearance.backdrop_blur,
         |c, v| c.appearance.backdrop_blur = v,
-    ));
-    let launcher = b.expander("The launcher", "", |c| c.appearance.backdrop, |c, v| c.appearance.backdrop = v);
-    launcher.add_row(&strength_row(
-        b,
         |c| c.appearance.backdrop_strength.into(),
         |c, v| c.appearance.backdrop_strength = v as u32,
-    ));
+    );
     blur.add(&launcher);
     let panel = b.expander("The control center", "", |c| c.panel.backdrop, |c, v| c.panel.backdrop = v);
-    panel.add_row(&strength_row(
+    backdrop_rows(
         b,
+        &panel,
+        |c| c.panel.backdrop_blur,
+        |c, v| c.panel.backdrop_blur = v,
         |c| c.panel.backdrop_strength.into(),
         |c, v| c.panel.backdrop_strength = v as u32,
-    ));
+    );
     blur.add(&panel);
     blur.add(&b.spin(
         "Dimming",

@@ -31,7 +31,7 @@ backdrop = false
 backdrop_dim = 0.18
 # 1–4: stacks blurred layers for a stronger blur than Hyprland's decoration.blur.
 backdrop_strength = 1
-# false = launcher and panel backdrop only dim, no blur.
+# false = only dim, no blur.
 backdrop_blur = true
 
 [apps]
@@ -108,6 +108,7 @@ close_on_focus_loss = true
 # Blur and dim the rest of the panel's monitor while open (needs the vela-shell-backdrop layer rule).
 backdrop = false
 backdrop_strength = 1
+backdrop_blur = true
 popup_timeout_secs = 5
 popup_max_visible = 4
 critical_popups_stay = true

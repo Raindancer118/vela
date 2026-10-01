@@ -399,7 +399,7 @@ reloads it, reports errors in the settings and keeps the last valid settings
 | | `columns` | fixed column count, `0` = derived from width |
 | | `show_labels`, `tile_background`, `tile_outline` | the app grid |
 | | `animations`, `animation_speed` | motion on/off; speed factor |
-| | `backdrop`, `backdrop_dim`, `backdrop_blur` | blur and darken the rest of the monitor while the launcher is open (`backdrop_blur = false`: only darken, launcher and panel) |
+| | `backdrop`, `backdrop_dim`, `backdrop_blur` | blur and darken the rest of the monitor while the launcher is open (`backdrop_blur = false`: only darken) |
 | `apps` | `grid` | `pinned`, `pinned_then_all`, `all` |
 | | `pinned`, `hidden` | desktop IDs (`firefox.desktop`), `custom:<id>` or `vela:settings` |
 | | `desktop_actions` | offer desktop actions in search |
@@ -410,7 +410,7 @@ reloads it, reports errors in the settings and keeps the last valid settings
 | | `file_roots`, `exclude`, `include_hidden`, `include_directories` | what the file search covers |
 | `claude` | `executable`, `args`, `working_dir` | runs `<terminal> <exec args> <executable> <args> -- "<prompt>"` |
 | | `always_visible`, `shift_enter`, `prefer_for_questions` | when "Ask Claude" shows and wins |
-| `panel` | `width`, `close_on_focus_loss`, `backdrop` | the control center |
+| `panel` | `width`, `close_on_focus_loss`, `backdrop`, `backdrop_blur` | the control center |
 | | `popup_timeout_secs`, `popup_max_visible`, `critical_popups_stay`, `group_collapsed_count`, `compact_notifications` | notifications |
 | | `workspace_osd`, `night_light_temperature`, `clock_centered` | |
 | | `claude_usage`, `claude_usage_subtle`, `claude_usage_only_default`, `claude_usage_hidden` | Claude plan usage at the bottom of the panel |
