@@ -45,6 +45,7 @@ Singleton {
             popupMaxVisible: 4,
             criticalPopupsStay: true,
             groupCollapsedCount: 2,
+            compactNotifications: true,
             workspaceOsd: true,
             nightLightTemperature: 4000,
             clockCentered: false,

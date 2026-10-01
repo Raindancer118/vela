@@ -71,6 +71,7 @@ pub fn shell_json(cfg: &Config) -> String {
             "popupMaxVisible": pn.popup_max_visible,
             "criticalPopupsStay": pn.critical_popups_stay,
             "groupCollapsedCount": pn.group_collapsed_count,
+            "compactNotifications": pn.compact_notifications,
             "workspaceOsd": pn.workspace_osd,
             "nightLightTemperature": pn.night_light_temperature,
             "clockCentered": pn.clock_centered,
@@ -200,6 +201,7 @@ mod tests {
         assert_eq!(j["panel"]["clockCentered"], true);
         assert_eq!(j["panel"]["claudeUsage"], true);
         assert_eq!(j["panel"]["claudeUsageSubtle"], false);
+        assert_eq!(j["panel"]["compactNotifications"], true);
         assert_eq!(j["panel"]["backdropLayers"], 1);
         cfg.panel.backdrop_strength = 3;
         let j = json(&cfg);

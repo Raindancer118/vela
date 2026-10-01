@@ -17,6 +17,9 @@ Item {
     signal clicked
 
     readonly property bool critical: notification?.urgency === NotificationUrgency.Critical
+    // One line (icon, title, text) until expanded (vela settings → Compact).
+    readonly property bool compact: Config.compactNotifications && !expanded
+    readonly property string plainBody: (notification?.body ?? "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim()
     readonly property var buttons: notification ? notification.actions.filter(a => a.identifier !== "default" && a.text !== "") : []
 
     // Slides out sideways, collapses so the rows below move up smoothly,
@@ -30,7 +33,8 @@ Item {
 
     property real collapse: 1
 
-    implicitHeight: (layout.implicitHeight + 2 * Theme.spacing.md) * collapse
+    implicitHeight: (layout.implicitHeight + 2 * pad) * collapse
+    readonly property real pad: compact ? Theme.spacing.sm : Theme.spacing.md
     clip: true
 
     // Swipe to dismiss.
@@ -111,12 +115,14 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.margins: Theme.spacing.md
-            spacing: Theme.spacing.md
+            anchors.margins: root.pad
+            anchors.leftMargin: Theme.spacing.md
+            spacing: root.compact ? Theme.spacing.sm : Theme.spacing.md
 
             NotificationIcon {
-                Layout.alignment: Qt.AlignTop
+                Layout.alignment: root.compact ? Qt.AlignVCenter : Qt.AlignTop
                 notification: root.notification
+                size: root.compact ? Theme.size.notificationIconCompact : Theme.size.notificationIcon
             }
 
             ColumnLayout {
@@ -128,16 +134,28 @@ Item {
                     spacing: Theme.spacing.xs
 
                     StyledText {
-                        Layout.fillWidth: true
+                        Layout.fillWidth: !root.compact || inlineBody.text === ""
+                        Layout.maximumWidth: root.compact ? layout.width * Theme.size.notificationCompactTitleShare : -1
                         text: root.notification?.summary || root.notification?.appName || ""
                         color: root.critical ? Theme.colors.error : Theme.colors.text
                         font.weight: Theme.font.weightMedium
                     }
 
+                    // Compact: the text follows the title on the same line.
+                    StyledText {
+                        id: inlineBody
+
+                        Layout.fillWidth: true
+                        visible: root.compact && text !== ""
+                        text: root.compact ? root.plainBody : ""
+                        color: Theme.colors.textMuted
+                    }
+
                     StyledText {
                         text: {
                             const time = root.notification ? Notifications.relativeTime(root.notification) : "";
-                            return root.showAppName && root.notification?.appName ? root.notification.appName + " · " + time : time;
+                            // Compact rows keep the room for the text.
+                            return root.showAppName && !root.compact && root.notification?.appName ? root.notification.appName + " · " + time : time;
                         }
                         color: Theme.colors.textMuted
                         font.pixelSize: Theme.font.small
@@ -158,7 +176,7 @@ Item {
 
                 StyledText {
                     Layout.fillWidth: true
-                    visible: text !== ""
+                    visible: !root.compact && text !== ""
                     // No images: StyledText would load remote <img> sources.
                     text: (root.notification?.body ?? "").replace(/<img[^>]*>/gi, "").replace(/\n/g, "<br/>")
                     textFormat: Text.StyledText
@@ -172,7 +190,7 @@ Item {
                 Flow {
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.spacing.xs
-                    visible: root.buttons.length > 0
+                    visible: !root.compact && root.buttons.length > 0
                     spacing: Theme.spacing.sm
 
                     Repeater {

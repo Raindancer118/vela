@@ -114,6 +114,9 @@ pub struct Panel {
     pub critical_popups_stay: bool,
     /// Notifications shown per app before "Show more".
     pub group_collapsed_count: u32,
+    /// One line per notification (icon, title and text); expands on click
+    /// in the panel and on hover as a popup.
+    pub compact_notifications: bool,
     /// Workspace dots at the top when switching workspaces.
     pub workspace_osd: bool,
     /// Night light colour temperature in Kelvin.
@@ -141,6 +144,7 @@ impl Default for Panel {
             popup_max_visible: 4,
             critical_popups_stay: true,
             group_collapsed_count: 2,
+            compact_notifications: true,
             workspace_osd: true,
             night_light_temperature: 4000,
             clock_centered: false,
@@ -697,6 +701,7 @@ mod tests {
         assert!(!p.clock_centered, "clock on the left by default");
         assert!(p.claude_usage && !p.claude_usage_only_default && p.claude_usage_hidden.is_empty());
         assert!(!p.claude_usage_subtle, "the card is the default style");
+        assert!(p.compact_notifications, "notifications arrive as one line");
         let cfg = Config::from_toml("[panel]\nbackdrop = true\n").unwrap();
         assert!(cfg.panel.backdrop);
         assert!(!cfg.appearance.backdrop, "launcher and panel backdrop are independent");

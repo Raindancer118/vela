@@ -110,6 +110,8 @@ popup_timeout_secs = 5
 popup_max_visible = 4
 critical_popups_stay = true
 group_collapsed_count = 2
+# One line per notification; expands on click (panel) or hover (popup).
+compact_notifications = true
 workspace_osd = true
 night_light_temperature = 4000
 clock_centered = false

@@ -98,6 +98,8 @@ PanelWindow {
 
                 anchors.fill: parent
                 notification: card.modelData
+                // Compact popups show everything while hovered.
+                expanded: hover.hovered
                 onClicked: Notifications.activate(card.modelData)
             }
         }

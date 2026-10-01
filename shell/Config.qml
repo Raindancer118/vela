@@ -22,6 +22,7 @@ Singleton {
     readonly property bool clockCentered: vp.clockCentered
     readonly property bool claudeUsage: vp.claudeUsage
     readonly property bool claudeUsageSubtle: vp.claudeUsageSubtle
+    readonly property bool compactNotifications: vp.compactNotifications
 
     readonly property int popupTimeout: vp.popupTimeoutMs
     // Upper bound for app-requested timeouts (ms).

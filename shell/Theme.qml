@@ -165,6 +165,9 @@ Singleton {
         readonly property int switchKnobInset: 4
         readonly property int notificationWidth: 400
         readonly property int notificationIcon: 40
+        readonly property int notificationIconCompact: 24
+        // Share of a compact row the title may take before the text.
+        readonly property real notificationCompactTitleShare: 0.45
         readonly property int notificationBodyLines: 3
         readonly property int notificationBodyLinesExpanded: 40
         // Share of the row the "App · 5 min ago" label may take.

@@ -799,6 +799,15 @@ pub fn notifications(b: &Binder) -> adw::PreferencesPage {
     ));
     p.add(&popups);
 
+    let style = group("Style", "");
+    style.add(&b.switch(
+        "Compact",
+        "One line per notification: click it in the panel or hover the popup to see everything",
+        |c| c.panel.compact_notifications,
+        |c, v| c.panel.compact_notifications = v,
+    ));
+    p.add(&style);
+
     let list = group("In the panel", "");
     list.add(&b.spin(
         "Notifications per app",

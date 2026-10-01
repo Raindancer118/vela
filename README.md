@@ -202,6 +202,7 @@ overwriting an unparsable file, vela backs it up as `config.toml.broken-<time>`.
 | | `backdrop` | blur everything else on its monitor while open (own switch; dimming = `appearance.backdrop_dim`) |
 | | `popup_timeout_secs`, `popup_max_visible`, `critical_popups_stay` | notification popups |
 | | `group_collapsed_count` | notifications per app before “Show more” |
+| | `compact_notifications` | one line per notification; expands on click (panel) or hover (popup) |
 | | `workspace_osd` | workspace dots when switching workspaces |
 | | `night_light_temperature` | Kelvin (hyprsunset) |
 | | `clock_centered` | clock and date in the middle of the panel |

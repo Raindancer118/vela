@@ -19,7 +19,8 @@ ShellRoot {
             opacity: 0.7,
             bodyFont: Math.round(14 * 1.5),
             clockCentered: true,
-            usageSubtle: true
+            usageSubtle: true,
+            compact: false
         })
 
     function check(): void {
@@ -35,7 +36,8 @@ ShellRoot {
             opacity: Math.round(Theme.colors.panel.a * 100) / 100,
             bodyFont: Theme.font.body,
             clockCentered: Config.clockCentered,
-            usageSubtle: Config.claudeUsageSubtle
+            usageSubtle: Config.claudeUsageSubtle,
+            compact: Config.compactNotifications
         };
         const ok = JSON.stringify(got) === JSON.stringify(expected);
         console.log((ok ? "PASS " : "FAIL ") + JSON.stringify(got) + (ok ? "" : "\n  expected " + JSON.stringify(expected)));

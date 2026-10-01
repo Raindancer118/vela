@@ -44,6 +44,7 @@ close_on_focus_loss = false
 backdrop = true
 clock_centered = true
 claude_usage_subtle = true
+compact_notifications = false
 TOML
 
 fail() { echo "FAIL: $*"; exit 1; }
