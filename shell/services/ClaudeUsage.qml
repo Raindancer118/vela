@@ -36,7 +36,8 @@ Singleton {
     function resetLabel(ms: real, nowMs: real): string {
         if (!(ms > 0))
             return "";
-        const d = new Date(ms);
+        // The API reports e.g. 10:59:59.9 for an 11:00 reset.
+        const d = new Date(Math.round(ms / 60000) * 60000);
         const time = Config.locale.toString(d, Config.timeFormat);
         return d.toDateString() === new Date(nowMs).toDateString() ? time : Config.locale.toString(d, "ddd") + " " + time;
     }

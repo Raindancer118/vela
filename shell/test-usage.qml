@@ -19,10 +19,11 @@ ShellRoot {
             ClaudeUsage.resetLabel(at(1, 14, 0), now) === Config.locale.toString(new Date(at(1, 14, 0)), Config.timeFormat),
             ClaudeUsage.resetLabel(at(3, 10, 0), now).startsWith(Config.locale.toString(new Date(at(3, 10, 0)), "ddd")),
             ClaudeUsage.resetLabel(0, now),
+            ClaudeUsage.resetLabel(at(1, 14, 0) - 100, now) === Config.locale.toString(new Date(at(1, 14, 0)), Config.timeFormat),
             merged.map(a => a.name + ":" + a.session.utilization),
             ClaudeUsage.merge(old, fresh, now + 2 * 3600000).map(a => a.name)
         ];
-        const expected = ["low", "mid", "mid", "high", "high", true, true, "", ["a:0.25", "b:0.9"], ["a"]];
+        const expected = ["low", "mid", "mid", "high", "high", true, true, "", true, ["a:0.25", "b:0.9"], ["a"]];
         const pass = JSON.stringify(got) === JSON.stringify(expected);
         console.log((pass ? "PASS " : "FAIL ") + JSON.stringify(got) + (pass ? "" : "\n  expected " + JSON.stringify(expected)));
         Qt.callLater(Qt.quit);

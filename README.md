@@ -205,6 +205,7 @@ overwriting an unparsable file, vela backs it up as `config.toml.broken-<time>`.
 | | `workspace_osd` | workspace dots when switching workspaces |
 | | `night_light_temperature` | Kelvin (hyprsunset) |
 | | `clock_centered` | clock and date in the middle of the panel |
+| | `claude_usage`, `claude_usage_only_default`, `claude_usage_hidden` | Claude plan usage (5 h / 7 d, plan) at the bottom of the panel; only `~/.claude`; profile names to leave out (`default`, ccacct names) |
 | `idle` | `dim`, `lock`, `screen_off`, `suspend` | switch each step on or off (`suspend = false`: never sleep on its own); `vela idle` runs hypridle with them |
 | | `dim_after_min`, `lock_after_min`, `screen_off_after_min`, `suspend_after_min` | minutes without input |
 | | `lock_before_sleep` | lock the session before suspend |
@@ -221,7 +222,10 @@ The control center takes `theme`, `accent`, `border_radius`, `surface_opacity`,
   (installed to `/usr/share/vela/shell`, override with `VELA_SHELL_DIR`). The
   shell doesn't parse TOML: it runs `vela shell-config --watch`, which prints
   the sanitized settings plus a palette derived from the theme as one JSON
-  line per change. The QML started as the Quickshell config of
+  line per change. Claude usage comes from `vela claude-usage`: it reads each
+  Claude Code profile's OAuth token, hands it to curl on stdin only and asks
+  the unofficial endpoint behind Claude Code's `/usage` (may change any time).
+  The QML started as the Quickshell config of
   [Luna1506/nixos](https://github.com/Luna1506/nixos).
 
 - **`vela`** is a small client without GTK. It sends one line (`toggle`, `show`,
