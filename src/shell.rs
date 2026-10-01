@@ -96,6 +96,7 @@ pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) ->
     });
     let animation_scale = if a.animations { 1.0 / a.animation_speed } else { 0.0 };
     let pn = &cfg.panel;
+    let backdrop = pn.backdrop && theme::backdrop_visible(a.backdrop_dim, pn.backdrop_blur);
     json!({
         "idle": {
             "suspend": cfg.idle.suspend,
@@ -115,7 +116,7 @@ pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) ->
         "panel": {
             "width": pn.width,
             "closeOnFocusLoss": pn.close_on_focus_loss,
-            "backdrop": pn.backdrop && theme::backdrop_visible(a.backdrop_dim, pn.backdrop_blur),
+            "backdrop": backdrop,
             "backdropBlur": pn.backdrop_blur,
             "backdropLayers": theme::backdrop_layers(pn.backdrop_strength, pn.backdrop_blur),
             "backdropLayerAlpha": theme::backdrop_alpha(a.backdrop_dim, pn.backdrop_strength, pn.backdrop_blur),
@@ -127,6 +128,8 @@ pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) ->
             "workspaceOsd": pn.workspace_osd,
             "nightLightTemperature": pn.night_light_temperature,
             "clockCentered": pn.clock_centered,
+            "clockOnBackdrop": pn.clock_on_backdrop && backdrop && pn.backdrop_blur,
+            "clockFont": Some(pn.clock_font.trim()).filter(|f| !f.is_empty()).map_or_else(system_font, str::to_string),
             "claudeUsage": pn.claude_usage && installed.has(Component::Claude),
             "claudeUsageSubtle": pn.claude_usage_subtle,
             "claudeUsageOnlyDefault": pn.claude_usage_only_default,
@@ -299,6 +302,29 @@ mod tests {
         assert_eq!(j["panel"]["backdropLayerAlpha"], 0.3);
         cfg.appearance.backdrop_dim = 0.0;
         assert_eq!(json(&cfg)["panel"]["backdrop"], false, "nothing to draw");
+    }
+
+    #[test]
+    fn clock_on_backdrop_needs_a_blurred_backdrop() {
+        let mut cfg = Config::default();
+        cfg.panel.clock_on_backdrop = true;
+        assert_eq!(json(&cfg)["panel"]["clockOnBackdrop"], false, "no backdrop");
+        cfg.panel.backdrop = true;
+        assert_eq!(json(&cfg)["panel"]["clockOnBackdrop"], true);
+        cfg.panel.backdrop_blur = false;
+        assert_eq!(json(&cfg)["panel"]["clockOnBackdrop"], false, "only dimmed");
+        cfg.panel.backdrop_blur = true;
+        cfg.panel.clock_on_backdrop = false;
+        assert_eq!(json(&cfg)["panel"]["clockOnBackdrop"], false);
+    }
+
+    #[test]
+    fn clock_font_falls_back_to_the_ui_font() {
+        let mut cfg = Config::default();
+        let j = json(&cfg);
+        assert_eq!(j["panel"]["clockFont"], j["appearance"]["fontFamily"]);
+        cfg.panel.clock_font = "  JetBrains Mono ".into();
+        assert_eq!(json(&cfg)["panel"]["clockFont"], "JetBrains Mono");
     }
 
     #[test]

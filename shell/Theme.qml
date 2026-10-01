@@ -94,6 +94,8 @@ Singleton {
         // GTK's font, like the launcher and the settings.
         readonly property string family: root.va.fontFamily || "Adwaita Sans"
         readonly property string iconFamily: "Material Symbols Rounded"
+        // vela settings → Panel → Clock font; already the UI font when unset.
+        readonly property string clockFamily: VelaConfig.panel.clockFont || family
 
         readonly property real scale: root.va.fontScale
         readonly property int small: Math.round(12 * scale)
@@ -103,6 +105,8 @@ Singleton {
         readonly property int title: Math.round(16 * scale)
         readonly property int large: Math.round(20 * scale)
         readonly property int clock: Math.round(64 * scale)
+        readonly property int backdropClock: Math.round(128 * scale)
+        readonly property int backdropDate: Math.round(26 * scale)
         readonly property real labelLetterSpacing: 0.4
 
         readonly property int weightLight: Font.Light

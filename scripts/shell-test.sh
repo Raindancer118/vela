@@ -44,6 +44,8 @@ popup_timeout_secs = 7
 close_on_focus_loss = false
 backdrop = true
 clock_centered = true
+clock_on_backdrop = true
+clock_font = "DejaVu Serif"
 claude_usage_subtle = true
 compact_notifications = false
 TOML

@@ -28,6 +28,7 @@ Rectangle {
 
         ClockSection {
             Layout.fillWidth: true
+            visible: !Config.clockOnBackdrop
         }
 
         Divider {

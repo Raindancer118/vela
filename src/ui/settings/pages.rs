@@ -543,7 +543,7 @@ fn accent_row(b: &Binder) -> adw::ActionRow {
         }
     };
     sync(&b.store.get());
-    b.on_refresh(sync);
+    b.store.subscribe(move |_, c| sync(c));
     row
 }
 
@@ -569,7 +569,8 @@ fn backdrop_rows(
     );
     row.set_sensitive(blur(&b.store.get()));
     let w = row.downgrade();
-    b.on_refresh(move |c| {
+    // subscribe, not on_refresh: that one only runs on reloads, not when the Blur switch flips.
+    b.store.subscribe(move |_, c| {
         if let Some(r) = w.upgrade() {
             r.set_sensitive(blur(c));
         }
@@ -724,12 +725,33 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
         |c| c.panel.width.into(),
         |c, v| c.panel.width = v as u32,
     ));
-    layout.add(&b.switch(
+    let centred = b.switch(
         "Centred clock",
         "Clock and date in the middle of the panel",
         |c| c.panel.clock_centered,
         |c, v| c.panel.clock_centered = v,
-    ));
+    );
+    layout.add(&centred);
+    let on_blur = b.switch(
+        "Clock on the blur",
+        "Clock and date large in the middle of the blurred screen; needs Appearance → Blur behind → The control center with Blur on",
+        |c| c.panel.clock_on_backdrop,
+        |c, v| c.panel.clock_on_backdrop = v,
+    );
+    layout.add(&on_blur);
+    layout.add(&clock_font_row(b));
+    let blurred = |c: &Config| c.panel.backdrop && c.panel.backdrop_blur;
+    let sync = {
+        let (centred, on_blur) = (centred.downgrade(), on_blur.downgrade());
+        move |c: &Config| {
+            if let (Some(centred), Some(on_blur)) = (centred.upgrade(), on_blur.upgrade()) {
+                on_blur.set_sensitive(blurred(c));
+                centred.set_sensitive(!(blurred(c) && c.panel.clock_on_backdrop));
+            }
+        }
+    };
+    sync(&b.store.get());
+    b.on_refresh(sync);
     layout.add(&b.switch(
         "Updates tile",
         "Pending system updates as a tile; opens Settings → Updates",
@@ -759,6 +781,77 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
     actions.add(&open_control_center_row());
     p.add(&actions);
     p
+}
+
+/// Font family of the panel clock: the current time as a preview in it, GTK's
+/// font dialog (lists each family in itself) and a reset to the UI font.
+fn clock_font_row(b: &Binder) -> adw::ActionRow {
+    let row = adw::ActionRow::builder().title("Clock font").build();
+    let preview = gtk::Label::builder().valign(gtk::Align::Center).build();
+    let dialog = gtk::FontDialog::builder().title("Clock font").build();
+    let button = gtk::FontDialogButton::builder()
+        .dialog(&dialog)
+        .level(gtk::FontLevel::Family)
+        .use_font(true)
+        .valign(gtk::Align::Center)
+        .build();
+    let reset = gtk::Button::builder()
+        .icon_name("edit-undo-symbolic")
+        .tooltip_text("Back to the UI font")
+        .valign(gtk::Align::Center)
+        .css_classes(["flat"])
+        .build();
+    row.add_suffix(&preview);
+    row.add_suffix(&button);
+    row.add_suffix(&reset);
+
+    let updating = Rc::new(std::cell::Cell::new(false));
+    let show = {
+        let (row, preview, button, reset, updating) = (row.downgrade(), preview.downgrade(), button.downgrade(), reset.downgrade(), updating.clone());
+        move |c: &Config| {
+            let (Some(row), Some(preview), Some(button), Some(reset)) = (row.upgrade(), preview.upgrade(), button.upgrade(), reset.upgrade()) else {
+                return;
+            };
+            let family = c.panel.clock_font.trim();
+            row.set_subtitle(if family.is_empty() { "The UI font" } else { family });
+            reset.set_visible(!family.is_empty());
+            let ui = preview.pango_context().font_description().and_then(|d| d.family()).unwrap_or_default();
+            let mut desc = gtk::pango::FontDescription::new();
+            desc.set_family(if family.is_empty() { &ui } else { family });
+            let attrs = gtk::pango::AttrList::new();
+            let mut sized = desc.clone();
+            sized.set_size(20 * gtk::pango::SCALE);
+            attrs.insert(gtk::pango::AttrFontDesc::new(&sized));
+            preview.set_attributes(Some(&attrs));
+            let now = glib::DateTime::now_local().ok().and_then(|t| t.format("%H:%M").ok());
+            preview.set_text(now.as_deref().unwrap_or("12:34"));
+            updating.set(true);
+            button.set_font_desc(&desc);
+            updating.set(false);
+        }
+    };
+    show(&b.store.get());
+    {
+        let (b, updating) = (b.clone(), updating.clone());
+        button.connect_font_desc_notify(move |btn| {
+            if updating.get() {
+                return;
+            }
+            let family = btn.font_desc().and_then(|d| d.family()).map(|f| f.to_string()).unwrap_or_default();
+            b.write(move |c| c.panel.clock_font = family);
+        });
+    }
+    {
+        let b = b.clone();
+        reset.connect_clicked(move |_| b.write(|c| c.panel.clock_font.clear()));
+    }
+    // The preview shows the time it was last drawn at; refresh it whenever the page is shown.
+    {
+        let (store, show) = (b.store.clone(), show.clone());
+        row.connect_map(move |_| show(&store.get()));
+    }
+    b.store.subscribe(move |_, c| show(c));
+    row
 }
 
 /// Section switch, "only ~/.claude" and one switch per Claude Code profile.

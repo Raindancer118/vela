@@ -21,6 +21,8 @@ Singleton {
     readonly property real panelBackdropLayerAlpha: vp.backdropLayerAlpha
     readonly property bool workspaceOsd: vp.workspaceOsd
     readonly property bool clockCentered: vp.clockCentered
+    // Already false without a blurred backdrop (src/shell.rs).
+    readonly property bool clockOnBackdrop: vp.clockOnBackdrop ?? false
     readonly property bool claudeUsage: vp.claudeUsage
     readonly property bool claudeUsageSubtle: vp.claudeUsageSubtle
     readonly property bool claudeUsageOnlyDefault: vp.claudeUsageOnlyDefault

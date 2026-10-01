@@ -21,6 +21,9 @@ ShellRoot {
             opacity: 0.7,
             bodyFont: Math.round(14 * 1.5),
             clockCentered: true,
+            // Asked for, but the backdrop above only dims.
+            clockOnBackdrop: false,
+            clockFont: "DejaVu Serif",
             usageSubtle: true,
             compact: false
         })
@@ -40,6 +43,8 @@ ShellRoot {
             opacity: Math.round(Theme.colors.panel.a * 100) / 100,
             bodyFont: Theme.font.body,
             clockCentered: Config.clockCentered,
+            clockOnBackdrop: Config.clockOnBackdrop,
+            clockFont: Theme.font.clockFamily,
             usageSubtle: Config.claudeUsageSubtle,
             compact: Config.compactNotifications
         };

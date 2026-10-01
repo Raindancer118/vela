@@ -20,6 +20,7 @@ ColumnLayout {
         text: Config.locale.toString(clock.date, Config.timeFormat)
         horizontalAlignment: Config.clockCentered ? Text.AlignHCenter : Text.AlignLeft
         font.pixelSize: Theme.font.clock
+        font.family: Theme.font.clockFamily
         font.weight: Theme.font.weightLight
     }
 
@@ -28,6 +29,7 @@ ColumnLayout {
         text: Config.locale.toString(clock.date, Config.dateFormat)
         horizontalAlignment: Config.clockCentered ? Text.AlignHCenter : Text.AlignLeft
         color: Theme.colors.textMuted
+        font.family: Theme.font.clockFamily
         font.pixelSize: Theme.font.title
     }
 }
