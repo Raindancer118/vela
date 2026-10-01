@@ -7,9 +7,17 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 fn socket_path() -> Option<PathBuf> {
-    let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok().filter(|s| !s.is_empty())?;
-    let runtime = std::env::var("XDG_RUNTIME_DIR").ok().filter(|s| !s.is_empty())?;
-    Some(PathBuf::from(runtime).join("hypr").join(sig).join(".socket.sock"))
+    let runtime = PathBuf::from(std::env::var("XDG_RUNTIME_DIR").ok().filter(|s| !s.is_empty())?).join("hypr");
+    if let Some(sig) = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok().filter(|s| !s.is_empty()) {
+        return Some(runtime.join(sig).join(".socket.sock"));
+    }
+    // Started outside the session (e.g. an MCP server): the newest instance.
+    std::fs::read_dir(&runtime)
+        .ok()?
+        .flatten()
+        .map(|e| e.path().join(".socket.sock"))
+        .filter(|p| p.exists())
+        .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok())
 }
 
 fn request(cmd: &str) -> Option<String> {

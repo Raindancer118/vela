@@ -15,6 +15,7 @@ pub mod hyprmon;
 pub mod idle;
 pub mod ipc;
 pub mod launch;
+pub mod mcp;
 pub mod paths;
 pub mod search;
 pub mod shell;

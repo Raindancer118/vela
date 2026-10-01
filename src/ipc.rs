@@ -11,7 +11,8 @@ use std::time::Duration;
 
 /// Pages of the settings window (`vela settings <page>`).
 /// `general` is the launcher page (kept for compatibility).
-pub const SETTINGS_PAGES: [&str; 17] = [
+pub const SETTINGS_PAGES: [&str; 18] = [
+    "home",
     "general",
     "apps",
     "search",

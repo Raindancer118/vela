@@ -397,6 +397,19 @@ impl Daemon {
         }
     }
 
+    /// Starts Claude Code with a prompt from the settings search; the error
+    /// is for the caller to show (the launcher is hidden then).
+    pub fn ask_claude(self: &Rc<Self>, prompt: &str) -> Result<(), String> {
+        let cfg = self.store.get();
+        // The vela tools without a permission prompt each; before any `--`.
+        let mut claude = cfg.claude.clone();
+        let at = claude.args.iter().position(|a| a == "--").unwrap_or(claude.args.len());
+        claude.args.splice(at..at, ["--allowedTools".to_owned(), "mcp__vela".to_owned()]);
+        let spec = launch::claude_spec(&claude, &cfg.terminal, prompt).map_err(|e| e.to_string())?;
+        self.spawn(Ok(spec), None);
+        Ok(())
+    }
+
     pub fn open_settings(self: &Rc<Self>) {
         self.open_settings_page(None);
     }

@@ -131,6 +131,15 @@ that enables blur for the namespace `vela` (check the wiki of your version for
 the exact syntax). A release bind can't detect combinations that have no bind,
 and it isn't tested with vela. Only the Lua module above is.
 
+### Hyprland settings and Claude
+
+The settings open on a search: every vela and Hyprland setting can be found
+and changed right there. Describe a change instead (“smaller gaps between
+windows”) and press **Ctrl+Enter**: Claude Code starts with that request and
+makes it through `vela mcp`, an MCP server with tools to search and set
+Hyprland options, animations, monitors and vela's own settings. `install.sh`
+registers it (`claude mcp add --scope user vela -- vela mcp`).
+
 ## Usage
 
 | Key | Action |

@@ -628,7 +628,9 @@ fn section_title(section: &str) -> String {
 
 /// Every option Hyprland has, grouped by section and searchable. Built when
 /// first shown: a few hundred rows would slow down opening the settings.
-pub fn all_options(r: &Rows) -> adw::PreferencesPage {
+/// The page and a function that fills it now (the settings search needs
+/// the rows before the page was ever shown).
+pub fn all_options(r: &Rows) -> (adw::PreferencesPage, Rc<dyn Fn()>) {
     let p = page(r);
     let search_group = group("", "");
     let search = gtk::SearchEntry::builder()
@@ -708,7 +710,7 @@ pub fn all_options(r: &Rows) -> adw::PreferencesPage {
 
     let built = std::cell::Cell::new(false);
     let (r2, p2) = (r.clone(), p.downgrade());
-    p.connect_map(move |_| {
+    let build: Rc<dyn Fn()> = Rc::new(move || {
         if built.replace(true) {
             return;
         }
@@ -740,5 +742,7 @@ pub fn all_options(r: &Rows) -> adw::PreferencesPage {
         *rows.borrow_mut() = out;
         filter();
     });
-    p
+    let b = build.clone();
+    p.connect_map(move |_| b());
+    (p, build)
 }

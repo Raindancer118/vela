@@ -93,7 +93,10 @@ impl Rows {
         });
     }
 
+    /// Also names the row after its option: the settings search uses that
+    /// to show a curated row instead of the same one from "All options".
     fn mark_unsupported(&self, row: &impl IsA<gtk::Widget>, name: &str) -> Option<OptionInfo> {
+        row.set_widget_name(name);
         let info = self.store.info(name);
         if info.is_none() {
             row.set_sensitive(false);
@@ -680,6 +683,7 @@ impl Rows {
     pub fn anim(&self, leaf: &str, title: &str, sub: &str, styles: &[(&str, &str)]) -> adw::ExpanderRow {
         let key = format!("anim:{leaf}");
         let row = adw::ExpanderRow::builder().title(title).show_enable_switch(true).build();
+        row.set_widget_name(&key);
         if !sub.is_empty() {
             row.set_subtitle(sub);
         }

@@ -14,15 +14,8 @@ use std::time::Duration;
 
 const KEEP_SECONDS: u32 = 15;
 
-/// The rule vela would write for a monitor now: its override if any, else
-/// what it does at the moment.
 fn rule_for(store: &HyprStore, m: &MonitorInfo) -> MonitorRule {
-    let mut r = store.monitor_overrides().get(&m.output()).cloned().unwrap_or_else(|| m.current_rule());
-    // Follow what Hyprland made of it (positions shift when others change).
-    if !m.disabled {
-        r.position = (m.x, m.y);
-    }
-    r
+    hyprmon::rule_for(store.monitor_overrides().get(&m.output()), m)
 }
 
 /// Every monitor's rule as it is now, for undoing a change.

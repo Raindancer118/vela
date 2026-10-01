@@ -573,6 +573,142 @@ impl EdgeGaps {
     }
 }
 
+/// A colour as people and models write it: `rgba(rrggbbaa)`, `rgb(rrggbb)`,
+/// `#rrggbb`, `#rrggbbaa` or `0xAARRGGBB`.
+pub fn parse_color(s: &str) -> Option<u32> {
+    let s = s.trim();
+    if let Some(c) = parse_rgba(s) {
+        return Some(c);
+    }
+    if let Some(hex) = s.strip_prefix("rgb(").and_then(|r| r.strip_suffix(')')) {
+        return (hex.len() == 6).then(|| u32::from_str_radix(hex, 16).ok()).flatten().map(|v| v | 0xff00_0000);
+    }
+    if let Some(hex) = s.strip_prefix("0x") {
+        return u32::from_str_radix(hex, 16).ok();
+    }
+    let hex = s.strip_prefix('#')?;
+    let v = u32::from_str_radix(hex, 16).ok()?;
+    match hex.len() {
+        6 => Some(v | 0xff00_0000),
+        8 => Some((v >> 8) | ((v & 0xff) << 24)),
+        _ => None,
+    }
+}
+
+/// A value given as JSON (by the MCP server) for an option of this kind.
+pub fn value_from_input(info: &OptionInfo, v: &serde_json::Value) -> Result<Value, String> {
+    use serde_json::Value as J;
+    let bad = || format!("{} expects {}", info.name, kind_hint(info));
+    let num = |v: &J| v.as_f64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()));
+    let value = match info.kind {
+        Kind::Bool => match v {
+            J::Bool(b) => Value::Bool(*b),
+            J::Number(n) => Value::Bool(n.as_f64() != Some(0.0)),
+            J::String(s) => match s.trim().to_lowercase().as_str() {
+                "true" | "on" | "yes" | "1" => Value::Bool(true),
+                "false" | "off" | "no" | "0" => Value::Bool(false),
+                _ => return Err(bad()),
+            },
+            _ => return Err(bad()),
+        },
+        Kind::Int => match v {
+            J::String(s) if !info.choices.is_empty() && s.trim().parse::<f64>().is_err() => {
+                let s = s.trim().to_lowercase();
+                let (n, _) = info.choices.iter().find(|(_, l)| l.to_lowercase() == s).ok_or_else(bad)?;
+                Value::Int(*n)
+            }
+            J::Bool(b) => Value::Int(i64::from(*b)),
+            _ => Value::Int(num(v).ok_or_else(bad)?.round() as i64),
+        },
+        Kind::Float => Value::Float(num(v).ok_or_else(bad)?),
+        Kind::Str => Value::Str(v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())),
+        Kind::Color => Value::Color(v.as_str().and_then(parse_color).ok_or_else(bad)?),
+        Kind::Gradient => match v {
+            J::String(s) => Value::Gradient(Gradient {
+                colors: vec![parse_color(s).ok_or_else(bad)?],
+                angle: 0,
+            }),
+            J::Array(a) => Value::Gradient(Gradient {
+                colors: a
+                    .iter()
+                    .map(|c| c.as_str().and_then(parse_color))
+                    .collect::<Option<Vec<_>>>()
+                    .filter(|c| !c.is_empty())
+                    .ok_or_else(bad)?,
+                angle: 0,
+            }),
+            J::Object(o) => Value::Gradient(Gradient {
+                colors: o
+                    .get("colors")
+                    .and_then(|c| c.as_array())
+                    .and_then(|a| a.iter().map(|c| c.as_str().and_then(parse_color)).collect::<Option<Vec<_>>>())
+                    .filter(|c| !c.is_empty())
+                    .ok_or_else(bad)?,
+                angle: o.get("angle").and_then(num).unwrap_or(0.0).round() as i64,
+            }),
+            _ => return Err(bad()),
+        },
+        Kind::Gaps => match v {
+            J::Object(o) => {
+                let side = |k: &str| o.get(k).and_then(num).map(|f| f.round() as i64);
+                let all = side("all").unwrap_or(0);
+                Value::Gaps(Gaps {
+                    top: side("top").unwrap_or(all),
+                    right: side("right").unwrap_or(all),
+                    bottom: side("bottom").unwrap_or(all),
+                    left: side("left").unwrap_or(all),
+                })
+            }
+            J::String(s) => Value::Gaps(parse_gaps(s).ok_or_else(bad)?),
+            _ => Value::Gaps(Gaps::uniform(num(v).ok_or_else(bad)?.round() as i64)),
+        },
+        Kind::Vec2 => match v.as_array().map(|a| a.iter().map(num).collect::<Option<Vec<_>>>()) {
+            Some(Some(a)) if a.len() == 2 => Value::Vec2([a[0], a[1]]),
+            _ => return Err(bad()),
+        },
+    };
+    if let (Some(x), Some(lo), Some(hi)) = (value.as_f64(), info.min, info.max)
+        && matches!(info.kind, Kind::Int | Kind::Float)
+        && !(lo..=hi).contains(&x)
+    {
+        return Err(format!("{} must be between {lo} and {hi}", info.name));
+    }
+    Ok(value)
+}
+
+/// What to pass for an option, for error messages and the MCP schema text.
+pub fn kind_hint(info: &OptionInfo) -> String {
+    match info.kind {
+        Kind::Bool => "true or false".into(),
+        Kind::Int if !info.choices.is_empty() => {
+            let c: Vec<String> = info.choices.iter().map(|(n, l)| format!("{n} ({l})")).collect();
+            format!("one of {}", c.join(", "))
+        }
+        Kind::Int => "an integer".into(),
+        Kind::Float => "a number".into(),
+        Kind::Str => "a string".into(),
+        Kind::Color => "a colour like \"#rrggbb\" or \"rgba(rrggbbaa)\"".into(),
+        Kind::Gradient => "a colour, a list of colours or {\"colors\": [...], \"angle\": degrees}".into(),
+        Kind::Gaps => "pixels for all sides or {\"top\", \"right\", \"bottom\", \"left\"}".into(),
+        Kind::Vec2 => "[x, y]".into(),
+    }
+}
+
+/// JSON form of a value for the MCP server (colours as `#rrggbbaa`).
+pub fn value_to_json(v: &Value) -> serde_json::Value {
+    let hex = |c: u32| format!("#{:06x}{:02x}", c & 0x00ff_ffff, c >> 24);
+    match v {
+        Value::Bool(b) => (*b).into(),
+        Value::Int(i) => (*i).into(),
+        Value::Float(f) => (*f).into(),
+        Value::Str(s) => s.clone().into(),
+        Value::Color(c) => hex(*c).into(),
+        Value::Gradient(g) => serde_json::json!({ "colors": g.colors.iter().map(|c| hex(*c)).collect::<Vec<_>>(), "angle": g.angle }),
+        Value::Gaps(g) => serde_json::json!({ "top": g.top, "right": g.right, "bottom": g.bottom, "left": g.left }),
+        Value::Vec2([x, y]) => serde_json::json!([x, y]),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -795,6 +931,42 @@ mod tests {
         );
         assert_eq!(Value::Str("x".into()).coerce(Kind::Int), None);
         assert_eq!(Value::number(Kind::Int, 3.6), Some(Value::Int(4)));
+    }
+
+    #[test]
+    fn input_values_follow_the_option_kind() {
+        let (infos, _) = catalogue(DESCRIPTIONS, &getoptions());
+        let by = |n: &str| infos.iter().find(|i| i.name == n).unwrap().clone();
+        let j = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();
+        assert_eq!(value_from_input(&by("general:border_size"), &j("3")), Ok(Value::Int(3)));
+        assert!(value_from_input(&by("general:border_size"), &j("99")).unwrap_err().contains("between 0 and 20"));
+        assert_eq!(value_from_input(&by("input:follow_mouse"), &j(r#""Detached""#)), Ok(Value::Int(2)));
+        assert_eq!(value_from_input(&by("general:gaps_out"), &j("6")), Ok(Value::Gaps(Gaps::uniform(6))));
+        assert_eq!(
+            value_from_input(&by("general:gaps_out"), &j(r#"{"all": 5, "top": 0}"#)),
+            Ok(Value::Gaps(Gaps {
+                top: 0,
+                right: 5,
+                bottom: 5,
+                left: 5
+            }))
+        );
+        assert_eq!(
+            value_from_input(
+                &by("general:col.active_border"),
+                &j(r##"{"colors": ["#ff0000", "rgba(00ff0080)"], "angle": 45}"##)
+            ),
+            Ok(Value::Gradient(Gradient {
+                colors: vec![0xffff_0000, 0x8000_ff00],
+                angle: 45
+            }))
+        );
+        assert_eq!(value_from_input(&by("misc:col.splash"), &j(r##""#11223344""##)), Ok(Value::Color(0x4411_2233)));
+        assert_eq!(value_from_input(&by("decoration:active_opacity"), &j(r#""0.9""#)), Ok(Value::Float(0.9)));
+        assert!(value_from_input(&by("decoration:shadow:offset"), &j("[1]")).is_err());
+        assert_eq!(value_to_json(&Value::Color(0x4411_2233)), j(r##""#11223344""##));
+        assert_eq!(parse_color("rgb(ff0000)"), Some(0xffff_0000));
+        assert_eq!(parse_color("0x80ffffff"), Some(0x80ff_ffff));
     }
 
     #[test]

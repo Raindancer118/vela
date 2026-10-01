@@ -8,6 +8,7 @@ mod hypr_monitors;
 mod hypr_pages;
 mod hypr_rows;
 mod pages;
+mod search_page;
 
 use super::daemon::Daemon;
 use super::marker::Marker;
@@ -17,7 +18,8 @@ use gtk::{gdk, glib};
 use std::rc::Rc;
 
 /// Sidebar entries: (section, page id, title, icon). Ids are `SETTINGS_PAGES`.
-const ENTRIES: [(&str, &str, &str, &str); 17] = [
+const ENTRIES: [(&str, &str, &str, &str); 18] = [
+    ("", "home", "Search", "system-search-symbolic"),
     ("Launcher", "general", "Launcher", "system-search-symbolic"),
     ("Launcher", "apps", "Applications", "view-grid-symbolic"),
     ("Launcher", "search", "Search", "edit-find-symbolic"),
@@ -70,7 +72,9 @@ impl SettingsWindow {
             .transition_type(gtk::StackTransitionType::Crossfade)
             .transition_duration(140)
             .build();
-        for (_, id, _, _) in ENTRIES {
+        let home = search_page::Search::new(daemon);
+        stack.add_named(&home.widget, Some("home"));
+        for (_, id, title, _) in ENTRIES.into_iter().skip(1) {
             let page: gtk::Widget = match id {
                 "general" => pages::launcher(&binder).upcast(),
                 "apps" => apps_page::build(daemon, &binder).upcast(),
@@ -86,10 +90,15 @@ impl SettingsWindow {
                 "hypr-monitors" => hypr_monitors::monitors(&hypr).upcast(),
                 "hypr-layouts" => hypr_pages::layouts(&hypr).upcast(),
                 "hypr-behaviour" => hypr_pages::behaviour(&hypr).upcast(),
-                "hypr-all" => hypr_pages::all_options(&hypr).upcast(),
+                "hypr-all" => {
+                    let (p, fill) = hypr_pages::all_options(&hypr);
+                    home.before_index(fill);
+                    p.upcast()
+                }
                 "appearance" => pages::appearance(&binder).upcast(),
                 _ => pages::system(daemon, &binder).upcast(),
             };
+            home.add_page(id, title, &page);
             stack.add_named(&page, Some(id));
         }
 
@@ -101,7 +110,7 @@ impl SettingsWindow {
         sidebar.set_header_func(|row, before| {
             let i = row.index() as usize;
             let section = ENTRIES[i].0;
-            if before.is_none_or(|b| ENTRIES[b.index() as usize].0 != section) {
+            if !section.is_empty() && before.is_none_or(|b| ENTRIES[b.index() as usize].0 != section) {
                 let label = gtk::Label::builder().label(section).xalign(0.0).css_classes(["vela-sidebar-heading"]).build();
                 row.set_header(Some(&label));
             } else {
@@ -160,7 +169,9 @@ impl SettingsWindow {
         content_view.add_top_bar(&header);
         content_view.add_top_bar(&banner);
         content_view.add_top_bar(&hypr_banner);
-        content_view.set_content(Some(&stack));
+        let toasts = adw::ToastOverlay::new();
+        toasts.set_child(Some(&stack));
+        content_view.set_content(Some(&toasts));
         let content_page = adw::NavigationPage::builder().title(ENTRIES[0].2).child(&content_view).build();
 
         let split = adw::NavigationSplitView::builder()
@@ -178,10 +189,21 @@ impl SettingsWindow {
         let marker = Rc::new(marker);
         let flip = Rc::new(std::cell::Cell::new(false));
         {
-            let (stack, content_page, split, marker, store) = (stack.clone(), content_page.clone(), split.clone(), marker.clone(), daemon.store.clone());
+            let (stack, content_page, split, marker, store, home) = (
+                stack.clone(),
+                content_page.clone(),
+                split.clone(),
+                marker.clone(),
+                daemon.store.clone(),
+                home.clone(),
+            );
             sidebar.connect_row_selected(move |_, row| {
                 let Some(row) = row else { return };
                 let (_, id, title, _) = ENTRIES[row.index() as usize];
+                if id != "home" {
+                    // Borrowed rows go back to their page before it shows.
+                    home.restore();
+                }
                 let animate = store.get().appearance.animations;
                 stack.set_visible_child_name(id);
                 if let Some(page) = stack.visible_child() {
@@ -200,6 +222,31 @@ impl SettingsWindow {
             });
         }
         sidebar.select_row(sidebar.row_at_index(0).as_ref());
+        {
+            let sb = sidebar.downgrade();
+            home.set_open_page(Rc::new(move |id: &str| {
+                if let (Some(sb), Some(i)) = (sb.upgrade(), ENTRIES.iter().position(|(_, x, _, _)| *x == id)) {
+                    sb.select_row(sb.row_at_index(i as i32).as_ref());
+                }
+            }));
+        }
+        {
+            // Ctrl+F anywhere: back to the search.
+            let (sb, home) = (sidebar.downgrade(), home.clone());
+            let keys = gtk::EventControllerKey::new();
+            keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+            keys.connect_key_pressed(move |_, key, _, state| {
+                if state.contains(gdk::ModifierType::CONTROL_MASK) && matches!(key, gdk::Key::f | gdk::Key::F) {
+                    if let Some(sb) = sb.upgrade() {
+                        sb.select_row(sb.row_at_index(0).as_ref());
+                    }
+                    home.focus();
+                    return glib::Propagation::Stop;
+                }
+                glib::Propagation::Proceed
+            });
+            window.add_controller(keys);
+        }
         {
             // Rows have no size before the first allocation.
             let (marker, sidebar) = (marker.clone(), sidebar.clone());

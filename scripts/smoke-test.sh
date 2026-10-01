@@ -12,6 +12,8 @@ export XDG_CONFIG_HOME="$tmp/config" XDG_STATE_HOME="$tmp/state" XDG_CACHE_HOME=
 export VELA_SOCKET="$tmp/vela.sock" RUST_LOG=vela=info
 # The real home is shared: don't poll the real Claude accounts.
 export VELA_NO_CLAUDE_USAGE=1
+# The settings search borrows rows from every page; this runs it once.
+export VELA_SETTINGS_SEARCH="blur gaps"
 weston_pid=""
 cleanup() {
     [[ -n "${daemon_pid:-}" ]] && kill "$daemon_pid" 2>/dev/null || true
@@ -39,7 +41,7 @@ for _ in $(seq 100); do "$BIN" status 2>/dev/null && break; sleep 0.1; done
 for _ in $(seq 100); do grep -q "found .* applications" "$tmp/daemon.log" 2>/dev/null && break; sleep 0.1; done
 [[ -f "$XDG_CONFIG_HOME/vela/config.toml" ]] || fail "default config was not created"
 
-for cmd in show hide toggle toggle "settings" "settings claude" "settings hypr-windows" "settings hypr-effects" "settings hypr-animations" "settings hypr-input" "settings hypr-monitors" "settings hypr-layouts" "settings hypr-behaviour" "settings hypr-all" reload show; do
+for cmd in show hide toggle toggle "settings" "settings claude" "settings home" "settings hypr-windows" "settings hypr-effects" "settings hypr-animations" "settings hypr-input" "settings hypr-monitors" "settings hypr-layouts" "settings hypr-behaviour" "settings hypr-all" reload show; do
     # shellcheck disable=SC2086
     "$BIN" $cmd || fail "command '$cmd' failed"
     sleep 0.2

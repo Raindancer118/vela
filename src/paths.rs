@@ -30,6 +30,16 @@ pub fn state_dir() -> PathBuf {
     xdg_dir("XDG_STATE_HOME", ".local/state").join(APP_ID)
 }
 
+/// vela's Hyprland overrides (Settings → Hyprland, `vela mcp`).
+pub fn hypr_overrides_file() -> PathBuf {
+    config_dir().join("hyprland.toml")
+}
+
+/// The Lua generated from them; contrib/hyprland/vela.lua loads this path.
+pub fn hypr_lua_file() -> PathBuf {
+    state_dir().join("hyprland.lua")
+}
+
 pub fn cache_dir() -> PathBuf {
     xdg_dir("XDG_CACHE_HOME", ".cache").join(APP_ID)
 }

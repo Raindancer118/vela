@@ -65,6 +65,9 @@ enum Cmd {
         #[arg(long)]
         watch: bool,
     },
+    /// MCP server on stdin/stdout: lets Claude change Hyprland and vela
+    /// settings (`claude mcp add vela -- vela mcp`).
+    Mcp,
     /// Print the control center settings as JSON (used by the shell).
     ShellConfig {
         /// Keep running and print a new line whenever the config changes.
@@ -113,6 +116,15 @@ fn main() -> ExitCode {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(e) => {
                     eprintln!("vela: {e:#}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        Cmd::Mcp => {
+            return match vela::mcp::run() {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("vela mcp: {e:#}");
                     ExitCode::FAILURE
                 }
             };

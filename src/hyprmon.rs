@@ -85,6 +85,16 @@ impl MonitorInfo {
     }
 }
 
+/// The rule to change for a monitor: vela's saved one if any, else what it
+/// does now; the position always as Hyprland placed it.
+pub fn rule_for(saved: Option<&MonitorRule>, m: &MonitorInfo) -> MonitorRule {
+    let mut r = saved.cloned().unwrap_or_else(|| m.current_rule());
+    if !m.disabled {
+        r.position = (m.x, m.y);
+    }
+    r
+}
+
 pub fn logical_size(w: i32, h: i32, scale: f64, transform: i64) -> (i32, i32) {
     let s = if scale > 0.0 { scale } else { 1.0 };
     let (w, h) = ((f64::from(w) / s).round() as i32, (f64::from(h) / s).round() as i32);

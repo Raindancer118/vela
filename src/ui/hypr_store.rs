@@ -52,18 +52,9 @@ struct Inner {
 #[derive(Clone)]
 pub struct HyprStore(Rc<Inner>);
 
-pub fn toml_path() -> PathBuf {
-    paths::config_dir().join("hyprland.toml")
-}
-
-/// Must match the path in contrib/hyprland/vela.lua.
-pub fn lua_path() -> PathBuf {
-    paths::state_dir().join("hyprland.lua")
-}
-
 impl HyprStore {
     pub fn load() -> HyprStore {
-        let toml_path = toml_path();
+        let toml_path = paths::hypr_overrides_file();
         let text = std::fs::read_to_string(&toml_path).unwrap_or_default();
         let overrides = Overrides::from_toml(&text).unwrap_or_else(|e| {
             log::error!("{}: {e:#}; starting without Hyprland overrides", toml_path.display());
@@ -71,7 +62,7 @@ impl HyprStore {
         });
         let store = HyprStore(Rc::new(Inner {
             toml_path,
-            lua_path: lua_path(),
+            lua_path: paths::hypr_lua_file(),
             overrides: RefCell::new(overrides),
             infos: RefCell::default(),
             current: RefCell::default(),

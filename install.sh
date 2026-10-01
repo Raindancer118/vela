@@ -59,6 +59,16 @@ sleep 1
 { cat shell/shell.qml; printf '// installed %s\n' "$(date +%s)"; } >"$DATADIR/vela/shell/shell.qml"
 (cd "$DATADIR/vela/shell" && find . -type f \( -name '*.qml' -o -name '*.svg' \) | while read -r f; do [[ -f "$OLDPWD/shell/$f" ]] || rm -f "$f"; done)
 command -v qs >/dev/null || warn "Quickshell (qs) not found — the control center (vela shell) needs it"
+# Lets Claude Code change Hyprland/vela settings (Settings search → Ask Claude).
+if command -v claude >/dev/null; then
+    if claude mcp get vela >/dev/null 2>&1; then
+        say "Claude Code already knows the vela MCP server"
+    elif claude mcp add --scope user vela -- "$BINDIR/vela" mcp >/dev/null 2>&1; then
+        say "registered the vela MCP server with Claude Code"
+    else
+        warn "could not register the MCP server; run: claude mcp add --scope user vela -- $BINDIR/vela mcp"
+    fi
+fi
 systemctl --user daemon-reload 2>/dev/null || true
 gtk-update-icon-cache -q -t "$DATADIR/icons/hicolor" 2>/dev/null || true
 
