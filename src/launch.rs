@@ -475,7 +475,9 @@ mod tests {
         fs::write(&script, "#!/bin/sh\nenv > \"$OUT.tmp\"\nmv \"$OUT.tmp\" \"$OUT\"\n").unwrap();
         fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
         let spec = SpawnSpec {
-            argv: vec![script.to_string_lossy().into()],
+            // Through sh: exec'ing the fresh file fails with ETXTBSY when a
+            // parallel test forks while it is still open for writing.
+            argv: vec!["sh".into(), script.to_string_lossy().into()],
             env: vec![("OUT".into(), out.to_string_lossy().into()), ("CLAUDE_CODE_CHILD_SESSION".into(), "1".into())],
             ..Default::default()
         };
