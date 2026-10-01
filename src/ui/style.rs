@@ -35,11 +35,21 @@ pub fn launcher_css(cfg: &Config) -> String {
     };
     let spacing = a.spacing;
     let backdrop_dim = crate::theme::backdrop_alpha(a.backdrop_dim, a.backdrop_strength, a.backdrop_blur);
+    let clock_size = cfg.general.clock_size;
+    let date_size = (f64::from(clock_size) * 0.2).round();
+    let clock_family = cfg.general.clock_font.replace(['"', '\\', ';', '{', '}'], "");
+    let clock_family = match clock_family.trim() {
+        "" => String::new(),
+        f => format!(" font-family: \"{f}\";"),
+    };
 
     format!(
         r#"
 window.vela-launcher, window.vela-launcher.background {{ background: transparent; box-shadow: none; }}
 window.vela-backdrop, window.vela-backdrop.background {{ background: rgba(0, 0, 0, {backdrop_dim}); box-shadow: none; }}
+window.vela-clock, window.vela-clock.background {{ background: transparent; box-shadow: none; }}
+.vela-clock-time {{ font-size: {clock_size}px;{clock_family} font-weight: 300; color: {fg}; }}
+.vela-clock-date {{ font-size: {date_size}px;{clock_family} color: {dim}; }}
 .vela-launcher .vela-panel {{
   background-color: {bg};
   color: {fg};
@@ -360,6 +370,19 @@ mod tests {
         assert!(!tile_rule(&launcher_css(&cfg)).contains("background: transparent"));
         cfg.appearance.tile_background = false;
         assert!(tile_rule(&launcher_css(&cfg)).contains("background: transparent"), "tiles without a background");
+    }
+
+    #[test]
+    fn clock_css_takes_size_and_font() {
+        let mut cfg = Config::default();
+        let css = launcher_css(&cfg);
+        assert!(css.contains(".vela-clock-time { font-size: 128px;") && css.contains(".vela-clock-date { font-size: 26px;"));
+        assert!(!css.contains("font-family: \"\""), "UI font when unset");
+        cfg.general.clock_size = 200;
+        cfg.general.clock_font = "DejaVu \"Serif\"".into();
+        let css = launcher_css(&cfg);
+        assert!(css.contains("font-size: 200px; font-family: \"DejaVu Serif\";"), "quotes dropped");
+        assert!(css.contains(".vela-clock-date { font-size: 40px;"));
     }
 
     #[test]

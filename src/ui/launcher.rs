@@ -5,9 +5,10 @@
 //! intercepted in the capture phase and move a selection in the grid/list.
 
 use super::icons;
+use super::launcher_clock::LauncherClock;
 use super::style;
 use crate::apps::catalog::{Catalog, Entry};
-use crate::config::{Config, GridSource};
+use crate::config::{Config, GridSource, HorizontalPosition};
 use crate::paths;
 use crate::search::files::FileHit;
 use crate::search::results::{self, Item};
@@ -70,6 +71,12 @@ pub fn keyboard_mode(preview: bool, close_on_click_outside: bool) -> KeyboardMod
         (false, true) => KeyboardMode::Exclusive,
         (false, false) => KeyboardMode::OnDemand,
     }
+}
+
+/// Whether the launcher's clock shows: only on a visible, blurred backdrop.
+pub fn wants_clock(cfg: &Config) -> bool {
+    let a = &cfg.appearance;
+    cfg.general.clock && a.backdrop && a.backdrop_blur && crate::theme::backdrop_visible(a.backdrop_dim, a.backdrop_blur)
 }
 
 /// Whether the backdrop goes behind the launcher.
@@ -194,6 +201,7 @@ pub struct Launcher {
     backdrop: RefCell<Vec<gtk::Window>>,
     /// Whether `backdrop` was built with the blurring namespace.
     backdrop_blur: Cell<bool>,
+    clock: Rc<LauncherClock>,
 }
 
 impl Launcher {
@@ -366,6 +374,7 @@ impl Launcher {
             app: app.clone(),
             backdrop: RefCell::default(),
             backdrop_blur: Cell::new(true),
+            clock: LauncherClock::new(app),
         });
 
         this.connect_signals(&gear);
@@ -509,7 +518,8 @@ impl Launcher {
         self.window.add_css_class(on);
     }
 
-    fn show_backdrop(&self) {
+    /// Returns true when it (re)mapped the backdrop layers.
+    fn show_backdrop(&self) -> bool {
         let (strength, blur) = {
             let a = &self.config.borrow().appearance;
             (a.backdrop_strength, a.backdrop_blur)
@@ -533,7 +543,7 @@ impl Launcher {
         };
         let monitor = self.window.monitor();
         if layers.iter().all(|b| b.is_visible() && b.monitor() == monitor) {
-            return;
+            return false;
         }
         // Within a layer the surface mapped last is on top, so the launcher
         // is (re)mapped after the backdrop, e.g. when leaving the preview.
@@ -543,6 +553,32 @@ impl Launcher {
             b.set_monitor(monitor.as_ref());
             b.present();
         }
+        true
+    }
+
+    /// Clock above or beside the launcher, mapped after the backdrop and
+    /// before the launcher (same layer: mapped last = on top).
+    fn sync_clock(&self, show: bool, restack: bool) {
+        let cfg = self.config.borrow().clone();
+        let monitor = self.window.monitor();
+        let (Some(monitor), true) = (monitor, show && self.layer && wants_clock(&cfg)) else {
+            self.clock.hide();
+            return;
+        };
+        let g = monitor.geometry();
+        let pos = cfg.general.horizontal_position;
+        let width = cfg.general.width as i32;
+        let surface_x = crate::launcher_layout::launcher_x(g.width(), width, pos, self.side_margin(&cfg));
+        let top = g.height() * cfg.general.vertical_position as i32 / 100;
+        let rect = (surface_x + PANEL_MARGIN, width - 2 * PANEL_MARGIN, top);
+        if self.clock.show(&monitor, rect, pos, restack) {
+            self.window.set_visible(false);
+        }
+    }
+
+    /// Layer margin so the visible card sits `side_margin` from the edge.
+    fn side_margin(&self, cfg: &Config) -> i32 {
+        (cfg.general.side_margin as i32 - PANEL_MARGIN).max(0)
     }
 
     fn hide_backdrop(&self) {
@@ -600,8 +636,15 @@ impl Launcher {
             .clone()
             .or_else(|| gdk::Display::default().and_then(|d| d.monitors().item(0).and_downcast::<gdk::Monitor>()))
             .map_or(1080, |m| m.geometry().height());
-        let pct = self.config.borrow().general.vertical_position as i32;
+        let cfg = self.config.borrow().clone();
+        let pct = cfg.general.vertical_position as i32;
         self.window.set_margin(Edge::Top, (height * pct / 100 - PANEL_MARGIN).max(0));
+        let pos = cfg.general.horizontal_position;
+        let margin = self.side_margin(&cfg);
+        self.window.set_anchor(Edge::Left, pos == HorizontalPosition::Left);
+        self.window.set_anchor(Edge::Right, pos == HorizontalPosition::Right);
+        self.window.set_margin(Edge::Left, if pos == HorizontalPosition::Left { margin } else { 0 });
+        self.window.set_margin(Edge::Right, if pos == HorizontalPosition::Right { margin } else { 0 });
     }
 
     /// Puts text into the search field (test hook for screenshots).
@@ -635,10 +678,13 @@ impl Launcher {
             let a = &self.config.borrow().appearance;
             a.backdrop && crate::theme::backdrop_visible(a.backdrop_dim, a.backdrop_blur)
         };
-        if wants_backdrop(self.layer, preview, enabled) {
-            self.show_backdrop();
+        let backdrop = wants_backdrop(self.layer, preview, enabled);
+        if backdrop {
+            let restacked = self.show_backdrop();
+            self.sync_clock(true, restacked);
         } else {
             self.hide_backdrop();
+            self.clock.hide();
         }
         self.window.present();
         if !preview {
@@ -651,6 +697,7 @@ impl Launcher {
             return;
         }
         self.hide_backdrop();
+        self.clock.hide();
         self.preview.set(false);
         self.had_focus.set(false);
         match style::motion(&self.config.borrow()) {
@@ -715,8 +762,20 @@ impl Launcher {
         let max = (new.general.max_height as i32 - chrome).max(120);
         self.grid_scroller.set_max_content_height(max);
         self.list_scroller.set_max_content_height(max);
-        if old.general.vertical_position != new.general.vertical_position && self.is_visible() {
+        let moved = old.general.vertical_position != new.general.vertical_position
+            || old.general.horizontal_position != new.general.horizontal_position
+            || old.general.side_margin != new.general.side_margin
+            || old.general.width != new.general.width;
+        if moved && self.is_visible() {
             self.place();
+        }
+        if self.is_visible() && !self.preview.get() && self.backdrop.borrow().iter().any(|b| b.is_visible()) {
+            // New size/font/position, or switched on or off.
+            let shown = self.clock.is_visible();
+            self.sync_clock(true, false);
+            if !shown && self.clock.is_visible() {
+                self.window.present();
+            }
         }
         self.rebuild_grid();
         if old.search != new.search || old.claude != new.claude || old.general.max_results != new.general.max_results || old.apps != new.apps {
@@ -1263,6 +1322,20 @@ mod tests {
             "without click-outside other windows stay usable"
         );
         assert_eq!(keyboard_mode(true, true), KeyboardMode::None, "settings preview never takes the keyboard");
+    }
+
+    #[test]
+    fn clock_only_on_a_blurred_backdrop() {
+        let mut cfg = Config::default();
+        cfg.general.clock = true;
+        assert!(!wants_clock(&cfg), "no backdrop");
+        cfg.appearance.backdrop = true;
+        assert!(wants_clock(&cfg));
+        cfg.appearance.backdrop_blur = false;
+        assert!(!wants_clock(&cfg), "only dimmed");
+        cfg.appearance.backdrop_blur = true;
+        cfg.general.clock = false;
+        assert!(!wants_clock(&cfg));
     }
 
     #[test]

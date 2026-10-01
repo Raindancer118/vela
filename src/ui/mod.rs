@@ -3,6 +3,7 @@ pub mod fingerprint;
 pub mod hypr_store;
 pub mod icons;
 pub mod launcher;
+pub mod launcher_clock;
 pub mod marker;
 pub mod selfupdate;
 pub mod settings;

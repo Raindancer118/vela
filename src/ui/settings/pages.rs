@@ -1,5 +1,5 @@
 use super::binder::{Binder, group, join_args, split_args};
-use crate::config::{Config, FileBackend, TERMINAL_PRESETS, Theme};
+use crate::config::{Config, FileBackend, HorizontalPosition, TERMINAL_PRESETS, Theme};
 use crate::launch;
 use crate::paths;
 use crate::search::files::RootBackend;
@@ -111,8 +111,38 @@ pub fn launcher(b: &Binder) -> adw::PreferencesPage {
         |c| c.general.vertical_position.into(),
         |c, v| c.general.vertical_position = v as u32,
     ));
+    let align = b.combo(
+        "Horizontal position",
+        "",
+        &["Centred", "Left", "Right"],
+        |c| HorizontalPosition::ALL.iter().position(|&h| h == c.general.horizontal_position).unwrap_or(0),
+        |c, i| c.general.horizontal_position = HorizontalPosition::ALL[i.min(2)],
+    );
+    launcher.add(&align);
+    let side = b.spin(
+        "Distance from the edge",
+        "Logical pixels, when on the left or right",
+        0.0,
+        800.0,
+        4.0,
+        0,
+        |c| c.general.side_margin.into(),
+        |c, v| c.general.side_margin = v as u32,
+    );
+    launcher.add(&side);
     launcher.add(&main_monitor_row(b));
     p.add(&launcher);
+    p.add(&launcher_clock_group(b));
+    {
+        let side = side.downgrade();
+        let sync = move |c: &Config| {
+            if let Some(side) = side.upgrade() {
+                side.set_sensitive(c.general.horizontal_position != HorizontalPosition::Center);
+            }
+        };
+        sync(&b.store.get());
+        b.store.subscribe(move |_, c| sync(c));
+    }
 
     let behaviour = group("Behaviour", "");
     behaviour.add(&b.switch(
@@ -713,7 +743,8 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
         |c, v| c.panel.backdrop_clock_size = v as u32,
     );
     layout.add(&size);
-    layout.add(&clock_font_row(b));
+    layout.add(&clock_font_row(b, |c| &c.panel.clock_font, |c, f| c.panel.clock_font = f));
+    layout.add(&copy_clock_style_row(b, "Same style as the launcher clock", Config::panel_clock_like_launcher));
     let blurred = |c: &Config| c.panel.backdrop && c.panel.backdrop_blur;
     let sync = {
         let (centred, on_blur, size) = (centred.downgrade(), on_blur.downgrade(), size.downgrade());
@@ -896,7 +927,71 @@ fn set_media_position(c: &mut Config, pos: crate::config::MediaPosition, on: boo
 
 /// Font family of the panel clock: the current time as a preview in it, GTK's
 /// font dialog (lists each family in itself) and a reset to the UI font.
-fn clock_font_row(b: &Binder) -> adw::ActionRow {
+/// The launcher's own clock on its blurred backdrop; needs that backdrop with Blur.
+fn launcher_clock_group(b: &Binder) -> adw::PreferencesGroup {
+    let g = group(
+        "Clock",
+        "Large on the blurred screen: above a centred launcher, on the free side of one on the left or right.",
+    );
+    let on = b.switch(
+        "Clock on the blur",
+        "Needs Appearance → Blur behind → The launcher with Blur on",
+        |c| c.general.clock,
+        |c, v| c.general.clock = v,
+    );
+    let size = b.spin(
+        "Clock size",
+        "Height of the time in logical pixels; the date scales along",
+        48.0,
+        320.0,
+        4.0,
+        0,
+        |c| c.general.clock_size.into(),
+        |c, v| c.general.clock_size = v as u32,
+    );
+    let font = clock_font_row(b, |c| &c.general.clock_font, |c, f| c.general.clock_font = f);
+    let copy = copy_clock_style_row(b, "Same style as the control center clock", Config::launcher_clock_like_panel);
+    g.add(&on);
+    g.add(&size);
+    g.add(&font);
+    g.add(&copy);
+    let sync = {
+        let (on, size, font, copy) = (on.downgrade(), size.downgrade(), font.downgrade(), copy.downgrade());
+        move |c: &Config| {
+            let blurred = c.appearance.backdrop && c.appearance.backdrop_blur;
+            if let Some(on) = on.upgrade() {
+                on.set_sensitive(blurred);
+            }
+            for r in [
+                size.upgrade().map(|r| r.upcast::<gtk::Widget>()),
+                font.upgrade().map(|r| r.upcast()),
+                copy.upgrade().map(|r| r.upcast()),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                r.set_sensitive(blurred && c.general.clock);
+            }
+        }
+    };
+    sync(&b.store.get());
+    b.store.subscribe(move |_, c| sync(c));
+    g
+}
+
+/// Button that copies the other clock's size and font into this one.
+fn copy_clock_style_row(b: &Binder, title: &str, copy: fn(&mut Config)) -> adw::ButtonRow {
+    let row = adw::ButtonRow::builder().title(title).start_icon_name("edit-copy-symbolic").build();
+    let b = b.clone();
+    row.connect_activated(move |_| {
+        b.write(copy);
+        // Spin rows only follow the config on refresh.
+        b.refresh(&b.store.get());
+    });
+    row
+}
+
+fn clock_font_row(b: &Binder, get: fn(&Config) -> &String, set: fn(&mut Config, String)) -> adw::ActionRow {
     let row = adw::ActionRow::builder().title("Clock font").build();
     let preview = gtk::Label::builder().valign(gtk::Align::Center).build();
     let dialog = gtk::FontDialog::builder().title("Clock font").build();
@@ -923,7 +1018,7 @@ fn clock_font_row(b: &Binder) -> adw::ActionRow {
             let (Some(row), Some(preview), Some(button), Some(reset)) = (row.upgrade(), preview.upgrade(), button.upgrade(), reset.upgrade()) else {
                 return;
             };
-            let family = c.panel.clock_font.trim();
+            let family = get(c).trim();
             row.set_subtitle(if family.is_empty() { "The UI font" } else { family });
             reset.set_visible(!family.is_empty());
             let ui = preview.pango_context().font_description().and_then(|d| d.family()).unwrap_or_default();
@@ -949,12 +1044,12 @@ fn clock_font_row(b: &Binder) -> adw::ActionRow {
                 return;
             }
             let family = btn.font_desc().and_then(|d| d.family()).map(|f| f.to_string()).unwrap_or_default();
-            b.write(move |c| c.panel.clock_font = family);
+            b.write(move |c| set(c, family));
         });
     }
     {
         let b = b.clone();
-        reset.connect_clicked(move |_| b.write(|c| c.panel.clock_font.clear()));
+        reset.connect_clicked(move |_| b.write(|c| set(c, String::new())));
     }
     // The preview shows the time it was last drawn at; refresh it whenever the page is shown.
     {

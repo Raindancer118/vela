@@ -488,6 +488,8 @@ reloads it, reports errors in the settings and keeps the last valid settings
 | --- | --- | --- |
 | `general` | `width`, `max_height` | size of the launcher (logical px); content scrolls beyond `max_height` |
 | | `vertical_position` | distance from the top of the monitor in % |
+| | `horizontal_position` (`center`, `left`, `right`), `side_margin` | launcher centred or at an edge, `side_margin` px in |
+| | `clock`, `clock_size`, `clock_font` | launcher clock on the blurred backdrop (needs `appearance.backdrop` + `backdrop_blur`): above a centred launcher, on the free side otherwise |
 | | `opacity` | background opacity 0–1 |
 | | `close_on_focus_loss` | hide on a click outside the panel |
 | | `main_monitor` | always open here while connected: `"desc:<make model serial>"` or a connector like `"DP-7"`; empty = focused monitor |

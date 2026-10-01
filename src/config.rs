@@ -74,6 +74,16 @@ pub struct General {
     pub max_height: u32,
     /// Distance of the launcher from the top of the monitor, in percent.
     pub vertical_position: u32,
+    /// Centred, or at the left/right edge `side_margin` pixels in.
+    pub horizontal_position: HorizontalPosition,
+    pub side_margin: u32,
+    /// Clock on the blurred backdrop: above a centred launcher, beside it
+    /// otherwise; only with `appearance.backdrop` and `backdrop_blur`.
+    pub clock: bool,
+    /// Height of its time in logical pixels, 48–320; the date scales along.
+    pub clock_size: u32,
+    /// Font family of that clock; empty = the UI font.
+    pub clock_font: String,
     /// Background opacity of the launcher (0.0–1.0).
     pub opacity: f64,
     pub close_on_focus_loss: bool,
@@ -335,6 +345,20 @@ pub struct Apps {
     pub custom: Vec<CustomAction>,
 }
 
+/// Horizontal place of the launcher.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum HorizontalPosition {
+    #[default]
+    Center,
+    Left,
+    Right,
+}
+
+impl HorizontalPosition {
+    pub const ALL: [HorizontalPosition; 3] = [HorizontalPosition::Center, HorizontalPosition::Left, HorizontalPosition::Right];
+}
+
 /// Where the panel's mini player sits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -432,6 +456,11 @@ impl Default for General {
             width: 760,
             max_height: 580,
             vertical_position: 18,
+            horizontal_position: HorizontalPosition::Center,
+            side_margin: 48,
+            clock: false,
+            clock_size: 128,
+            clock_font: String::new(),
             opacity: 0.86,
             close_on_focus_loss: true,
             main_monitor: String::new(),
@@ -591,6 +620,18 @@ fn valid_hex_color(s: &str) -> bool {
 }
 
 impl Config {
+    /// Settings → Launcher → Same style as the control center clock.
+    pub fn launcher_clock_like_panel(&mut self) {
+        self.general.clock_size = self.panel.backdrop_clock_size;
+        self.general.clock_font = self.panel.clock_font.clone();
+    }
+
+    /// Settings → Panel → Same style as the launcher clock.
+    pub fn panel_clock_like_launcher(&mut self) {
+        self.panel.backdrop_clock_size = self.general.clock_size;
+        self.panel.clock_font = self.general.clock_font.clone();
+    }
+
     /// Ask Claude in the launcher: switched on and installed.
     pub fn claude_search(&self) -> bool {
         self.search.claude && crate::components::has(crate::components::Component::Claude)
@@ -603,6 +644,8 @@ impl Config {
         g.width = g.width.clamp(360, 2400);
         g.max_height = g.max_height.clamp(200, 2000);
         g.vertical_position = g.vertical_position.min(60);
+        g.side_margin = g.side_margin.min(800);
+        g.clock_size = g.clock_size.clamp(48, 320);
         g.opacity = finite_or(g.opacity, 0.86).clamp(0.0, 1.0);
         g.max_results = g.max_results.clamp(1, 100);
 
@@ -654,6 +697,10 @@ impl Config {
         p.media_player_scale = finite_or(p.media_player_scale, 1.0).clamp(0.75, 1.75);
         p.media_player_cover_blur = finite_or(p.media_player_cover_blur, 0.75).clamp(0.0, 1.0);
         p.media_player_button_scale = finite_or(p.media_player_button_scale, 1.0).clamp(0.6, 1.25);
+        // Spin buttons add up float noise (0.39999999999999986).
+        for v in [&mut p.media_player_scale, &mut p.media_player_cover_blur, &mut p.media_player_button_scale] {
+            *v = (*v * 100.0).round() / 100.0;
+        }
 
         let i = &mut self.idle;
         for m in [
@@ -887,6 +934,8 @@ mod tests {
         assert_eq!(cfg.panel.media_player_button_scale, 0.6);
         let cfg = Config::from_toml("[panel]\nmedia_player_button_scale = 3.0\n").unwrap();
         assert_eq!(cfg.panel.media_player_button_scale, 1.25);
+        let cfg = Config::from_toml("[panel]\nmedia_player_cover_blur = 0.39999999999999986\n").unwrap();
+        assert_eq!(cfg.panel.media_player_cover_blur, 0.4);
         let cfg = Config::from_toml("[panel]\nmedia_player_scale = 9.0\nmedia_player_cover_blur = -1.0\n").unwrap();
         assert_eq!((cfg.panel.media_player_scale, cfg.panel.media_player_cover_blur), (1.75, 0.0));
         let cfg = Config::from_toml("[panel]\nmedia_player_scale = 0.1\nmedia_player_cover_blur = 7.0\n").unwrap();
@@ -900,6 +949,30 @@ mod tests {
         assert!(cfg.panel.backdrop);
         assert!(!cfg.appearance.backdrop, "launcher and panel backdrop are independent");
         assert_eq!(cfg.panel.width, 420);
+    }
+
+    #[test]
+    fn clock_styles_copy_both_ways() {
+        let mut c = Config::default();
+        c.panel.backdrop_clock_size = 200;
+        c.panel.clock_font = "DejaVu Serif".into();
+        c.launcher_clock_like_panel();
+        assert_eq!((c.general.clock_size, c.general.clock_font.as_str()), (200, "DejaVu Serif"));
+        c.general.clock_size = 96;
+        c.general.clock_font.clear();
+        c.panel_clock_like_launcher();
+        assert_eq!((c.panel.backdrop_clock_size, c.panel.clock_font.as_str()), (96, ""));
+    }
+
+    #[test]
+    fn launcher_alignment_and_clock() {
+        let g = General::default();
+        assert_eq!((g.horizontal_position, g.side_margin), (HorizontalPosition::Center, 48));
+        assert!(!g.clock, "the launcher clock is opt-in");
+        assert_eq!((g.clock_size, g.clock_font.as_str()), (128, ""));
+        let cfg = Config::from_toml("[general]\nhorizontal_position = \"left\"\nside_margin = 5000\nclock_size = 1\n").unwrap();
+        assert_eq!(cfg.general.horizontal_position, HorizontalPosition::Left);
+        assert_eq!((cfg.general.side_margin, cfg.general.clock_size), (800, 48));
     }
 
     #[test]

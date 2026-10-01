@@ -17,6 +17,7 @@ pub mod hyprmon;
 pub mod idle;
 pub mod ipc;
 pub mod launch;
+pub mod launcher_layout;
 pub mod mcp;
 pub mod nixos;
 pub mod paths;
