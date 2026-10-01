@@ -18,7 +18,9 @@ Item {
         const n = notification;
         if (!n)
             return "";
-        if (root.claude && n.image === "")
+        // Before the image: Claude Code notifies through the terminal, which
+        // sends its own icon as the image.
+        if (root.claude)
             return Qt.resolvedUrl("../assets/claude.svg");
         if (n.image !== "")
             return n.image;
@@ -46,7 +48,7 @@ Item {
             id: image
 
             anchors.fill: parent
-            anchors.margins: root.notification?.image !== "" ? 0 : root.size * Theme.size.notificationIconInset
+            anchors.margins: root.notification?.image !== "" && !root.claude ? 0 : root.size * Theme.size.notificationIconInset
             visible: root.source !== "" && status === Image.Ready
             source: root.source
             asynchronous: true
