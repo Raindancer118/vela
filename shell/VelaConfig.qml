@@ -57,6 +57,7 @@ Singleton {
             clockCentered: false,
             clockOnBackdrop: false,
             clockFont: "",
+            backdropClockSize: 128,
             claudeUsage: true,
             claudeUsageSubtle: false,
             claudeUsageOnlyDefault: false,

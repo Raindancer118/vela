@@ -129,6 +129,7 @@ pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) ->
             "nightLightTemperature": pn.night_light_temperature,
             "clockCentered": pn.clock_centered,
             "clockOnBackdrop": pn.clock_on_backdrop && backdrop && pn.backdrop_blur,
+            "backdropClockSize": pn.backdrop_clock_size,
             "clockFont": Some(pn.clock_font.trim()).filter(|f| !f.is_empty()).map_or_else(system_font, str::to_string),
             "claudeUsage": pn.claude_usage && installed.has(Component::Claude),
             "claudeUsageSubtle": pn.claude_usage_subtle,
@@ -323,6 +324,7 @@ mod tests {
         let mut cfg = Config::default();
         let j = json(&cfg);
         assert_eq!(j["panel"]["clockFont"], j["appearance"]["fontFamily"]);
+        assert_eq!(j["panel"]["backdropClockSize"], 128);
         cfg.panel.clock_font = "  JetBrains Mono ".into();
         assert_eq!(json(&cfg)["panel"]["clockFont"], "JetBrains Mono");
     }

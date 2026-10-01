@@ -24,6 +24,7 @@ ShellRoot {
             // Asked for, but the backdrop above only dims.
             clockOnBackdrop: false,
             clockFont: "DejaVu Serif",
+            backdropClock: [200, 40],
             usageSubtle: true,
             compact: false
         })
@@ -45,6 +46,7 @@ ShellRoot {
             clockCentered: Config.clockCentered,
             clockOnBackdrop: Config.clockOnBackdrop,
             clockFont: Theme.font.clockFamily,
+            backdropClock: [Theme.font.backdropClock, Theme.font.backdropDate],
             usageSubtle: Config.claudeUsageSubtle,
             compact: Config.compactNotifications
         };

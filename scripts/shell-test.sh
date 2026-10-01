@@ -46,6 +46,7 @@ backdrop = true
 clock_centered = true
 clock_on_backdrop = true
 clock_font = "DejaVu Serif"
+backdrop_clock_size = 200
 claude_usage_subtle = true
 compact_notifications = false
 TOML
