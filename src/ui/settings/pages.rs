@@ -723,6 +723,12 @@ pub fn panel(b: &Binder) -> adw::PreferencesPage {
         |c| c.panel.clock_centered,
         |c, v| c.panel.clock_centered = v,
     ));
+    layout.add(&b.switch(
+        "Updates tile",
+        "Pending system updates as a tile; opens Settings → Updates",
+        |c| c.panel.updates_tile,
+        |c, v| c.panel.updates_tile = v,
+    ));
     p.add(&layout);
 
     let behaviour = group("Behaviour", "");

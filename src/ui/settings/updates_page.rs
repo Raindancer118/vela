@@ -4,7 +4,7 @@
 use super::binder::{Binder, group};
 use crate::ui::daemon::Daemon;
 use crate::ui::updates::{ClaudeFix, State, Updates};
-use crate::update::{Mode, Pending, Source};
+use crate::update::{Mode, Pending, PkgState, Source, Tracker};
 use adw::prelude::*;
 use gtk::glib;
 use std::cell::RefCell;
@@ -72,6 +72,62 @@ fn claude_button() -> gtk::Button {
         .css_classes(["pill", "vela-claude-button"])
         .tooltip_text("Claude Code looks into the error and repairs it in the background")
         .build()
+}
+
+/// Progress of one package during a run, next to its source badge.
+#[derive(Clone)]
+struct RowStatus {
+    pending: Pending,
+    root: gtk::Box,
+    spinner: adw::Spinner,
+    icon: gtk::Image,
+    label: gtk::Label,
+}
+
+impl RowStatus {
+    fn new(pending: &Pending) -> RowStatus {
+        let root = gtk::Box::builder().spacing(6).valign(gtk::Align::Center).visible(false).build();
+        let spinner = adw::Spinner::new();
+        let icon = gtk::Image::new();
+        let label = gtk::Label::builder().css_classes(["caption"]).build();
+        root.append(&spinner);
+        root.append(&icon);
+        root.append(&label);
+        RowStatus {
+            pending: pending.clone(),
+            root,
+            spinner,
+            icon,
+            label,
+        }
+    }
+
+    fn show(&self, tracker: Option<&Tracker>) {
+        let Some(state) = tracker.and_then(|t| t.state(&self.pending)) else {
+            self.root.set_visible(false);
+            return;
+        };
+        self.root.set_visible(true);
+        self.label.set_label(state.label());
+        let busy = matches!(state, PkgState::Downloading | PkgState::Building | PkgState::Installing);
+        self.spinner.set_visible(busy);
+        let icon = match state {
+            PkgState::Downloaded => Some("folder-download-symbolic"),
+            PkgState::Installed => Some("emblem-ok-symbolic"),
+            _ => None,
+        };
+        self.icon.set_visible(icon.is_some());
+        self.icon.set_icon_name(icon);
+        for c in ["dim-label", "success", "accent"] {
+            self.root.remove_css_class(c);
+        }
+        match state {
+            PkgState::Queued | PkgState::Skipped => self.root.add_css_class("dim-label"),
+            PkgState::Installed => self.root.add_css_class("success"),
+            PkgState::Downloaded => self.root.add_css_class("accent"),
+            _ => {}
+        }
+    }
 }
 
 fn open_log(path: &std::path::Path) {
@@ -223,6 +279,7 @@ pub fn build(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
     // -------------------------------------------------------------- logic
     let selection: Rc<RefCell<HashSet<(Source, String)>>> = Rc::default();
     let rows: Rc<RefCell<Vec<gtk::Widget>>> = Rc::default();
+    let statuses: Rc<RefCell<Vec<RowStatus>>> = Rc::default();
     let shown: Rc<RefCell<Option<Vec<Pending>>>> = Rc::default();
     let shown_errors: Rc<RefCell<Vec<String>>> = Rc::default();
     let shown_log: Rc<RefCell<Option<PathBuf>>> = Rc::default();
@@ -243,6 +300,7 @@ pub fn build(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
     };
 
     let render = {
+        let statuses = statuses.clone();
         let (list, rows, selection, shown, shown_errors, sync_selection) = (
             list.clone(),
             rows.clone(),
@@ -261,6 +319,7 @@ pub fn build(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
             for r in rows.borrow_mut().drain(..) {
                 list.remove(&r);
             }
+            statuses.borrow_mut().clear();
             // Keep only what is still pending.
             selection
                 .borrow_mut()
@@ -294,6 +353,10 @@ pub fn build(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
                     .activatable_widget(&tick)
                     .build();
                 r.add_prefix(&tick);
+                let status = RowStatus::new(p);
+                status.show(s.run.as_ref().map(|r| &r.tracker));
+                r.add_suffix(&status.root);
+                statuses.borrow_mut().push(status);
                 r.add_suffix(
                     &gtk::Label::builder()
                         .label(p.source.label())
@@ -416,6 +479,21 @@ pub fn build(daemon: &Rc<Daemon>, b: &Binder) -> adw::PreferencesPage {
     {
         let apply = apply.clone();
         updates.subscribe(move |s| apply(&s.clone()));
+    }
+    {
+        let st = statuses.clone();
+        updates.subscribe_progress(move |t| {
+            for row in st.borrow().iter() {
+                row.show(Some(t));
+            }
+        });
+        // A new run or none: every row follows the current state.
+        let st = statuses.clone();
+        updates.subscribe(move |s| {
+            for row in st.borrow().iter() {
+                row.show(s.run.as_ref().map(|r| &r.tracker));
+            }
+        });
     }
     {
         let (buffer, view) = (buffer.clone(), view.clone());

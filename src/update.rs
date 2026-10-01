@@ -626,6 +626,238 @@ pub fn find_askpass(env_value: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
         })
 }
 
+/// Where one pending update is during a run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PkgState {
+    Queued,
+    Downloading,
+    Downloaded,
+    Building,
+    Installing,
+    Installed,
+    /// Not part of this run, ignored by pacman, or left out by it.
+    Skipped,
+}
+
+impl PkgState {
+    pub fn label(self) -> &'static str {
+        match self {
+            PkgState::Queued => "Waiting",
+            PkgState::Downloading => "Downloading",
+            PkgState::Downloaded => "Downloaded",
+            PkgState::Building => "Building",
+            PkgState::Installing => "Installing",
+            PkgState::Installed => "Installed",
+            PkgState::Skipped => "Not updated",
+        }
+    }
+}
+
+/// Which sources a step updates.
+pub fn step_sources(step: &Step) -> Vec<Source> {
+    let program = step
+        .argv
+        .first()
+        .map(|a| Path::new(a).file_name().unwrap_or_default().to_string_lossy().into_owned());
+    if program.as_deref() == Some("flatpak") {
+        vec![Source::Flatpak]
+    } else {
+        vec![Source::Repo, Source::Aur]
+    }
+}
+
+/// Follows a run's output (LC_ALL=C pacman, makepkg, flatpak) and keeps the
+/// state of every pending update. pacman without a terminal only says when a
+/// download starts; that it finished is told by the file in the cache
+/// (`mark_downloaded`) or by the next phase.
+#[derive(Debug, Clone, Default)]
+pub struct Tracker {
+    items: Vec<(Pending, PkgState)>,
+    /// Download file names (`name-version-arch`) of the items, by index.
+    files: Vec<(usize, String)>,
+    installing: Vec<usize>,
+}
+
+impl Tracker {
+    pub fn new(pending: &[Pending], mode: &Mode) -> Tracker {
+        let state = |p: &Pending| match mode {
+            Mode::Full => PkgState::Queued,
+            Mode::Selected(sel) if sel.iter().any(|s| s.source == p.source && s.id == p.id) => PkgState::Queued,
+            _ => PkgState::Skipped,
+        };
+        let items = if matches!(mode, Mode::Database) {
+            Vec::new()
+        } else {
+            pending.iter().map(|p| (p.clone(), state(p))).collect()
+        };
+        Tracker { items, ..Tracker::default() }
+    }
+
+    pub fn state(&self, p: &Pending) -> Option<PkgState> {
+        self.items.iter().find(|(q, _)| q.source == p.source && q.id == p.id).map(|(_, s)| *s)
+    }
+
+    fn package(&self, name: &str) -> Option<usize> {
+        self.items.iter().position(|(p, _)| p.source != Source::Flatpak && p.name == name)
+    }
+
+    fn set(&mut self, i: usize, from: &[PkgState], to: PkgState) -> bool {
+        let s = &mut self.items[i].1;
+        let hit = from.contains(s) && *s != to;
+        if hit {
+            *s = to;
+        }
+        hit
+    }
+
+    fn downloads_done(&mut self) -> bool {
+        let files: Vec<usize> = self.files.drain(..).map(|(i, _)| i).collect();
+        files
+            .into_iter()
+            .fold(false, |c, i| self.set(i, &[PkgState::Downloading], PkgState::Downloaded) | c)
+    }
+
+    fn installs_done(&mut self) -> bool {
+        let done = std::mem::take(&mut self.installing);
+        done.into_iter()
+            .fold(false, |c, i| self.set(i, &[PkgState::Installing], PkgState::Installed) | c)
+    }
+
+    /// Whether the line changed anything.
+    pub fn line(&mut self, line: &str) -> bool {
+        use PkgState::*;
+        let t = line.trim();
+        if let Some(file) = t.strip_suffix(" downloading...") {
+            let hit = self
+                .items
+                .iter()
+                .position(|(p, s)| *s == Queued && p.source != Source::Flatpak && file.starts_with(&format!("{}-{}-", p.name, p.new)));
+            return hit.is_some_and(|i| {
+                self.files.push((i, file.to_owned()));
+                self.set(i, &[Queued], Downloading)
+            });
+        }
+        if matches!(t, "checking keyring..." | "checking package integrity..." | ":: Processing package changes...") {
+            return self.downloads_done();
+        }
+        if t == ":: Running post-transaction hooks..." {
+            return self.installs_done();
+        }
+        if let Some(name) = t
+            .strip_prefix("warning: ")
+            .and_then(|r| r.split_once(": ignoring package upgrade"))
+            .map(|(n, _)| n)
+        {
+            return self.package(name).is_some_and(|i| self.set(i, &[Queued, Downloading, Downloaded], Skipped));
+        }
+        if let Some(name) = t.strip_prefix("==> Making package: ").and_then(|r| r.split_whitespace().next()) {
+            return self.package(name).is_some_and(|i| self.set(i, &[Queued, Downloading, Downloaded], Building));
+        }
+        for verb in ["upgrading ", "installing ", "reinstalling "] {
+            if let Some(name) = t.strip_prefix(verb).and_then(|r| r.strip_suffix("...")) {
+                let mut changed = self.downloads_done() | self.installs_done();
+                if let Some(i) = self.package(name) {
+                    changed |= self.set(i, &[Queued, Downloading, Downloaded, Building], Installing);
+                    self.installing.push(i);
+                }
+                return changed;
+            }
+        }
+        // Flatpak: "Updating app/org.x.App/x86_64/stable from flathub".
+        if let Some(target) = t
+            .strip_prefix("Updating ")
+            .or_else(|| t.strip_prefix("Installing "))
+            .and_then(|r| r.split_whitespace().next())
+        {
+            let hit = self
+                .items
+                .iter()
+                .position(|(p, _)| p.source == Source::Flatpak && (p.id == target || target.contains(&format!("/{}/", p.name))));
+            return hit.is_some_and(|i| {
+                self.installing.push(i);
+                self.set(i, &[Queued], Installing)
+            });
+        }
+        false
+    }
+
+    /// File names (without `.pkg.tar.*`) that are still downloading.
+    pub fn downloading(&self) -> Vec<String> {
+        self.files
+            .iter()
+            .filter(|(i, _)| self.items[*i].1 == PkgState::Downloading)
+            .map(|(_, f)| f.clone())
+            .collect()
+    }
+
+    pub fn mark_downloaded(&mut self, file: &str) -> bool {
+        match self.files.iter().position(|(_, f)| f == file) {
+            Some(k) => {
+                let (i, _) = self.files.remove(k);
+                self.set(i, &[PkgState::Downloading], PkgState::Downloaded)
+            }
+            None => false,
+        }
+    }
+
+    /// A step ended; on success what it touched is installed and what it
+    /// left alone was not updated.
+    pub fn step_done(&mut self, sources: &[Source], ok: bool) {
+        use PkgState::*;
+        if !ok {
+            return;
+        }
+        for (p, s) in &mut self.items {
+            if sources.contains(&p.source) {
+                *s = match *s {
+                    Installing | Installed => Installed,
+                    Skipped => Skipped,
+                    Queued | Downloading | Downloaded | Building => Skipped,
+                };
+            }
+        }
+        self.installing.clear();
+        self.files.clear();
+    }
+}
+
+/// pacman's package caches (`CacheDir` in pacman.conf, else the default).
+pub fn cache_dirs(pacman_conf: &str) -> Vec<PathBuf> {
+    let dirs: Vec<PathBuf> = pacman_conf
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or("").trim())
+        .filter_map(|l| l.split_once('='))
+        .filter(|(k, _)| k.trim() == "CacheDir")
+        .flat_map(|(_, v)| v.split_whitespace().map(PathBuf::from).collect::<Vec<_>>())
+        .collect();
+    if dirs.is_empty() {
+        vec![PathBuf::from("/var/cache/pacman/pkg/")]
+    } else {
+        dirs
+    }
+}
+
+/// Which of `files` lie finished in one of the caches (one directory read
+/// for all of them).
+pub fn cached(dirs: &[PathBuf], files: &[String]) -> Vec<String> {
+    let names: std::collections::HashSet<String> = dirs
+        .iter()
+        .filter_map(|d| std::fs::read_dir(d).ok())
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| !n.ends_with(".part") && !n.ends_with(".sig"))
+        .filter_map(|n| n.split_once(".pkg.tar.").map(|(stem, _)| stem.to_owned()))
+        .collect();
+    files.iter().filter(|f| names.contains(*f)).cloned().collect()
+}
+
+/// Whether a finished download of `file` lies in one of the caches.
+pub fn in_cache(dirs: &[PathBuf], file: &str) -> bool {
+    !cached(dirs, &[file.to_owned()]).is_empty()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1070,5 +1302,116 @@ mod tests {
         }];
         run_with_env("x", &steps, &log, false, &[("SUDO_ASKPASS".into(), "/x/askpass".into())], &mut |_| {}).unwrap();
         assert!(std::fs::read_to_string(&log).unwrap().contains("PASS=/x/askpass"));
+    }
+
+    fn pkg(source: Source, name: &str, new: &str, id: &str) -> Pending {
+        Pending {
+            source,
+            name: name.into(),
+            old: "0".into(),
+            new: new.into(),
+            id: id.into(),
+        }
+    }
+
+    #[test]
+    fn tracker_follows_a_full_run() {
+        let flat = "app/org.x.App/x86_64/stable";
+        let list = vec![
+            pkg(Source::Repo, "bpf", "7.2.8-2", "bpf"),
+            pkg(Source::Repo, "brave-bin", "1:1.96.60-1", "brave-bin"),
+            pkg(Source::Repo, "linux", "6.2-1", "linux"),
+            pkg(Source::Repo, "mesa", "3:26.2.4-1", "mesa"),
+            pkg(Source::Aur, "yay-bin", "12.5-1", "yay-bin"),
+            pkg(Source::Flatpak, "org.x.App", "2", flat),
+        ];
+        let st = |t: &Tracker, i: usize| t.state(&list[i]).unwrap();
+        let mut t = Tracker::new(&list, &Mode::Full);
+        assert!((0..6).all(|i| st(&t, i) == PkgState::Queued));
+
+        assert!(!t.line(" core downloading..."), "databases are no packages");
+        assert!(t.line(" bpf-7.2.8-2-x86_64 downloading..."));
+        assert!(t.line(" brave-bin-1:1.96.60-1-x86_64 downloading..."));
+        assert!(t.line(" mesa-3:26.2.4-1-x86_64 downloading..."));
+        assert_eq!(st(&t, 0), PkgState::Downloading);
+        assert_eq!(
+            t.downloading(),
+            ["bpf-7.2.8-2-x86_64", "brave-bin-1:1.96.60-1-x86_64", "mesa-3:26.2.4-1-x86_64"]
+        );
+        assert!(t.mark_downloaded("bpf-7.2.8-2-x86_64"));
+        assert!(!t.mark_downloaded("bpf-7.2.8-2-x86_64"), "only once");
+        assert_eq!(st(&t, 0), PkgState::Downloaded);
+        assert!(t.line("warning: linux: ignoring package upgrade (6.1-1 => 6.2-1)"));
+        assert_eq!(st(&t, 2), PkgState::Skipped);
+
+        // The next phase means every download is done.
+        t.line("checking keyring...");
+        assert_eq!(st(&t, 1), PkgState::Downloaded);
+        assert!(t.downloading().is_empty());
+
+        t.line("upgrading bpf...");
+        assert_eq!(st(&t, 0), PkgState::Installing);
+        t.line("upgrading egl-wayland...");
+        t.line("upgrading mesa...");
+        assert_eq!(st(&t, 0), PkgState::Installed, "the next package means the last one is in");
+        assert_eq!(st(&t, 3), PkgState::Installing);
+        t.line(":: Running post-transaction hooks...");
+        assert_eq!(st(&t, 3), PkgState::Installed);
+
+        t.line("==> Making package: yay-bin 12.5-1 (Thu Oct  1 20:00:00 2026)");
+        assert_eq!(st(&t, 4), PkgState::Building);
+        t.line("installing yay-bin...");
+        assert_eq!(st(&t, 4), PkgState::Installing);
+        t.step_done(&[Source::Repo, Source::Aur], true);
+        assert_eq!(st(&t, 4), PkgState::Installed);
+        assert_eq!(st(&t, 1), PkgState::Skipped, "downloaded but never installed");
+        assert_eq!(st(&t, 5), PkgState::Queued, "the Flatpak step is still to come");
+
+        t.line("Updating app/org.x.App/x86_64/stable from flathub");
+        assert_eq!(st(&t, 5), PkgState::Installing);
+        t.step_done(&[Source::Flatpak], true);
+        assert_eq!(st(&t, 5), PkgState::Installed);
+    }
+
+    #[test]
+    fn tracker_modes_and_failures() {
+        let list = vec![pkg(Source::Repo, "bpf", "2", "bpf"), pkg(Source::Repo, "git", "3", "git")];
+        let t = Tracker::new(&list, &Mode::Selected(vec![list[1].clone()]));
+        assert_eq!(t.state(&list[0]), Some(PkgState::Skipped));
+        assert_eq!(t.state(&list[1]), Some(PkgState::Queued));
+        assert_eq!(Tracker::new(&list, &Mode::Database).state(&list[0]), None, "a database refresh updates nothing");
+
+        let mut t = Tracker::new(&list, &Mode::Full);
+        t.line("upgrading bpf...");
+        t.step_done(&[Source::Repo, Source::Aur], false);
+        assert_eq!(t.state(&list[0]), Some(PkgState::Installing), "unknown after a failure: left as it was");
+        assert_eq!(t.state(&list[1]), Some(PkgState::Queued));
+    }
+
+    #[test]
+    fn step_sources_and_caches() {
+        let fp = Step {
+            title: "x".into(),
+            argv: vec!["/usr/bin/flatpak".into(), "update".into()],
+        };
+        let pk = Step {
+            title: "x".into(),
+            argv: vec!["/usr/bin/paru".into(), "-Syu".into()],
+        };
+        assert_eq!(step_sources(&fp), [Source::Flatpak]);
+        assert_eq!(step_sources(&pk), [Source::Repo, Source::Aur]);
+
+        assert_eq!(cache_dirs("[options]\n#CacheDir = /x\n"), [PathBuf::from("/var/cache/pacman/pkg/")]);
+        assert_eq!(
+            cache_dirs("[options]\nCacheDir = /a/ /b/\nCacheDir=/c\n"),
+            [PathBuf::from("/a/"), PathBuf::from("/b/"), PathBuf::from("/c")]
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let dirs = vec![dir.path().to_owned()];
+        std::fs::write(dir.path().join("bpf-2-x86_64.pkg.tar.zst.part"), "").unwrap();
+        assert!(!in_cache(&dirs, "bpf-2-x86_64"), "partial");
+        std::fs::write(dir.path().join("bpf-2-x86_64.pkg.tar.zst"), "").unwrap();
+        assert!(in_cache(&dirs, "bpf-2-x86_64"));
+        assert!(!in_cache(&dirs, "bpf-2"), "whole name only");
     }
 }

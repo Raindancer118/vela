@@ -30,6 +30,10 @@ pub struct Run {
     pub log_path: PathBuf,
     pub result: Option<Result<(), Failure>>,
     pub claude: ClaudeFix,
+    /// Where each pending update is in this run.
+    pub tracker: update::Tracker,
+    /// Sources each step updates, by step index.
+    steps: Vec<Vec<update::Source>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -46,6 +50,7 @@ impl State {
 
 type Listener = Box<dyn Fn(&State)>;
 type LogListener = Box<dyn Fn(&str)>;
+type ProgressListener = Box<dyn Fn(&update::Tracker)>;
 
 pub struct Updates {
     store: ConfigStore,
@@ -53,6 +58,7 @@ pub struct Updates {
     state: RefCell<State>,
     listeners: RefCell<Vec<Listener>>,
     log_listeners: RefCell<Vec<LogListener>>,
+    progress_listeners: RefCell<Vec<ProgressListener>>,
     open_page: RefCell<Option<Rc<dyn Fn()>>>,
     /// Whether someone looks at the page (no desktop notification then).
     page_visible: Cell<bool>,
@@ -81,6 +87,7 @@ impl Updates {
             state: RefCell::new(State { status, run: None }),
             listeners: RefCell::default(),
             log_listeners: RefCell::default(),
+            progress_listeners: RefCell::default(),
             open_page: RefCell::default(),
             page_visible: Cell::new(false),
             fingerprint: RefCell::default(),
@@ -109,6 +116,50 @@ impl Updates {
 
     pub fn subscribe(&self, f: impl Fn(&State) + 'static) {
         self.listeners.borrow_mut().push(Box::new(f));
+    }
+
+    pub fn subscribe_progress(&self, f: impl Fn(&update::Tracker) + 'static) {
+        self.progress_listeners.borrow_mut().push(Box::new(f));
+    }
+
+    fn progress_changed(&self) {
+        let Some(tracker) = self.state.borrow().run.as_ref().map(|r| r.tracker.clone()) else {
+            return;
+        };
+        for l in self.progress_listeners.borrow().iter() {
+            l(&tracker);
+        }
+    }
+
+    /// Feeds the tracker; `step_done` = (step index, ok) when a step ended.
+    fn track(&self, f: impl FnOnce(&mut update::Tracker, &[Vec<update::Source>]) -> bool) {
+        let changed = {
+            let mut s = self.state.borrow_mut();
+            let Some(run) = s.run.as_mut() else { return };
+            let steps = run.steps.clone();
+            f(&mut run.tracker, &steps)
+        };
+        if changed {
+            self.progress_changed();
+        }
+    }
+
+    /// pacman doesn't say when a download is done: its file in the cache does.
+    fn watch_downloads(self: &Rc<Self>) {
+        let dirs = update::cache_dirs(&std::fs::read_to_string("/etc/pacman.conf").unwrap_or_default());
+        let weak = Rc::downgrade(self);
+        glib::timeout_add_local(Duration::from_secs(1), move || {
+            let Some(u) = weak.upgrade() else { return glib::ControlFlow::Break };
+            if !u.state.borrow().running() {
+                return glib::ControlFlow::Break;
+            }
+            let files = u.state.borrow().run.as_ref().map(|r| r.tracker.downloading()).unwrap_or_default();
+            if !files.is_empty() {
+                let done = update::cached(&dirs, &files);
+                u.track(|t, _| done.iter().fold(false, |c, f| t.mark_downloaded(f) | c));
+            }
+            glib::ControlFlow::Continue
+        });
     }
 
     pub fn subscribe_log(&self, f: impl Fn(&str) + 'static) {
@@ -143,6 +194,7 @@ impl Updates {
     /// pam_fprintd's request shows the fingerprint prompt; the next line
     /// says whether the finger was accepted.
     fn on_output_lines(&self, text: &str) {
+        self.track(|t, _| text.lines().fold(false, |c, l| t.line(l) | c));
         for line in text.lines() {
             let waiting = self.state.borrow().status.fingerprint;
             if update::is_fingerprint_request(line) {
@@ -233,9 +285,12 @@ impl Updates {
                 log_path: log_path.clone(),
                 result: None,
                 claude: ClaudeFix::Idle,
+                tracker: update::Tracker::new(&s.status.pending, &mode),
+                steps: steps.iter().map(update::step_sources).collect(),
             });
         }
         self.changed();
+        self.watch_downloads();
 
         enum Msg {
             Event(Event),
@@ -271,6 +326,12 @@ impl Updates {
                     }
                     Msg::Event(Event::Step { index, count, title }) => {
                         u.end_fingerprint();
+                        if index > 0 {
+                            u.track(|t, steps| {
+                                t.step_done(&steps[index - 1], true);
+                                true
+                            });
+                        }
                         {
                             let mut s = u.state.borrow_mut();
                             s.status.running = Some(title.clone());
@@ -282,6 +343,13 @@ impl Updates {
                     }
                     Msg::Done(result) => {
                         u.end_fingerprint();
+                        let ok = result.is_ok();
+                        u.track(|t, steps| {
+                            if let Some(last) = steps.last() {
+                                t.step_done(last, ok);
+                            }
+                            true
+                        });
                         {
                             let mut s = u.state.borrow_mut();
                             s.status.running = None;
