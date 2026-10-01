@@ -45,10 +45,11 @@ Card {
         textFormat: Text.RichText
         text: {
             const p = plan.toUpperCase();
-            return p.charAt(0) + "<span style='font-size:" + (font.pixelSize - 1) + "px'>" + p.slice(1) + "</span>";
+            return p.charAt(0) + "<span style='font-size:" + Theme.font.small + "px'>" + p.slice(1) + "</span>";
         }
         color: Theme.withAlpha(Theme.colors.text, 0.5)
-        font.pixelSize: Theme.font.small
+        // The first letter is the larger one; the rest has the small size.
+        font.pixelSize: Theme.font.small + 1
         font.weight: Theme.font.weightSemiBold
         font.letterSpacing: Theme.font.labelLetterSpacing
     }
