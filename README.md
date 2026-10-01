@@ -297,7 +297,8 @@ control center, and adds the `setup()` call at the end of your hyprland.lua.
 
 With `nixos.stateDir` set, vela recognises NixOS and keeps `config.toml`,
 `hyprland.toml` and `hyprland.lua` in that directory instead of
-`~/.config/vela` and `~/.local/state/vela`. Changes still apply the moment
+`~/.config/vela` and `~/.local/state/vela` (settings you already had there
+are copied over once). Changes still apply the moment
 you make them; while git reports uncommitted changes there, *Settings* shows
 **Apply & rebuild**, which runs `nixos.rebuildCommand` in your terminal
 (*Settings → System → Terminal*), in that directory. Without it, vela works as

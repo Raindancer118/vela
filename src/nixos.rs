@@ -7,7 +7,7 @@
 use crate::config::Terminal;
 use crate::launch::{self, LaunchError, SpawnSpec};
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
@@ -73,13 +73,34 @@ pub fn pointer_file() -> PathBuf {
     crate::paths::config_dir().join("nixos.toml")
 }
 
+/// Settings made before NixOS mode was switched on: copied into the state
+/// directory once, so they carry over instead of starting from defaults.
+/// Files the state directory already has are never touched.
+pub fn adopt_previous(mode: &NixosMode, old_config_dir: &Path) {
+    for name in ["config.toml", "hyprland.toml"] {
+        let (from, to) = (old_config_dir.join(name), mode.state_dir.join(name));
+        if to.exists() || !from.is_file() {
+            continue;
+        }
+        let copied = std::fs::create_dir_all(&mode.state_dir).and_then(|()| std::fs::copy(&from, &to));
+        match copied {
+            Ok(_) => log::info!("NixOS mode: took over {} as {}", from.display(), to.display()),
+            Err(e) => log::warn!("cannot copy {} to {}: {e}", from.display(), to.display()),
+        }
+    }
+}
+
 /// Detected once per process.
 pub fn status() -> &'static Status {
     static STATUS: OnceLock<Status> = OnceLock::new();
     STATUS.get_or_init(|| {
         let os = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
         let ptr = std::fs::read_to_string(pointer_file()).ok();
-        detect(&os, ptr.as_deref())
+        let status = detect(&os, ptr.as_deref());
+        if let Status::Active(mode) = &status {
+            adopt_previous(mode, &crate::paths::config_dir());
+        }
+        status
     })
 }
 
@@ -147,6 +168,31 @@ mod tests {
             executable: "/bin/sh".into(),
             exec_args: Some(vec!["-e".into()]),
         }
+    }
+
+    #[test]
+    fn previous_settings_are_copied_once_into_an_empty_state_dir() {
+        let old = tempfile::tempdir().unwrap();
+        let repo = tempfile::tempdir().unwrap();
+        let state = repo.path().join("vela");
+        std::fs::write(old.path().join("config.toml"), "old config").unwrap();
+        std::fs::write(old.path().join("hyprland.toml"), "old hypr").unwrap();
+        adopt_previous(&mode(&state, "rebuild"), old.path());
+        assert_eq!(std::fs::read_to_string(state.join("config.toml")).unwrap(), "old config");
+        assert_eq!(std::fs::read_to_string(state.join("hyprland.toml")).unwrap(), "old hypr");
+        // Never over what the repository already has.
+        std::fs::write(old.path().join("config.toml"), "newer elsewhere").unwrap();
+        adopt_previous(&mode(&state, "rebuild"), old.path());
+        assert_eq!(std::fs::read_to_string(state.join("config.toml")).unwrap(), "old config");
+    }
+
+    #[test]
+    fn nothing_to_adopt_leaves_the_state_dir_alone() {
+        let old = tempfile::tempdir().unwrap();
+        let repo = tempfile::tempdir().unwrap();
+        let state = repo.path().join("vela");
+        adopt_previous(&mode(&state, "rebuild"), old.path());
+        assert!(!state.exists());
     }
 
     #[test]
