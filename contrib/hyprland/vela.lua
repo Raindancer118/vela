@@ -182,6 +182,8 @@ function M.setup(opts)
             if not state or state == "" then state = os.getenv("HOME") .. "/.local/state" end
             generated = state .. "/vela/hyprland.lua"
         end
+        -- The daemon applies a rewritten file live only if it is this one.
+        vela_settings_file = generated
         if exists(generated) then
             local ok, err = pcall(dofile, generated)
             if not ok then print("vela: " .. tostring(err)) end

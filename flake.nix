@@ -27,6 +27,7 @@
             rustc
             clippy
             rustfmt
+            lua # hyprconf tests run generated snippets
           ];
         };
       });

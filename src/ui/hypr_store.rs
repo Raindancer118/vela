@@ -100,13 +100,7 @@ impl HyprStore {
             log::error!("cannot write {}: {e:#}", self.0.lua_path.display());
             return;
         }
-        // Only the file vela.lua itself loads: a vela started with another
-        // XDG_STATE_HOME (tests) must not change the running Hyprland.
-        let code = format!(
-            "local s = os.getenv(\"XDG_STATE_HOME\") if not s or s == \"\" then s = os.getenv(\"HOME\") .. \"/.local/state\" end \
-             local p = {} if s .. \"/vela/hyprland.lua\" == p then dofile(p) end",
-            crate::hyprconf::lua_string(&self.0.lua_path.to_string_lossy())
-        );
+        let code = crate::hyprconf::apply_if_loaded(&self.0.lua_path.to_string_lossy());
         if let Err(e) = hyprland::eval(&[code]) {
             log::info!("hyprland overrides not applied now: {e}");
         }
