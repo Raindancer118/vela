@@ -125,7 +125,9 @@ pub fn dirty(mode: &NixosMode) -> Option<bool> {
     if !mode.state_dir.is_dir() {
         return None;
     }
+    // No index refresh (and no index.lock): the rebuild may be committing.
     let out = Command::new("git")
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .arg("-C")
         .arg(&mode.state_dir)
         .args(["status", "--porcelain", "--untracked-files=all", "--", "."])
@@ -237,6 +239,37 @@ mod tests {
         git(&["add", "-A"]);
         git(&["commit", "-qm", "c"]);
         assert_eq!(dirty(&mode(&state, "rebuild")), Some(false));
+    }
+
+    #[test]
+    fn dirty_never_rewrites_the_index_a_rebuild_may_be_committing() {
+        let repo = tempfile::tempdir().unwrap();
+        let git = |args: &[&str]| {
+            let ok = std::process::Command::new("git")
+                .arg("-C")
+                .arg(repo.path())
+                .args(args)
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "git {args:?}");
+        };
+        git(&["init", "-q"]);
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        git(&["config", "commit.gpgsign", "false"]);
+        let state = repo.path().join("vela");
+        std::fs::create_dir(&state).unwrap();
+        std::fs::write(state.join("config.toml"), "x").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "c"]);
+        // Same content, newer mtime: a plain `git status` refreshes the index.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(state.join("config.toml"), "x").unwrap();
+        let index = repo.path().join(".git/index");
+        let before = std::fs::metadata(&index).unwrap().modified().unwrap();
+        assert_eq!(dirty(&mode(&state, "rebuild")), Some(false));
+        assert_eq!(std::fs::metadata(&index).unwrap().modified().unwrap(), before);
     }
 
     #[test]
