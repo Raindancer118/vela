@@ -17,6 +17,8 @@
         default = pkgs.callPackage ./nix/package.nix { };
       });
 
+      homeManagerModules.default = import ./nix/hm-module.nix self;
+
       devShells = forAll (pkgs: {
         default = pkgs.mkShell {
           inputsFrom = [ self.packages.${pkgs.stdenv.hostPlatform.system}.default ];

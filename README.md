@@ -268,6 +268,48 @@ set its path under *Settings → Claude*).
 </details>
 
 <details>
+<summary><b>NixOS (Home Manager)</b></summary>
+<br>
+
+The flake has a package and a Home Manager module. It needs
+`wayland.windowManager.hyprland.configType = "lua"`.
+
+```nix
+# flake.nix
+inputs.vela = {
+  url = "github:Raindancer118/vela";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+
+# home.nix
+imports = [ inputs.vela.homeManagerModules.default ];
+programs.vela = {
+  enable = true;
+  panelPeek = "SUPER + B";
+  # Optional: keep vela's settings in your NixOS repository.
+  nixos.stateDir = "/home/me/nixos/home/me/vela";
+  nixos.rebuildCommand = "sudo nixos-rebuild switch --flake /home/me/nixos#host";
+};
+```
+
+The module installs vela, its user service and the fonts and icons of the
+control center, and adds the `setup()` call at the end of your hyprland.lua.
+
+With `nixos.stateDir` set, vela recognises NixOS and keeps `config.toml`,
+`hyprland.toml` and `hyprland.lua` in that directory instead of
+`~/.config/vela` and `~/.local/state/vela`. Changes still apply the moment
+you make them; while git reports uncommitted changes there, *Settings* shows
+**Apply & rebuild**, which runs `nixos.rebuildCommand` in your terminal
+(*Settings → System → Terminal*), in that directory. Without it, vela works as
+everywhere else and says so in *Settings*. The pointer to the directory is
+`~/.config/vela/nixos.toml`.
+
+Register the MCP server yourself:
+`claude mcp add --scope user vela -- vela mcp`.
+
+</details>
+
+<details>
 <summary><b>What <code>setup()</code> does, and its options</b></summary>
 
 1. **Super tap.** It listens to `input.keyboard.key`, which Hyprland emits for
@@ -296,6 +338,8 @@ dofile(os.getenv("HOME") .. "/.config/hypr/vela.lua").setup({
     panel_peek = nil,         -- e.g. "SUPER + T": tap toggles the control center,
                               -- holding shows it until you let go (peek_ms = 280)
     binary    = nil,          -- path to `vela`, found automatically
+    settings_file = nil,      -- Lua with vela's Hyprland settings
+                              -- (default ~/.local/state/vela/hyprland.lua)
 })
 ```
 
