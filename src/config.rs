@@ -51,6 +51,13 @@ pub struct Pulse {
     pub heat_map: bool,
     /// List kernel threads in "Apps & processes".
     pub show_kernel: bool,
+    /// Keys in the window for the selected app or process: one character
+    /// (`k`) or a key name (`Delete`, `F5`); empty = off. No confirmation.
+    pub key_force: String,
+    pub key_end: String,
+    pub key_restart: String,
+    pub key_pause: String,
+    pub key_efficiency: String,
 }
 
 pub const PULSE_PAGES: [&str; 6] = ["overview", "processes", "performance", "diagnosis", "services", "activity"];
@@ -68,6 +75,11 @@ impl Default for Pulse {
             confirm_end: false,
             heat_map: true,
             show_kernel: false,
+            key_force: "k".into(),
+            key_end: "g".into(),
+            key_restart: "r".into(),
+            key_pause: "p".into(),
+            key_efficiency: "e".into(),
         }
     }
 }
@@ -705,6 +717,9 @@ impl Config {
             p.start_page = "overview".into();
         }
         p.range_secs = if p.range_secs >= 180 { 300 } else { 60 };
+        for k in [&mut p.key_force, &mut p.key_end, &mut p.key_restart, &mut p.key_pause, &mut p.key_efficiency] {
+            *k = pulse_key(k);
+        }
 
         let a = &mut self.appearance;
         a.tile_size = a.tile_size.clamp(56, 240);
@@ -819,6 +834,27 @@ impl Config {
 
 const HEADER: &str = "# vela configuration. Edited by the settings window (`vela settings`);
 # manual edits are picked up live. See README.md for every option.";
+
+/// A Pulse window key: one character (lowercased) or a key name such as
+/// `Delete` or `F5`; anything else is off.
+pub fn pulse_key(k: &str) -> String {
+    let k = k.trim();
+    let mut chars = k.chars();
+    match (chars.next(), chars.next()) {
+        (None, _) => String::new(),
+        (Some(c), None) if !c.is_control() && !c.is_whitespace() => c.to_lowercase().collect(),
+        _ => {
+            const NAMES: [&str; 6] = ["Delete", "Backspace", "Insert", "Home", "End", "Space"];
+            let named = NAMES.iter().find(|n| n.eq_ignore_ascii_case(k)).map(|n| n.to_string());
+            let function = k
+                .strip_prefix(['F', 'f'])
+                .and_then(|n| n.parse::<u8>().ok())
+                .filter(|n| (1..=12).contains(n))
+                .map(|n| format!("F{n}"));
+            named.or(function).unwrap_or_default()
+        }
+    }
+}
 
 fn finite_or(v: f64, fallback: f64) -> f64 {
     if v.is_finite() { v } else { fallback }
@@ -954,6 +990,17 @@ mod tests {
         assert_eq!(cfg.pulse.range_secs, 300);
         assert_eq!(cfg.pulse.interval_ms, 250);
         assert_eq!(cfg.pulse.history_minutes, 5);
+        assert_eq!(pulse_key(" K "), "k");
+        assert_eq!(pulse_key("delete"), "Delete");
+        assert_eq!(pulse_key("f5"), "F5");
+        assert_eq!(pulse_key("F13"), "");
+        assert_eq!(pulse_key("ctrl+k"), "");
+        assert_eq!(pulse_key(""), "");
+        let c = Config::from_toml("[pulse]\nkey_force = \"X\"\nkey_end = \"nonsense\"\n").unwrap();
+        assert_eq!(
+            (c.pulse.key_force.as_str(), c.pulse.key_end.as_str(), c.pulse.key_restart.as_str()),
+            ("x", "", "r")
+        );
         let mut c = Config::default();
         c.set_value("pulse.smooth_graphs", "false").unwrap();
         assert!(!c.pulse.smooth_graphs);

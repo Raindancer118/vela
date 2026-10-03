@@ -20,7 +20,8 @@ Item {
     property var collapsed: ({
             kernel: true
         })
-    property string selected: ""
+    property string selected: PulseUi.selected
+    onSelectedChanged: PulseUi.selected = selected
     // Row key → { type, depth, kind, count }.
     property var info: ({})
     readonly property var loc: Qt.locale()
@@ -569,6 +570,32 @@ Item {
             reuseItems: false
             cacheBuffer: 400
 
+            // ↑/↓ move the selection (headers are skipped), Enter shows details.
+            function step(dir: int): void {
+                let i = -1;
+                for (let n = 0; n < rows.count; n++)
+                    if (rows.get(n).key === page.selected)
+                        i = n;
+                for (let n = i + dir; n >= 0 && n < rows.count; n += dir) {
+                    const k = rows.get(n).key;
+                    if (!k.startsWith("h:")) {
+                        page.selected = k;
+                        list.positionViewAtIndex(n, ListView.Contain);
+                        return;
+                    }
+                }
+            }
+            Keys.onUpPressed: step(-1)
+            Keys.onDownPressed: step(1)
+            Keys.onReturnPressed: {
+                if (page.selectedApp)
+                    PulseUi.showApp(page.selectedApp.key);
+                else if (page.selectedProc) {
+                    PulseUi.showApp(page.selectedProc.app);
+                    PulseUi.detailPid = page.selectedProc.pid;
+                }
+            }
+
             add: Transition {
                 Anim {
                     property: "opacity"
@@ -773,6 +800,8 @@ Item {
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
                         onClicked: mouse => {
                             page.selected = row.key;
+                            // Away from the search field, so the window keys work.
+                            list.forceActiveFocus();
                             if (mouse.button === Qt.RightButton) {
                                 const p = mapToItem(null, mouse.x, mouse.y);
                                 PulseUi.openMenu(p.x, p.y, row.app ? PulseUi.appMenu(row.app) : PulseUi.procMenu(row.proc));

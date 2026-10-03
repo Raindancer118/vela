@@ -118,6 +118,26 @@ Item {
                             text: entry.modelData.label ?? ""
                             color: entry.modelData.danger ? Theme.pulse.crit : Theme.colors.text
                         }
+
+                        // The window key for it.
+                        Rectangle {
+                            visible: (entry.modelData.hint ?? "") !== ""
+                            implicitWidth: Math.max(20, hintText.implicitWidth + 10)
+                            implicitHeight: 20
+                            radius: 5
+                            color: Theme.colors.chip
+                            border.width: 1
+                            border.color: Theme.colors.outline
+
+                            StyledText {
+                                id: hintText
+
+                                anchors.centerIn: parent
+                                text: entry.modelData.hint ?? ""
+                                color: Theme.colors.textMuted
+                                font.pixelSize: Theme.font.small - 1
+                            }
+                        }
                     }
                 }
             }

@@ -87,6 +87,17 @@ pub fn build(b: &Binder) -> adw::PreferencesPage {
     ));
     p.add(&window);
 
+    let keys = group(
+        "Keys",
+        "For the selected app or process in Apps & processes, or the app whose details are open. One key (k) or Delete, Insert, Home, End, Space, F1–F12; empty = off. The keys act right away, without asking.",
+    );
+    keys.add(&b.entry("Kill (force quit)", |c| c.pulse.key_force.clone(), |c, v| c.pulse.key_force = v));
+    keys.add(&b.entry("End (ask to close)", |c| c.pulse.key_end.clone(), |c, v| c.pulse.key_end = v));
+    keys.add(&b.entry("Restart", |c| c.pulse.key_restart.clone(), |c, v| c.pulse.key_restart = v));
+    keys.add(&b.entry("Pause or resume", |c| c.pulse.key_pause.clone(), |c, v| c.pulse.key_pause = v));
+    keys.add(&b.entry("Efficiency mode", |c| c.pulse.key_efficiency.clone(), |c, v| c.pulse.key_efficiency = v));
+    p.add(&keys);
+
     let rec = group(
         "In the background",
         "The vela daemon keeps a light record, so Pulse opens with history and knows what crashed, hung or ran out of memory while it was closed.",

@@ -90,6 +90,10 @@ FloatingWindow {
         }
 
         Keys.onPressed: event => {
+            if (!PulseUi.confirm && !PulseUi.runOpen && PulseUi.hotkey(event)) {
+                event.accepted = true;
+                return;
+            }
             const ctrl = event.modifiers & Qt.ControlModifier;
             if (event.key === Qt.Key_Escape) {
                 if (PulseUi.confirm)
@@ -110,8 +114,6 @@ FloatingWindow {
                 PulseUi.runOpen = true;
             } else if (ctrl && event.key === Qt.Key_W) {
                 Qt.quit();
-            } else if (event.key === Qt.Key_Delete && PulseUi.detailKey !== "") {
-                PulseUi.endApp(PulseUi.detailKey, event.modifiers & Qt.ShiftModifier);
             } else {
                 return;
             }

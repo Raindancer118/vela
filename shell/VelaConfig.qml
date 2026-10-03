@@ -85,7 +85,14 @@ Singleton {
             showKernel: false,
             intervalMs: 1000,
             record: true,
-            claude: true
+            claude: true,
+            keys: {
+                force: "k",
+                end: "g",
+                restart: "r",
+                pause: "p",
+                efficiency: "e"
+            }
         })
 
     function apply(line: string): void {

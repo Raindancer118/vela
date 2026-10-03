@@ -56,6 +56,8 @@ Singleton {
     property bool runOpen: false
     // { title, text, confirm, danger, action: function } or null.
     property var confirm: null
+    // Selected row in Apps & processes: "a:<app key>" or "p:<pid>".
+    property string selected: ""
     // Context menu: { x, y, items: [{ icon, label, danger, enabled, action }] } or null.
     property var menu: null
 
@@ -93,18 +95,21 @@ Singleton {
             items.push({
                 icon: "close",
                 label: a.kind === "system" ? I18n.tr("Stop") : I18n.tr("End task"),
+                hint: keyHint("end"),
                 action: () => endApp(a.key, false)
             });
             if (!sys || a.uid !== 0)
                 items.push({
                     icon: "stop_circle",
                     label: I18n.tr("Force quit"),
+                    hint: keyHint("force"),
                     danger: true,
                     action: () => endApp(a.key, true)
                 });
             items.push({
                 icon: "restart_alt",
                 label: I18n.tr("Restart"),
+                hint: keyHint("restart"),
                 enabled: !sys || (a.unit ?? "").endsWith(".service"),
                 action: () => restartApp(a.key)
             });
@@ -116,11 +121,13 @@ Singleton {
             items.push({
                 icon: "energy_savings_leaf",
                 label: eff ? I18n.tr("Leave efficiency mode") : I18n.tr("Efficiency mode"),
+                hint: keyHint("efficiency"),
                 action: () => Pulse.setEfficiency(a.key, !eff)
             });
             items.push({
                 icon: paused ? "play_arrow" : "pause",
                 label: paused ? I18n.tr("Resume") : I18n.tr("Pause"),
+                hint: keyHint("pause"),
                 action: () => Pulse.setPaused(a.key, !paused)
             });
         }
@@ -141,10 +148,11 @@ Singleton {
     function procMenu(p: var): var {
         if (!p)
             return [];
-        const sig = (s, label, icon, danger) => ({
+        const sig = (s, label, icon, danger, hint) => ({
                     icon: icon,
                     label: label,
                     danger: danger,
+                    hint: hint ?? "",
                     action: () => Pulse.signalPids([p.pid], s)
                 });
         return [
@@ -160,9 +168,9 @@ Singleton {
             {
                 separator: true
             },
-            sig("TERM", I18n.tr("End process"), "close", false),
-            sig("KILL", I18n.tr("Kill process"), "stop_circle", true),
-            p.state === "T" ? sig("CONT", I18n.tr("Continue"), "play_arrow", false) : sig("STOP", I18n.tr("Stop (pause)"), "pause", false),
+            sig("TERM", I18n.tr("End process"), "close", false, keyHint("end")),
+            sig("KILL", I18n.tr("Kill process"), "stop_circle", true, keyHint("force")),
+            p.state === "T" ? sig("CONT", I18n.tr("Continue"), "play_arrow", false, keyHint("pause")) : sig("STOP", I18n.tr("Stop (pause)"), "pause", false, keyHint("pause")),
             sig("HUP", I18n.tr("Reload (SIGHUP)"), "refresh", false),
             {
                 separator: true
@@ -170,6 +178,7 @@ Singleton {
             {
                 icon: "energy_savings_leaf",
                 label: p.nice >= 10 ? I18n.tr("Normal priority") : I18n.tr("Low priority"),
+                hint: keyHint("efficiency"),
                 action: () => Pulse.renice(p.pid, p.nice >= 10 ? 0 : 19)
             }
         ];
@@ -275,5 +284,90 @@ Singleton {
             Pulse.askClaude(f.target);
             break;
         }
+    }
+
+    // Window keys (Settings → Pulse → Keys) for the app whose details are
+    // open, else the selected row. They act right away, without asking.
+    function keyMatches(event: var, k: string): bool {
+        if (!k)
+            return false;
+        if (k.length === 1)
+            return event.text.toLowerCase() === k;
+        const names = {
+            Delete: Qt.Key_Delete,
+            Backspace: Qt.Key_Backspace,
+            Insert: Qt.Key_Insert,
+            Home: Qt.Key_Home,
+            End: Qt.Key_End,
+            Space: Qt.Key_Space
+        };
+        if (names[k] !== undefined)
+            return event.key === names[k];
+        const f = /^F(\d+)$/.exec(k);
+        return f !== null && event.key === Qt.Key_F1 + Number(f[1]) - 1;
+    }
+
+    // Defaults when the settings stream doesn't have them (older vela).
+    readonly property var keys: VelaConfig.pulse.keys ?? ({
+            force: "k",
+            end: "g",
+            restart: "r",
+            pause: "p",
+            efficiency: "e"
+        })
+
+    function keyHint(action: string): string {
+        const k = keys[action] ?? "";
+        return k.length === 1 ? k.toUpperCase() : k;
+    }
+
+    function hotkey(event: var): bool {
+        if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
+            return false;
+        const action = ["force", "end", "restart", "pause", "efficiency"].find(a => keyMatches(event, keys[a] ?? ""));
+        if (!action)
+            return false;
+        let app = null, proc = null;
+        if (detailKey !== "")
+            app = Pulse.app(detailKey);
+        else if (page === "processes" && selected.startsWith("a:"))
+            app = Pulse.app(selected.slice(2));
+        else if (page === "processes" && selected.startsWith("p:"))
+            proc = Pulse.procMap[+selected.slice(2)] ?? null;
+        if (app && app.kind !== "kernel") {
+            const paused = app.flags.indexOf("paused") >= 0;
+            const eff = app.flags.indexOf("efficiency") >= 0;
+            switch (action) {
+            case "force":
+                Pulse.endApp(app.key, true);
+                break;
+            case "end":
+                Pulse.endApp(app.key, false);
+                break;
+            case "restart":
+                Pulse.restartApp(app.key);
+                break;
+            case "pause":
+                Pulse.setPaused(app.key, !paused);
+                break;
+            case "efficiency":
+                Pulse.setEfficiency(app.key, !eff);
+                break;
+            }
+            return true;
+        }
+        if (proc) {
+            const sig = {
+                force: "KILL",
+                end: "TERM",
+                pause: proc.state === "T" ? "CONT" : "STOP"
+            }[action];
+            if (sig)
+                Pulse.signalPids([proc.pid], sig);
+            else if (action === "efficiency")
+                Pulse.renice(proc.pid, proc.nice >= 10 ? 0 : 19);
+            return sig !== undefined || action === "efficiency";
+        }
+        return false;
     }
 }

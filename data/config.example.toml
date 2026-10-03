@@ -167,3 +167,10 @@ range_secs = 60
 confirm_end = false
 heat_map = true
 show_kernel = false
+# Keys in the window for the selected app or process: one character or
+# Delete, Insert, Home, End, Space, F1–F12; "" = off. They act right away.
+key_force = "k"
+key_end = "g"
+key_restart = "r"
+key_pause = "p"
+key_efficiency = "e"

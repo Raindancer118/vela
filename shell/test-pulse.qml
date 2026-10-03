@@ -3,6 +3,7 @@
 // then frames from `vela pulse serve` and every page loading with them.
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs
 import qs.pulse
 import "pulse/Fmt.js" as Fmt
@@ -27,6 +28,16 @@ ShellRoot {
     ListModel {
         id: model
     }
+
+    // A victim for the k key.
+    Process {
+        id: victim
+
+        command: ["sleep", "300"]
+        running: true
+    }
+
+    property int killAt: 0
 
     Component.onCompleted: {
         const en = Qt.locale("en_US");
@@ -90,6 +101,16 @@ ShellRoot {
             const t = Words.title(f), x = Words.text(f);
             expect("words " + k, t !== k && t !== "" && x !== "" && x.indexOf("{") < 0);
         }
+        const ev = (text, key, mods) => ({
+                    text: text,
+                    key: key,
+                    modifiers: mods ?? 0
+                });
+        expect("key k", PulseUi.keyMatches(ev("k", Qt.Key_K), "k") && PulseUi.keyMatches(ev("K", Qt.Key_K), "k"));
+        expect("key other", !PulseUi.keyMatches(ev("g", Qt.Key_G), "k") && !PulseUi.keyMatches(ev("k", Qt.Key_K), ""));
+        expect("key names", PulseUi.keyMatches(ev("", Qt.Key_Delete), "Delete") && PulseUi.keyMatches(ev("", Qt.Key_F5), "F5"));
+        expect("ctrl+k is no window key", !PulseUi.hotkey(ev("k", Qt.Key_K, Qt.ControlModifier)));
+        expect("nothing selected, nothing done", !PulseUi.hotkey(ev("k", Qt.Key_K)));
         expect("unit name", Words.unitName("app-onlyoffice\\x2ddesktopeditors@75734ef238da49ffb092e917ba1ecc42.service") === "app-onlyoffice-desktopeditors");
     }
 
@@ -124,10 +145,26 @@ ShellRoot {
             root.expect("connected", Pulse.connected && Pulse.apps.length > 0);
             root.expect("history", Pulse.series("cpu").length >= 3);
             root.expect("memory", Pulse.frame.memory.total > 0);
-            for (let i = 0; i < pages.count; i++) {
-                const l = pages.itemAt(i);
-                root.expect("page " + l.modelData, l.status === Loader.Ready);
+            if (root.killAt === 0) {
+                for (let i = 0; i < pages.count; i++) {
+                    const l = pages.itemAt(i);
+                    root.expect("page " + l.modelData, l.status === Loader.Ready);
+                }
+                const pid = victim.processId;
+                root.expect("victim listed", Pulse.procMap[pid] !== undefined);
+                PulseUi.page = "processes";
+                PulseUi.selected = "p:" + pid;
+                root.expect("k handled", PulseUi.hotkey({
+                    text: "k",
+                    key: Qt.Key_K,
+                    modifiers: 0
+                }));
+                root.killAt = root.frames;
+                return;
             }
+            if (victim.running && root.frames < root.killAt + 4)
+                return;
+            root.expect("k killed it", !victim.running);
             root.finish();
         }
     }

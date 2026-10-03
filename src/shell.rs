@@ -157,6 +157,13 @@ pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) ->
             "confirmEnd": cfg.pulse.confirm_end,
             "heatMap": cfg.pulse.heat_map,
             "showKernel": cfg.pulse.show_kernel,
+            "keys": {
+                "force": cfg.pulse.key_force,
+                "end": cfg.pulse.key_end,
+                "restart": cfg.pulse.key_restart,
+                "pause": cfg.pulse.key_pause,
+                "efficiency": cfg.pulse.key_efficiency,
+            },
             "intervalMs": cfg.pulse.interval_ms,
             "record": cfg.pulse.record,
             "claude": installed.has(Component::Claude),
