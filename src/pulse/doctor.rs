@@ -397,7 +397,7 @@ pub fn diagnose(s: &Sample, apps: &[AppFrame], ctx: &Context) -> Vec<Finding> {
             json!({ "apps": names(&restart, |_| 0.0), "count": restart.len() }),
             restart
                 .iter()
-                .filter(|a| user_app(a) || a.unit.is_some())
+                .filter(|a| user_app(a) || a.kind == Kind::Service && a.unit.as_deref().is_some_and(|u| u.ends_with(".service")))
                 .take(4)
                 .map(|a| fix("restart", &a.key))
                 .collect(),
@@ -636,6 +636,23 @@ mod tests {
         assert_eq!(f[0].severity, Severity::Critical);
         assert_eq!(f[1].severity, Severity::Critical);
         assert!(score(&f) <= 50);
+    }
+
+    #[test]
+    fn no_restart_button_for_the_session_or_the_compositor() {
+        let mut session = app("session", Kind::System, 0.0, 1);
+        session.unit = Some("session-5.scope".into());
+        let mut hypr = app("hyprland", Kind::System, 0.0, 1);
+        let mut svc = app("pipewire", Kind::Service, 0.0, 1);
+        svc.unit = Some("pipewire.service".into());
+        let mut win = app("firefox", Kind::Window, 0.0, 1);
+        for a in [&mut session, &mut hypr, &mut svc, &mut win] {
+            a.flags = vec![Flag::NeedsRestart];
+        }
+        let f = diagnose(&calm(), &[session, hypr, svc, win], &ctx());
+        let r = f.iter().find(|x| x.kind == "needs-restart").unwrap();
+        let targets: Vec<&str> = r.fixes.iter().map(|x| x.target.as_str()).collect();
+        assert_eq!(targets, vec!["pipewire", "firefox"]);
     }
 
     #[test]

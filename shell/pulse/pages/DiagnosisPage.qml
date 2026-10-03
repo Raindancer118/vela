@@ -43,7 +43,7 @@ Flickable {
         // Hero
         Tile {
             Layout.fillWidth: true
-            Layout.preferredHeight: 190
+            Layout.preferredHeight: Math.max(190, heroCol.implicitHeight + 2 * Theme.spacing.lg)
 
             RowLayout {
                 anchors.fill: parent
@@ -66,6 +66,10 @@ Flickable {
                 }
 
                 ColumnLayout {
+                    id: heroCol
+
+                    // Width from the row, not from the text (which then wraps).
+                    Layout.preferredWidth: 0
                     Layout.fillWidth: true
                     spacing: Theme.spacing.xs
 
@@ -80,7 +84,7 @@ Flickable {
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
                         color: Theme.colors.textMuted
-                        text: I18n.tr("Pulse checks load, memory, disks, heat, power, crashes, services and apps that hang or run outdated code — every second, while this window is open.") + (page.hints > 0 ? " " + I18n.tr("%1 hints below.", page.hints) : "")
+                        text: I18n.tr("Pulse checks load, memory, disks, heat, power, crashes, services and apps that hang or run outdated code — every second, while this window is open.") + (page.hints === 1 ? " " + I18n.tr("One hint below.") : page.hints > 1 ? " " + I18n.tr("%1 hints below.", page.hints) : "")
                     }
 
                     Item {
@@ -89,6 +93,7 @@ Flickable {
 
                     RowLayout {
                         visible: VelaConfig.pulse.claude
+                        Layout.fillWidth: true
                         spacing: Theme.spacing.sm
 
                         // Claude gets the whole picture and digs deeper.
@@ -135,6 +140,8 @@ Flickable {
                         }
 
                         StyledText {
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
                             text: I18n.tr("Opens Claude Code with a snapshot of your system.")
                             color: Theme.colors.textMuted
                             font.pixelSize: Theme.font.small

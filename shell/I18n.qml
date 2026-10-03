@@ -531,6 +531,12 @@ Singleton {
                 "Zombie": "Zombie",
                 "Zombies": "Zombies",
                 "End %1?": "%1 beenden?",
+                "One hint below.": "Ein Hinweis unten.",
+                "Start": "Starten",
+                "More": "Mehr",
+                "End": "Beenden",
+                "Close": "Schließen",
+                "Settings": "Einstellungen",
                 "It is asked to close. Unsaved work may be lost.": "Sie wird gebeten, sich zu schließen. Ungesicherte Arbeit kann verloren gehen."
             }
         })

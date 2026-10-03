@@ -954,6 +954,11 @@ Item {
                                 implicitHeight: 30
                                 icon: "more"
                                 iconSize: Theme.icon.small
+
+                                Tip {
+                                    text: I18n.tr("More")
+                                    shown: parent.hovered
+                                }
                                 onClicked: {
                                     const p = mapToItem(null, 0, height);
                                     page.selected = row.key;
@@ -968,6 +973,11 @@ Item {
                                 icon: "close"
                                 iconSize: Theme.icon.small
                                 iconColor: hovered ? Theme.pulse.crit : Theme.colors.textMuted
+
+                                Tip {
+                                    text: I18n.tr("End")
+                                    shown: parent.hovered
+                                }
                                 onClicked: {
                                     if (row.app)
                                         PulseUi.endApp(row.app.key, false);

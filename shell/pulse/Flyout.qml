@@ -162,6 +162,11 @@ Item {
                 IconButton {
                     icon: "close"
                     onClicked: PulseUi.detailKey = ""
+
+                    Tip {
+                        text: I18n.tr("Close")
+                        shown: parent.hovered
+                    }
                 }
             }
 

@@ -68,6 +68,13 @@ Singleton {
         History.push(key, v, keep > 0 ? keep : Theme.pulse.history);
     }
 
+    // Mean of the last `secs` samples of a series (0 without data).
+    function mean(key: string, secs: int): real {
+        root.revision;
+        const a = History.get(key, Math.max(1, Math.round(secs * 1000 / interval)));
+        return a.length > 0 ? a.reduce((s, v) => s + v, 0) / a.length : 0;
+    }
+
     function app(key: string): var {
         root.revision;
         return appMap[key] ?? null;
@@ -165,8 +172,10 @@ Singleton {
             map[a.key] = a;
             push("app.cpu." + a.key, a.cpu, 120);
             push("app.mem." + a.key, a.mem, 120);
+            push("app.gpu." + a.key, a.gpu, 60);
+            push("app.disk." + a.key, a.readBps + a.writeBps, 60);
         }
-        History.prune(["app.cpu.", "app.mem."], map);
+        History.prune(["app.cpu.", "app.mem.", "app.gpu.", "app.disk."], map);
         if (f.procs) {
             const pm = {};
             for (const p of f.procs)

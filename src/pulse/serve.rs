@@ -159,6 +159,7 @@ pub fn run() -> std::io::Result<()> {
                 ) {
                     return Ok(());
                 }
+                monitor.recheck();
                 // Show the effect right away.
                 next = next.min(Instant::now() + Duration::from_millis(150));
             }

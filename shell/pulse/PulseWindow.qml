@@ -181,6 +181,11 @@ FloatingWindow {
                             iconSize: Theme.icon.small
                             iconColor: Theme.colors.textMuted
                             onClicked: Quickshell.execDetached([Quickshell.env("VELA_BIN") || "vela", "settings", "pulse"])
+
+                            Tip {
+                                text: I18n.tr("Settings")
+                                shown: parent.hovered
+                            }
                         }
                     }
 

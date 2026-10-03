@@ -867,6 +867,9 @@ mod tests {
         assert!(!me.cmdline.is_empty());
         assert!(me.mem > 0);
         assert_eq!(me.uid, my_uid());
-        assert!(second.procs.iter().any(|p| p.kernel));
+        // Containers (CI) have their own pid namespace without kernel threads.
+        if std::fs::read_to_string("/proc/2/comm").is_ok_and(|c| c.trim() == "kthreadd") {
+            assert!(second.procs.iter().any(|p| p.kernel));
+        }
     }
 }

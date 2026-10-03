@@ -184,24 +184,34 @@ Item {
             Layout.preferredWidth: 280
             Layout.fillHeight: true
             Layout.margins: Theme.spacing.md
-            model: page.devices
+            // A count: rows (and their graphs) stay while the data updates.
+            model: page.devices.length
             spacing: 4
             clip: true
-            currentIndex: page.devices.findIndex(d => d.id === (page.dev?.id ?? ""))
-            highlightFollowsCurrentItem: true
-            highlightMoveDuration: Theme.anim.normal
-            highlight: Rectangle {
+            readonly property int selected: Math.max(0, page.devices.findIndex(d => d.id === (page.dev?.id ?? "")))
+
+            // The selection glides between devices.
+            Rectangle {
+                y: devList.selected * (66 + devList.spacing)
+                width: devList.width
+                height: 66
                 radius: Theme.radius.small
                 color: Theme.colors.selected
                 border.width: 1
                 border.color: Theme.colors.selectedRing
+                z: -1
+                Behavior on y {
+                    SpringAnim {
+                        duration: Theme.anim.normal
+                    }
+                }
             }
 
             delegate: Item {
                 id: devItem
 
-                required property var modelData
                 required property int index
+                readonly property var modelData: page.devices[index] ?? ({ id: "", icon: "", name: "", sub: "", series: "", max: 0, color: "transparent" })
 
                 width: ListView.view.width
                 height: 66
@@ -655,10 +665,11 @@ Item {
                             rowSpacing: Theme.spacing.md
 
                             Repeater {
-                                model: page.f?.sensors ?? []
+                                model: page.f?.sensors.length ?? 0
 
                                 ColumnLayout {
-                                    required property var modelData
+                                    required property int index
+                                    readonly property var modelData: page.f?.sensors[index] ?? ({ label: "", chip: "", celsius: 0 })
 
                                     Layout.fillWidth: true
                                     spacing: 3
@@ -689,10 +700,11 @@ Item {
                             }
 
                             Repeater {
-                                model: page.f?.fans ?? []
+                                model: page.f?.fans.length ?? 0
 
                                 RowLayout {
-                                    required property var modelData
+                                    required property int index
+                                    readonly property var modelData: page.f?.fans[index] ?? ({ label: "", chip: "", rpm: 0 })
 
                                     Layout.fillWidth: true
 

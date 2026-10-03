@@ -139,6 +139,8 @@ struct Background {
     coredumps: Vec<CoreDump>,
     failed: Vec<FailedUnit>,
     updated: bool,
+    /// Check again now (after an action on a unit or app).
+    again: bool,
 }
 
 pub struct Monitor {
@@ -213,6 +215,13 @@ impl Monitor {
             throttle: VecDeque::new(),
             oom: None,
             start: Instant::now(),
+        }
+    }
+
+    /// Re-reads failed units and core dumps right away.
+    pub fn recheck(&self) {
+        if let Ok(mut b) = self.bg.lock() {
+            b.again = true;
         }
     }
 
@@ -299,7 +308,14 @@ impl Monitor {
                         b.updated = true;
                     }
                     drop(state);
-                    std::thread::sleep(Duration::from_secs(15));
+                    for _ in 0..30 {
+                        std::thread::sleep(Duration::from_millis(500));
+                        let Some(state) = weak.upgrade() else { return };
+                        let again = state.lock().map(|mut b| std::mem::take(&mut b.again)).unwrap_or(false);
+                        if again {
+                            break;
+                        }
+                    }
                 }
             })
             .ok();
@@ -882,7 +898,9 @@ mod tests {
         std::thread::sleep(Duration::from_millis(100));
         let f = m.tick(true);
         assert!(!f.apps.is_empty());
-        assert!(f.apps.iter().any(|a| a.kind == Kind::Kernel));
+        if std::fs::read_to_string("/proc/2/comm").is_ok_and(|c| c.trim() == "kthreadd") {
+            assert!(f.apps.iter().any(|a| a.kind == Kind::Kernel));
+        }
         let procs = f.procs.expect("procs");
         assert!(procs.iter().any(|p| p.p.pid == std::process::id() as i32 && !p.app.is_empty()));
         assert!(f.score <= 100);

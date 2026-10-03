@@ -13,6 +13,11 @@ Flickable {
     readonly property var f: Pulse.frame
     readonly property var loc: Qt.locale()
     readonly property int cols: width >= 1150 ? 4 : width >= 760 ? 2 : 1
+    // Hottest sensors first, by label so a row keeps its sensor.
+    readonly property var hottest: {
+        const all = (f?.sensors ?? []).slice().sort((a, b) => b.celsius - a.celsius).slice(0, 6);
+        return all.sort((a, b) => (a.chip + a.label).localeCompare(b.chip + b.label));
+    }
 
     contentHeight: grid.implicitHeight + 2 * Theme.spacing.xl
     clip: true
@@ -46,7 +51,7 @@ Flickable {
             order: 0
             Layout.columnSpan: Math.min(2, page.cols)
             Layout.fillWidth: true
-            Layout.preferredHeight: 236
+            Layout.preferredHeight: Math.max(236, healthCol.implicitHeight + 2 * Theme.spacing.lg)
             clickable: true
             onClicked: PulseUi.show("diagnosis")
 
@@ -64,6 +69,9 @@ Flickable {
                     alert: Pulse.findings.some(x => x.severity === "critical")
 
                     ColumnLayout {
+                    id: healthCol
+
+                    Layout.preferredWidth: 0
                         anchors.centerIn: parent
                         spacing: -4
 
@@ -353,10 +361,11 @@ Flickable {
                 }
 
                 Repeater {
-                    model: page.f?.gpus ?? []
+                    model: page.f?.gpus.length ?? 0
 
                     ColumnLayout {
-                        required property var modelData
+                        required property int index
+                        readonly property var modelData: page.f?.gpus[index] ?? ({})
 
                         Layout.fillWidth: true
                         spacing: 4
@@ -737,14 +746,21 @@ Flickable {
             id: topTile
 
             property string by: "cpu"
+            // Averaged over the last 30 seconds, so the order is calm.
+            function usage(a: var): real {
+                return Pulse.mean(({
+                        cpu: "app.cpu.",
+                        mem: "app.mem.",
+                        gpu: "app.gpu.",
+                        disk: "app.disk."
+                    })[by] + a.key, 30);
+            }
             readonly property var sorted: {
-                const key = {
-                    cpu: a => a.cpu,
-                    mem: a => a.mem,
-                    gpu: a => a.gpu,
-                    disk: a => a.readBps + a.writeBps
-                }[by];
-                return Pulse.apps.filter(a => a.kind !== "kernel" && key(a) > 0).sort((a, b) => key(b) - key(a)).slice(0, 7);
+                Pulse.revision;
+                return Pulse.apps.filter(a => a.kind !== "kernel").map(a => ({
+                            key: a.key,
+                            v: usage(a)
+                        })).filter(x => x.v > 0).sort((x, y) => y.v - x.v).slice(0, 7);
             }
             onSortedChanged: Model.sync(topModel, sorted.map(a => a.key))
 
@@ -893,13 +909,8 @@ Flickable {
 
                         required property string key
                         readonly property var app: Pulse.app(key)
-                        readonly property real value: !app ? 0 : topTile.by === "cpu" ? app.cpu : topTile.by === "mem" ? app.mem : topTile.by === "gpu" ? app.gpu : app.readBps + app.writeBps
-                        readonly property real best: topTile.sorted.length > 0 ? ({
-                                cpu: topTile.sorted[0].cpu,
-                                mem: topTile.sorted[0].mem,
-                                gpu: topTile.sorted[0].gpu,
-                                disk: topTile.sorted[0].readBps + topTile.sorted[0].writeBps
-                            })[topTile.by] : 1
+                        readonly property real value: topTile.sorted.find(x => x.key === row.key)?.v ?? 0
+                        readonly property real best: topTile.sorted.length > 0 ? topTile.sorted[0].v : 1
 
                         width: ListView.view.width
                         height: 36
@@ -1043,10 +1054,11 @@ Flickable {
                 }
 
                 Repeater {
-                    model: (page.f?.sensors ?? []).slice().sort((a, b) => b.celsius - a.celsius).slice(0, 6)
+                    model: page.hottest.length
 
                     ColumnLayout {
-                        required property var modelData
+                        required property int index
+                        readonly property var modelData: page.hottest[index] ?? ({ label: "", celsius: 0 })
 
                         Layout.fillWidth: true
                         spacing: 2
@@ -1079,12 +1091,13 @@ Flickable {
                 }
 
                 Repeater {
-                    model: page.f?.fans ?? []
+                    model: page.f?.fans.length ?? 0
 
                     RowLayout {
                         id: fanRow
 
-                        required property var modelData
+                        required property int index
+                        readonly property var modelData: page.f?.fans[index] ?? ({ label: "", rpm: 0 })
 
                         Layout.fillWidth: true
 

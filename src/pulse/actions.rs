@@ -183,7 +183,9 @@ pub fn unit_action(unit: &str, user: bool, action: &str) -> Result<(), String> {
     }
     match action {
         "enable" | "disable" => systemctl(user, &[action, "--now", unit]),
-        _ => systemctl(user, &["--no-block", action, unit]).or_else(|e| if action == "reset-failed" { systemctl(user, &[action, unit]) } else { Err(e) }),
+        // A unit that is no longer loaded has no failed state left: done.
+        "reset-failed" => systemctl(user, &[action, unit]).or_else(|e| if e.contains("not loaded") { Ok(()) } else { Err(e) }),
+        _ => systemctl(user, &["--no-block", action, unit]),
     }
 }
 

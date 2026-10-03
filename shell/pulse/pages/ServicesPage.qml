@@ -316,6 +316,8 @@ Item {
                             }
 
                             Switch {
+                                id: autoSwitch
+
                                 visible: row.s?.enabled === "enabled" || row.s?.enabled === "disabled"
                                 checked: row.s?.enabled === "enabled"
                                 onToggled: Pulse.unitAction(row.s.unit, row.s.user, row.s.enabled === "enabled" ? "disable" : "enable")
@@ -354,6 +356,11 @@ Item {
                             implicitHeight: 30
                             icon: "play_arrow"
                             iconSize: Theme.icon.small
+
+                            Tip {
+                                text: I18n.tr("Start")
+                                shown: parent.hovered
+                            }
                             onClicked: Pulse.unitAction(row.s.unit, row.s.user, "start")
                         }
 
@@ -363,6 +370,11 @@ Item {
                             implicitHeight: 30
                             icon: "restart_alt"
                             iconSize: Theme.icon.small
+
+                            Tip {
+                                text: I18n.tr("Restart")
+                                shown: parent.hovered
+                            }
                             onClicked: Pulse.unitAction(row.s.unit, row.s.user, "restart")
                         }
 
@@ -372,6 +384,11 @@ Item {
                             implicitHeight: 30
                             icon: "stop_circle"
                             iconSize: Theme.icon.small
+
+                            Tip {
+                                text: I18n.tr("Stop")
+                                shown: parent.hovered
+                            }
                             onClicked: {
                                 const s = row.s;
                                 if (s.user)
@@ -387,6 +404,11 @@ Item {
                             implicitHeight: 30
                             icon: "check"
                             iconSize: Theme.icon.small
+
+                            Tip {
+                                text: I18n.tr("Clear error")
+                                shown: parent.hovered
+                            }
                             onClicked: Pulse.unitAction(row.s.unit, row.s.user, "reset-failed")
                         }
 

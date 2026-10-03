@@ -25,11 +25,13 @@ Item {
         anchors.fill: parent
 
         Repeater {
-            model: root.segments.length > 0 ? root.segments : [{ value: root.value, color: root.color }]
+            // A count, not the array: the bars stay and glide to new values
+            // instead of being made anew (from 0) with every update.
+            model: Math.max(1, root.segments.length)
 
             Rectangle {
-                required property var modelData
                 required property int index
+                readonly property var modelData: root.segments.length > 0 ? (root.segments[index] ?? { value: 0, color: root.color }) : { value: root.value, color: root.color }
 
                 height: root.height
                 width: Math.max(0, Math.min(1, modelData.value / root.max)) * root.width
