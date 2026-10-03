@@ -72,13 +72,34 @@ pub fn wait_gone(pids: &[i32], timeout: Duration) -> bool {
 
 /// `sudo -A <argv>` with a password dialog.
 pub fn privileged(argv: &[String]) -> Result<(), String> {
+    authenticate()?;
+    privileged_now(argv)
+}
+
+/// Asks for the password (sudo -A -v), so the actual command can run right
+/// after with `privileged_now` — the dialog may stay open for minutes.
+pub fn authenticate() -> Result<(), String> {
     let askpass = crate::update::find_askpass(std::env::var_os("SUDO_ASKPASS").as_deref())
         .ok_or("needs administrator rights, but no password dialog (ksshaskpass, ssh-askpass) is installed")?;
     let out = Command::new("sudo")
-        .arg("-A")
-        .arg("--")
-        .args(argv)
+        .args(["-A", "-v"])
         .env("SUDO_ASKPASS", askpass)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("cannot run sudo: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_owned();
+        Err(if err.is_empty() { "authentication failed".into() } else { err })
+    }
+}
+
+/// `sudo -n` with the credentials `authenticate` just cached.
+pub fn privileged_now(argv: &[String]) -> Result<(), String> {
+    let out = Command::new("sudo")
+        .args(["-n", "--"])
+        .args(argv)
         .stdin(Stdio::null())
         .output()
         .map_err(|e| format!("cannot run sudo: {e}"))?;
@@ -110,9 +131,16 @@ pub fn signal(pids: &[i32], sig: i32) -> Result<(), String> {
         }
     }
     if !denied.is_empty() {
-        let mut argv = vec!["kill".to_owned(), "-s".to_owned(), sig.to_string()];
-        argv.extend(denied.iter().map(|p| p.to_string()));
-        privileged(&argv)?;
+        // Remember who they are before the password dialog: a pid freed and
+        // reused while it is open must not be hit.
+        let starts: Vec<u64> = denied.iter().map(|p| start_of(*p).unwrap_or(u64::MAX)).collect();
+        authenticate()?;
+        let same = still_same(&denied, &starts);
+        if !same.is_empty() {
+            let mut argv = vec!["kill".to_owned(), "-s".to_owned(), sig.to_string()];
+            argv.extend(same.iter().map(|p| p.to_string()));
+            privileged_now(&argv)?;
+        }
     }
     if errors.is_empty() { Ok(()) } else { Err(errors.join("; ")) }
 }
@@ -308,9 +336,24 @@ pub fn efficiency(app: &AppFrame, on: bool) -> Result<(), String> {
     }
     if failed > 0 && !on {
         // Raising priority again can need privileges (RLIMIT_NICE).
-        let mut argv = vec!["renice".to_owned(), "-n".to_owned(), "0".to_owned(), "-p".to_owned()];
-        argv.extend(app.pids.iter().map(|p| p.to_string()));
-        return privileged(&argv);
+        let pids: Vec<String> = still_same(&app.pids, &app.starts).iter().map(|p| p.to_string()).collect();
+        if pids.is_empty() {
+            return Ok(());
+        }
+        authenticate()?;
+        let mut renice = vec!["renice".to_owned(), "-n".to_owned(), "0".to_owned(), "-p".to_owned()];
+        renice.extend(pids.iter().cloned());
+        privileged_now(&renice)?;
+        let mut ionice = vec![
+            "ionice".to_owned(),
+            "-c".to_owned(),
+            "2".to_owned(),
+            "-n".to_owned(),
+            "4".to_owned(),
+            "-p".to_owned(),
+        ];
+        ionice.extend(pids);
+        return privileged_now(&ionice);
     }
     Ok(())
 }

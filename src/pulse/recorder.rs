@@ -20,9 +20,11 @@ pub struct Backlog {
     pub events: Vec<Event>,
 }
 
-pub fn file() -> PathBuf {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(std::env::temp_dir, PathBuf::from);
-    dir.join("vela-pulse-backlog.json")
+/// In the private runtime directory only; without one (no session) there
+/// is no backlog rather than a predictable file in /tmp.
+pub fn file() -> Option<PathBuf> {
+    let dir = PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR").filter(|d| !d.is_empty())?);
+    dir.is_dir().then(|| dir.join("vela-pulse-backlog.json"))
 }
 
 /// The values one frame contributes, under the keys the window uses.
@@ -152,15 +154,13 @@ impl Recorder {
     }
 
     pub fn save(&self) -> std::io::Result<()> {
-        let path = file();
-        let tmp = path.with_extension("tmp");
-        std::fs::write(&tmp, serde_json::to_vec(&self.backlog())?)?;
-        std::fs::rename(tmp, path)
+        let Some(path) = file() else { return Ok(()) };
+        crate::config::write_atomic(&path, &String::from_utf8_lossy(&serde_json::to_vec(&self.backlog())?)).map_err(|e| std::io::Error::other(e.to_string()))
     }
 }
 
 pub fn load() -> Option<Backlog> {
-    serde_json::from_slice(&std::fs::read(file()).ok()?).ok()
+    serde_json::from_slice(&std::fs::read(file()?).ok()?).ok()
 }
 
 /// Runs the recorder on its own thread for as long as the process lives.
@@ -184,8 +184,10 @@ pub fn spawn() {
                     }
                     cfg = next;
                 }
-                if !cfg.record {
-                    let _ = std::fs::remove_file(file());
+                if !cfg.record || file().is_none() {
+                    if let Some(f) = file() {
+                        let _ = std::fs::remove_file(f);
+                    }
                     std::thread::sleep(Duration::from_secs(10));
                     continue;
                 }
@@ -195,7 +197,7 @@ pub fn spawn() {
                 // Every ~15 s, and right away when something happened.
                 if (rec.ticks * rec.interval_ms) % 15_000 == 0 || !frame.events.is_empty() {
                     if let Err(e) = rec.save() {
-                        log::warn!("pulse: cannot write {}: {e}", file().display());
+                        log::warn!("pulse: cannot write the backlog: {e}");
                     }
                 }
                 let wait = Duration::from_millis(rec.interval_ms).saturating_sub(started.elapsed());
