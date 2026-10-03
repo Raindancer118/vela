@@ -67,6 +67,21 @@ Item {
         onTriggered: Pulse.loadDetails(root.pid)
     }
 
+    property bool showLogs: false
+    readonly property var lg: Pulse.logs && Pulse.logs.pid === pid ? Pulse.logs : null
+    function reloadLogs(): void {
+        Pulse.loadLogs(pid, app?.mainPid === pid ? (app?.unit ?? "") : "", app?.userUnit ?? false);
+    }
+    onPidChanged: if (showLogs)
+        reloadLogs()
+
+    Timer {
+        running: root.open && root.showLogs
+        interval: 3000
+        repeat: true
+        onTriggered: root.reloadLogs()
+    }
+
     // The app went away while open: say so instead of closing.
     readonly property bool gone: open && shownKey !== "" && app === null
 
@@ -87,6 +102,14 @@ Item {
             anchors.fill: parent
             color: Theme.colors.background
             opacity: 0.97
+        }
+
+        // Scrolling over the panel never reaches the page behind it, also
+        // when its list is at the end.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.NoButton
+            onWheel: wheel => wheel.accepted = true
         }
 
         Rectangle {
@@ -179,6 +202,11 @@ Item {
 
             Flickable {
                 id: scroll
+                ScrollBar {
+                    parent: scroll
+                    flick: scroll
+                }
+
 
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -522,6 +550,31 @@ Item {
                             text: I18n.tr("Process %1", root.pid)
                         }
 
+                        // Just this process, not the whole app.
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing.xs
+
+                            PillButton {
+                                icon: "restart_alt"
+                                text: I18n.tr("Restart")
+                                onClicked: Pulse.restartProc(root.pid)
+                            }
+
+                            PillButton {
+                                icon: "close"
+                                text: I18n.tr("End process")
+                                onClicked: Pulse.signalPids([root.pid], "TERM")
+                            }
+
+                            PillButton {
+                                style: "danger"
+                                icon: "stop_circle"
+                                text: I18n.tr("Kill process")
+                                onClicked: Pulse.signalPids([root.pid], "KILL")
+                            }
+                        }
+
                         Rectangle {
                             Layout.fillWidth: true
                             implicitHeight: cmd.implicitHeight + 2 * Theme.spacing.sm
@@ -584,10 +637,92 @@ Item {
                             }
                         }
 
-                        SectionLabel {
-                            visible: (root.d?.threads ?? []).length > 1
-                            text: I18n.tr("Busiest threads")
+                        // Logs
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.topMargin: Theme.spacing.sm
+
+                            SectionLabel {
+                                Layout.fillWidth: true
+                                text: I18n.tr("Logs")
+                            }
+
+                            PillButton {
+                                text: root.showLogs ? I18n.tr("Hide") : I18n.tr("Show logs")
+                                onClicked: {
+                                    root.showLogs = !root.showLogs;
+                                    if (root.showLogs)
+                                        root.reloadLogs();
+                                }
+                            }
+
+                            PillButton {
+                                visible: root.showLogs && (root.lg?.follow ?? "") !== ""
+                                icon: "terminal"
+                                text: I18n.tr("Follow")
+                                onClicked: Pulse.run(root.lg.follow, true)
+
+                                Tip {
+                                    text: I18n.tr("In a terminal")
+                                    shown: parent.hovered
+                                }
+                            }
                         }
+
+                        StyledText {
+                            visible: root.showLogs && root.lg !== null
+                            Layout.fillWidth: true
+                            color: Theme.colors.textMuted
+                            font.pixelSize: Theme.font.small
+                            wrapMode: Text.Wrap
+                            text: !root.lg ? "" : root.lg.lines.length === 0 ? I18n.tr("No log entries.") : ({
+                                        unit: I18n.tr("From its service's journal"),
+                                        pid: I18n.tr("Entries of this process"),
+                                        comm: I18n.tr("Entries of programs with this name since boot")
+                                    })[root.lg.source] ?? ""
+                        }
+
+                        Rectangle {
+                            visible: root.showLogs && (root.lg?.lines.length ?? 0) > 0
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 260
+                            radius: Theme.radius.small
+                            color: Theme.withAlpha(Theme.colors.text, 0.04)
+                            clip: true
+
+                            ListView {
+                                id: logList
+                                ScrollBar {
+                                    parent: logList
+                                    flick: logList
+                                }
+
+
+                                anchors.fill: parent
+                                anchors.margins: Theme.spacing.xs
+                                model: root.lg?.lines.length ?? 0
+                                boundsBehavior: Flickable.StopAtBounds
+                                // Newest at the bottom, like a terminal.
+                                onCountChanged: positionViewAtEnd()
+
+                                delegate: TextEdit {
+                                    required property int index
+                                    readonly property var e: root.lg?.lines[index] ?? ({ t: 0, prio: 6, msg: "" })
+
+                                    width: ListView.view.width
+                                    readOnly: true
+                                    selectByMouse: true
+                                    wrapMode: TextEdit.WrapAnywhere
+                                    textFormat: TextEdit.PlainText
+                                    font.family: "monospace"
+                                    font.pixelSize: Theme.font.small - 1
+                                    selectionColor: Theme.colors.primaryMuted
+                                    color: e.prio <= 3 ? Theme.pulse.crit : e.prio === 4 ? Theme.pulse.warn : Theme.colors.text
+                                    text: Qt.formatDateTime(new Date(e.t), "dd.MM. HH:mm:ss") + "  " + e.msg
+                                }
+                            }
+                        }
+
 
                         Flow {
                             Layout.fillWidth: true

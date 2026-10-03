@@ -208,6 +208,11 @@ Item {
         // Device list
         ListView {
             id: devList
+            ScrollBar {
+                parent: devList
+                flick: devList
+            }
+
 
             Layout.preferredWidth: 280
             Layout.fillHeight: true
@@ -692,6 +697,13 @@ Item {
 
                     // Sensors: every temperature, then fans.
                     Flickable {
+                        id: sensorFlick
+
+                        ScrollBar {
+                            parent: sensorFlick
+                            flick: sensorFlick
+                        }
+
                         anchors.fill: parent
                         visible: page.kind === "sensors" && Pulse.sensorView === "list"
                         contentHeight: sensorGrid.implicitHeight
@@ -771,6 +783,13 @@ Item {
 
                     // Sensors, a graph each.
                     Flickable {
+                        id: tilesFlick
+
+                        ScrollBar {
+                            parent: tilesFlick
+                            flick: tilesFlick
+                        }
+
                         anchors.fill: parent
                         visible: page.kind === "sensors" && Pulse.sensorView === "graphs"
                         contentHeight: tilesGrid.implicitHeight

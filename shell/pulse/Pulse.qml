@@ -30,6 +30,8 @@ Singleton {
     property bool servicesLoading: false
     property var launchable: []
     property var details: null
+    // { pid, source: unit|pid|comm, lines: [{ t, prio, msg }], follow }
+    property var logs: null
     // Bumped once per frame: bindings read it to re-evaluate.
     property int revision: 0
     // Seconds of history shown by the performance graphs.
@@ -162,6 +164,9 @@ Singleton {
         case "details":
             details = m;
             break;
+        case "logs":
+            logs = m;
+            break;
         case "history":
             History.setLong(m);
             revision++;
@@ -237,7 +242,7 @@ Singleton {
         failedUnits = f.failedUnits;
         rebootNeeded = f.rebootNeeded;
         if (f.events.length > 0)
-            events = f.events.slice().reverse().concat(events).slice(0, 300);
+            events = mergeEvents(events, f.events);
         frame = f;
         revision++;
         frameArrived();
@@ -258,8 +263,24 @@ Singleton {
                     push(key, v, keep);
         }
         if (b.events.length > 0)
-            events = b.events.slice().reverse().slice(0, 300);
+            events = mergeEvents(events, b.events);
         revision++;
+    }
+
+    // Newest first, each event once (the daemon and this window both see
+    // the past crashes, for example).
+    function mergeEvents(have: var, more: var): var {
+        const seen = {};
+        const out = [];
+        for (const e of more.concat(have)) {
+            const id = e.kind + "|" + e.t + "|" + e.name;
+            if (seen[id])
+                continue;
+            seen[id] = true;
+            out.push(e);
+        }
+        out.sort((a, b) => b.t - a.t);
+        return out.slice(0, 1000);
     }
 
     function onResult(r: var): void {
@@ -327,6 +348,12 @@ Singleton {
             signal: sig
         });
     }
+    function restartProc(pid: int): int {
+        return send({
+            cmd: "restart_proc",
+            pid: pid
+        });
+    }
     function renice(pid: int, nice: int): int {
         return send({
             cmd: "renice",
@@ -382,6 +409,14 @@ Singleton {
         servicesLoading = true;
         send({
             cmd: "services"
+        });
+    }
+    function loadLogs(pid: int, unit: string, user: bool): void {
+        send({
+            cmd: "logs",
+            pid: pid,
+            unit: unit,
+            user: user
         });
     }
     function loadDetails(pid: int): void {

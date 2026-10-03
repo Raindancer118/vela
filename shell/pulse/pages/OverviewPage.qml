@@ -9,6 +9,11 @@ import "../Model.js" as Model
 // Bento overview: health, live tiles per resource, top consumers, activity.
 Flickable {
     id: page
+    ScrollBar {
+        parent: page
+        flick: page
+    }
+
 
     readonly property var f: Pulse.frame
     readonly property var loc: Qt.locale()

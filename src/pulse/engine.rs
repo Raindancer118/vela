@@ -62,6 +62,45 @@ pub struct LeakView {
     pub minutes: f64,
 }
 
+impl AppFrame {
+    /// A one-process app, for acting on a single process.
+    pub fn for_process(pid: i32, started: u64, command: Vec<String>, exe: String, name: String) -> AppFrame {
+        AppFrame {
+            key: format!("pid:{pid}"),
+            kind: Kind::Task,
+            name,
+            icon: String::new(),
+            desktop_id: None,
+            unit: None,
+            user_unit: false,
+            main_pid: pid,
+            pids: vec![pid],
+            starts: vec![started],
+            windows: vec![],
+            cpu: 0.0,
+            cpu_core: 0.0,
+            mem: 0,
+            swap: 0,
+            gpu: 0.0,
+            vram: 0,
+            read_bps: 0.0,
+            write_bps: 0.0,
+            threads: 1,
+            started,
+            user: String::new(),
+            uid: 0,
+            flags: vec![],
+            health: 0,
+            leak: None,
+            gpus: vec![],
+            command,
+            exe,
+            restart_reasons: vec![],
+            focused: false,
+        }
+    }
+}
+
 impl From<LeakInfo> for LeakView {
     fn from(l: LeakInfo) -> Self {
         LeakView {
@@ -164,12 +203,15 @@ pub struct Monitor {
     seen_failed: HashSet<String>,
     failed_primed: bool,
     anr: HashSet<String>,
+    /// When Pulse first saw an app or task (for "finished after …").
+    seen_at: HashMap<String, u64>,
+    watch: Watch,
     throttle: VecDeque<u64>,
     oom: Option<u64>,
     start: Instant,
 }
 
-pub const EVENT_KEEP: usize = 300;
+pub const EVENT_KEEP: usize = 1000;
 
 /// What the last tick knew of an app: name, icon, kind, pids.
 type Known = (String, String, Kind, Vec<i32>);
@@ -212,6 +254,8 @@ impl Monitor {
             seen_failed: HashSet::new(),
             failed_primed: false,
             anr: HashSet::new(),
+            seen_at: HashMap::new(),
+            watch: Watch::default(),
             throttle: VecDeque::new(),
             oom: None,
             start: Instant::now(),
@@ -235,8 +279,13 @@ impl Monitor {
 
     /// Records an event (also from actions) for the next frame.
     pub fn push_event(&mut self, kind: &str, name: &str, icon: &str, detail: &str, key: &str) {
+        self.push_event_at(sample::now_ms(), kind, name, icon, detail, key);
+    }
+
+    /// The same at a given time (crashes from before Pulse started).
+    pub fn push_event_at(&mut self, t: u64, kind: &str, name: &str, icon: &str, detail: &str, key: &str) {
         let e = Event {
-            t: sample::now_ms(),
+            t,
             kind: kind.into(),
             name: name.into(),
             icon: icon.into(),
@@ -545,6 +594,27 @@ impl Monitor {
         }
         self.anr_events(&out_apps);
         self.oom_event(sample.memory.oom_kills);
+        let top_cpu = out_apps
+            .iter()
+            .filter(|a| a.kind != Kind::Kernel)
+            .max_by(|a, b| a.cpu.total_cmp(&b.cpu))
+            .map(|a| a.name.clone())
+            .unwrap_or_default();
+        let top_mem = out_apps
+            .iter()
+            .filter(|a| a.kind != Kind::Kernel)
+            .max_by_key(|a| a.mem)
+            .map(|a| a.name.clone())
+            .unwrap_or_default();
+        let top_io = out_apps
+            .iter()
+            .filter(|a| a.kind != Kind::Kernel)
+            .max_by(|a, b| (a.read_bps + a.write_bps).total_cmp(&(b.read_bps + b.write_bps)))
+            .map(|a| a.name.clone())
+            .unwrap_or_default();
+        for (t, kind, name, detail) in self.watch.update(&sample, &top_cpu, &top_mem, &top_io) {
+            self.push_event_at(t, kind, &name, "", &detail, "");
+        }
 
         // Throttle events in the last 30 s, for the doctor.
         self.throttle.push_back(sample.cpu.throttled);
@@ -627,17 +697,29 @@ impl Monitor {
     }
 
     fn lifecycle_events(&mut self, groups: &[Group], dumps: &HashMap<i32, &CoreDump>) {
-        let watched = |k: Kind| matches!(k, Kind::Window | Kind::Background);
+        // Apps, terminal tasks (not idle shells) and systemd services.
+        let watched = |g: &Group| match g.kind {
+            Kind::Window | Kind::Background => true,
+            Kind::Task => !apps::is_shell(&g.name),
+            Kind::Service | Kind::System => g.unit.as_deref().is_some_and(|u| u.ends_with(".service")),
+            Kind::Kernel => false,
+        };
         let now: HashMap<String, Known> = groups
             .iter()
-            .filter(|g| watched(g.kind))
+            .filter(|g| watched(g))
             .map(|g| (g.key.clone(), (g.name.clone(), g.icon.clone(), g.kind, g.pids.clone())))
             .collect();
+        let t = sample::now_ms();
         if self.first {
             self.first = false;
             self.known = now;
             return;
         }
+        let kinds = |k: Kind| match k {
+            Kind::Task => ("task-started", "task-finished"),
+            Kind::Service | Kind::System => ("service-started", "service-stopped"),
+            _ => ("started", "closed"),
+        };
         let names_now: HashSet<&String> = now.values().map(|v| &v.0).collect();
         let gone: Vec<(String, Known)> = self
             .known
@@ -645,7 +727,8 @@ impl Monitor {
             .filter(|(k, _)| !now.contains_key(*k))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
-        for (key, (name, icon, _, pids)) in gone {
+        for (key, (name, icon, kind, pids)) in gone {
+            let seen = self.seen_at.remove(&key);
             // Same app under a new key (a second scope merged/split): no event.
             if names_now.contains(&name) {
                 continue;
@@ -656,17 +739,22 @@ impl Monitor {
                     let detail = health::signal_name(d.sig).to_owned();
                     self.push_event("crashed", &name, &icon, &detail, &key);
                 }
-                None => self.push_event("closed", &name, &icon, "", &key),
+                None => {
+                    // How long it ran, when Pulse saw it start.
+                    let ran = seen.map(|s| (t.saturating_sub(s) / 1000).to_string()).unwrap_or_default();
+                    self.push_event(kinds(kind).1, &name, &icon, &ran, &key);
+                }
             }
         }
         let names_before: HashSet<String> = self.known.values().map(|v| v.0.clone()).collect();
-        let new: Vec<(String, String, String)> = now
+        let new: Vec<(String, String, String, Kind)> = now
             .iter()
             .filter(|(k, v)| !self.known.contains_key(*k) && !names_before.contains(&v.0))
-            .map(|(k, v)| (k.clone(), v.0.clone(), v.1.clone()))
+            .map(|(k, v)| (k.clone(), v.0.clone(), v.1.clone(), v.2))
             .collect();
-        for (key, name, icon) in new {
-            self.push_event("started", &name, &icon, "", &key);
+        for (key, name, icon, kind) in new {
+            self.seen_at.insert(key.clone(), t);
+            self.push_event(kinds(kind).0, &name, &icon, "", &key);
         }
         self.known = now;
     }
@@ -674,7 +762,18 @@ impl Monitor {
     fn crash_and_failure_events(&mut self, dumps: &[CoreDump], failed: &[FailedUnit], apps: &[AppFrame]) {
         if !self.dumps_primed {
             self.dumps_primed = true;
-            self.seen_dumps.extend(dumps.iter().map(|d| (d.time, d.pid)));
+            // Crashes of the last 24 hours belong in the timeline too.
+            let mut past: Vec<&CoreDump> = dumps.iter().collect();
+            past.sort_by_key(|d| d.time);
+            for d in past {
+                self.seen_dumps.insert((d.time, d.pid));
+                let base = exe_base(&d.exe, &[]);
+                let app = apps.iter().find(|a| exe_base(&a.exe, &a.command) == base);
+                let (name, icon, key) = app.map_or((base.clone(), base.to_lowercase(), String::new()), |a| {
+                    (a.name.clone(), a.icon.clone(), a.key.clone())
+                });
+                self.push_event_at(d.time / 1000, "crashed", &name, &icon, health::signal_name(d.sig), &key);
+            }
         }
         for d in dumps {
             if self.seen_dumps.insert((d.time, d.pid)) {
@@ -758,6 +857,179 @@ pub fn nix_outdated(running: &str, current: &str) -> bool {
     match (store_package(running), store_package(current)) {
         (Some((h1, n1)), Some((h2, n2))) => n1 == n2 && h1 != h2,
         _ => false,
+    }
+}
+
+/// System conditions and changes for the activity timeline: load, memory
+/// and I/O pressure, heat and throttling as episodes (start and end with a
+/// hysteresis), and changes of power, network, disks, GPUs and sleep.
+#[derive(Default)]
+pub struct Watch {
+    primed: bool,
+    last_t: u64,
+    cpu: Option<u64>,
+    mem: Option<u64>,
+    io: Option<u64>,
+    hot: Option<u64>,
+    throttle: Option<u64>,
+    throttle_quiet: u64,
+    on_ac: bool,
+    battery_floor: u8,
+    nets: HashMap<String, bool>,
+    mounts: HashSet<String>,
+    profile: String,
+    gpus: HashMap<String, bool>,
+}
+
+type WatchEvent = (u64, &'static str, String, String);
+
+/// Starts an episode above `on`, ends it below `off` (reports seconds).
+#[allow(clippy::too_many_arguments)]
+fn episode(state: &mut Option<u64>, value: f64, on: f64, off: f64, t: u64, start: &'static str, end: &'static str, name: &str, out: &mut Vec<WatchEvent>) {
+    match *state {
+        None if value >= on => {
+            *state = Some(t);
+            out.push((t, start, name.to_owned(), String::new()));
+        }
+        Some(since) if value < off => {
+            *state = None;
+            out.push((t, end, name.to_owned(), ((t - since) / 1000).to_string()));
+        }
+        _ => {}
+    }
+}
+
+impl Watch {
+    pub fn update(&mut self, s: &Sample, top_cpu: &str, top_mem: &str, top_io: &str) -> Vec<WatchEvent> {
+        let t = s.t;
+        let mut out = Vec::new();
+        // A long pause between samples: the computer slept.
+        if self.last_t > 0 && t.saturating_sub(self.last_t) > 60_000 {
+            out.push((t, "resumed", String::new(), ((t - self.last_t) / 1000).to_string()));
+        }
+        self.last_t = t;
+        episode(&mut self.cpu, s.cpu.pressure, 30.0, 10.0, t, "cpu-busy", "cpu-calm", top_cpu, &mut out);
+        episode(
+            &mut self.mem,
+            s.memory.pressure,
+            10.0,
+            2.0,
+            t,
+            "memory-pressure",
+            "memory-ok",
+            top_mem,
+            &mut out,
+        );
+        episode(&mut self.io, s.io.pressure_full, 20.0, 5.0, t, "io-wait", "io-ok", top_io, &mut out);
+        if let Some(temp) = s.cpu.temp {
+            let crit = s.cpu.temp_crit.unwrap_or(100.0);
+            episode(
+                &mut self.hot,
+                temp - (crit - 5.0),
+                0.0,
+                -10.0,
+                t,
+                "hot",
+                "cool",
+                &format!("{temp:.0}"),
+                &mut out,
+            );
+        }
+        // Throttling: on with the first event, over after a quiet minute.
+        if s.cpu.throttled > 0 {
+            self.throttle_quiet = t;
+        }
+        let quiet = if self.throttle.is_some() && t.saturating_sub(self.throttle_quiet) > 60_000 {
+            0.0
+        } else {
+            1.0
+        };
+        episode(
+            &mut self.throttle,
+            if s.cpu.throttled > 0 { 2.0 } else { quiet },
+            2.0,
+            0.5,
+            t,
+            "throttling",
+            "throttling-over",
+            "",
+            &mut out,
+        );
+
+        let battery = s.power.batteries.first().map(|b| b.percent);
+        let mounts: HashSet<String> = s.disks.iter().flat_map(|d| d.mounts.iter().map(|m| m.path.clone())).collect();
+        let nets: HashMap<String, bool> = s.net.iter().filter(|n| n.kind != "virtual").map(|n| (n.iface.clone(), n.up)).collect();
+        let gpus: HashMap<String, bool> = s
+            .gpus
+            .iter()
+            .filter(|g| g.vendor == "NVIDIA" || g.vendor == "AMD")
+            .map(|g| (g.name.clone(), !g.asleep))
+            .collect();
+        if !self.primed {
+            self.primed = true;
+            self.on_ac = s.power.on_ac;
+            self.battery_floor = battery.map_or(0, |p| {
+                if p <= 10.0 {
+                    10
+                } else if p <= 20.0 {
+                    20
+                } else {
+                    100
+                }
+            });
+            self.mounts = mounts;
+            self.nets = nets;
+            self.profile = s.power_profile.clone();
+            self.gpus = gpus;
+            return out;
+        }
+        if s.power.on_ac != self.on_ac {
+            self.on_ac = s.power.on_ac;
+            let pct = battery.map(|p| format!("{p:.0}")).unwrap_or_default();
+            out.push((t, if s.power.on_ac { "ac-on" } else { "ac-off" }, pct, String::new()));
+            if s.power.on_ac {
+                self.battery_floor = 100;
+            }
+        }
+        if let Some(p) = battery.filter(|_| !s.power.on_ac) {
+            for floor in [20u8, 10, 5] {
+                if p <= floor as f64 && self.battery_floor > floor {
+                    self.battery_floor = floor;
+                    out.push((t, "battery-low", format!("{p:.0}"), String::new()));
+                }
+            }
+        }
+        for (iface, up) in &nets {
+            if self.nets.get(iface).is_some_and(|was| was != up) || !self.nets.contains_key(iface) && *up {
+                out.push((t, if *up { "net-up" } else { "net-down" }, iface.clone(), String::new()));
+            }
+        }
+        for iface in self.nets.keys().filter(|i| !nets.contains_key(*i)) {
+            if self.nets[iface] {
+                out.push((t, "net-down", iface.clone(), String::new()));
+            }
+        }
+        for m in mounts.difference(&self.mounts) {
+            out.push((t, "mounted", m.clone(), String::new()));
+        }
+        for m in self.mounts.difference(&mounts) {
+            out.push((t, "unmounted", m.clone(), String::new()));
+        }
+        if !s.power_profile.is_empty() && s.power_profile != self.profile {
+            if !self.profile.is_empty() {
+                out.push((t, "profile", s.power_profile.clone(), String::new()));
+            }
+            self.profile = s.power_profile.clone();
+        }
+        for (name, awake) in &gpus {
+            if self.gpus.get(name).is_some_and(|was| was != awake) {
+                out.push((t, if *awake { "gpu-awake" } else { "gpu-asleep" }, name.clone(), String::new()));
+            }
+        }
+        self.mounts = mounts;
+        self.nets = nets;
+        self.gpus = gpus;
+        out
     }
 }
 
@@ -875,6 +1147,34 @@ mod tests {
         assert!(!nix_outdated(run, "/nix/store/cccc-firefox-wrapper/bin/firefox"));
         assert!(!nix_outdated("/usr/bin/firefox", "/nix/store/bbbb-firefox-131.0/bin/firefox"));
         assert_eq!(store_package("/nix/store/h-python3-3.13.1-env/bin/python"), Some(("h", "python3")));
+    }
+
+    #[test]
+    fn watch_reports_episodes_and_changes() {
+        let mut w = Watch::default();
+        let mut s = Sample {
+            t: 1_000,
+            ..Default::default()
+        };
+        s.power.on_ac = true;
+        assert!(w.update(&s, "a", "b", "c").is_empty());
+        s.t = 2_000;
+        s.cpu.pressure = 50.0;
+        let e = w.update(&s, "hog", "b", "c");
+        assert_eq!(e, vec![(2_000, "cpu-busy", "hog".to_owned(), String::new())]);
+        s.t = 3_000;
+        s.cpu.pressure = 20.0;
+        assert!(w.update(&s, "hog", "b", "c").is_empty(), "hysteresis");
+        s.t = 12_000;
+        s.cpu.pressure = 5.0;
+        s.power.on_ac = false;
+        let e = w.update(&s, "hog", "b", "c");
+        assert!(e.contains(&(12_000, "cpu-calm", "hog".to_owned(), "10".to_owned())));
+        assert!(e.iter().any(|x| x.1 == "ac-off"));
+        s.t = 200_000;
+        let e = w.update(&s, "hog", "b", "c");
+        assert_eq!(e[0].1, "resumed");
+        assert_eq!(e[0].3, "188");
     }
 
     #[test]

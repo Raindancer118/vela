@@ -171,6 +171,11 @@ Singleton {
             sig("TERM", I18n.tr("End process"), "close", false, keyHint("end")),
             sig("KILL", I18n.tr("Kill process"), "stop_circle", true, keyHint("force")),
             p.state === "T" ? sig("CONT", I18n.tr("Continue"), "play_arrow", false, keyHint("pause")) : sig("STOP", I18n.tr("Stop (pause)"), "pause", false, keyHint("pause")),
+            {
+                icon: "restart_alt",
+                label: I18n.tr("Restart process"),
+                action: () => Pulse.restartProc(p.pid)
+            },
             sig("HUP", I18n.tr("Reload (SIGHUP)"), "refresh", false),
             {
                 separator: true

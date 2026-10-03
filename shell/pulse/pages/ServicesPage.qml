@@ -187,6 +187,11 @@ Item {
 
         ListView {
             id: list
+            ScrollBar {
+                parent: list
+                flick: list
+            }
+
 
             Layout.fillWidth: true
             Layout.fillHeight: true

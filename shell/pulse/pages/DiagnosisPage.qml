@@ -9,6 +9,11 @@ import "../Model.js" as Model
 // What's wrong, why, and the button that fixes it.
 Flickable {
     id: page
+    ScrollBar {
+        parent: page
+        flick: page
+    }
+
 
     readonly property var loc: Qt.locale()
     readonly property int problems: Pulse.findings.filter(f => f.severity !== "info").length

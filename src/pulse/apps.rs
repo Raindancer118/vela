@@ -437,7 +437,9 @@ pub fn group(procs: &[ProcInfo], windows: &[WindowInfo], desktop: &[DesktopApp])
         } else if kind == Kind::Task {
             let leaf = task_leaf.or(main);
             let n = leaf.map(task_name).unwrap_or_else(|| "shell".into());
-            (n, "utilities-terminal".into())
+            // Claude Code gets Claude's logo, other tasks the terminal.
+            let icon = if n.eq_ignore_ascii_case("claude") { "claude" } else { "utilities-terminal" };
+            (n, icon.into())
         } else if acc.host {
             let n = main.map(program).unwrap_or_default();
             (n.clone(), n.to_lowercase())
@@ -730,7 +732,7 @@ mod tests {
         assert_eq!(g.iter().filter(|x| x.name == "Vesktop").count(), 1);
 
         let task = find("claude");
-        assert_eq!((task.kind, task.icon.as_str()), (Kind::Task, "utilities-terminal"));
+        assert_eq!((task.kind, task.icon.as_str()), (Kind::Task, "claude"));
 
         assert_eq!(find("pipewire").kind, Kind::Service);
         let pg = find("postgresql");

@@ -11,12 +11,16 @@ Item {
     id: page
 
     property string filter: "all"
+    // Seconds back; 0 = everything kept (7 days).
+    property int span: 86400
     readonly property var groups: ({
             all: null,
-            problems: ["crashed", "oom", "failed", "not-responding", "action-failed"],
-            apps: ["started", "closed", "ended", "restarted", "responding"]
+            problems: ["crashed", "oom", "failed", "not-responding", "action-failed", "cpu-busy", "memory-pressure", "io-wait", "hot", "throttling", "battery-low"],
+            apps: ["started", "closed", "ended", "restarted", "responding", "task-started", "task-finished", "service-started", "service-stopped"],
+            system: ["cpu-busy", "cpu-calm", "memory-pressure", "memory-ok", "io-wait", "io-ok", "hot", "cool", "throttling", "throttling-over", "ac-on", "ac-off", "battery-low", "net-up", "net-down", "mounted", "unmounted", "profile", "gpu-awake", "gpu-asleep", "resumed", "boot"]
         })
-    readonly property var shown: Pulse.events.filter(e => (groups[filter] === null || groups[filter].indexOf(e.kind) >= 0) && Model.matches(PulseUi.query, [e.name, e.detail, Words.event(e)]))
+    readonly property real since: span > 0 ? Date.now() - span * 1000 : 0
+    readonly property var shown: Pulse.events.filter(e => e.t >= since && (groups[filter] === null || groups[filter].indexOf(e.kind) >= 0) && Model.matches(PulseUi.query, [e.name, e.detail, Words.event(e)]))
 
     ColumnLayout {
         anchors.fill: parent
@@ -26,6 +30,7 @@ Item {
         spacing: Theme.spacing.md
 
         RowLayout {
+            Layout.fillWidth: true
             spacing: Theme.spacing.sm
 
             Repeater {
@@ -41,6 +46,10 @@ Item {
                     {
                         k: "apps",
                         t: I18n.tr("Apps")
+                    },
+                    {
+                        k: "system",
+                        t: I18n.tr("System")
                     }
                 ]
 
@@ -69,10 +78,48 @@ Item {
                     }
                 }
             }
+
+            Item {
+                Layout.fillWidth: true
+            }
+
+            StyledText {
+                text: I18n.tr("%1 events", page.shown.length)
+                color: Theme.colors.textMuted
+                font.pixelSize: Theme.font.small
+            }
+
+            Segmented {
+                options: [
+                    {
+                        k: "3600",
+                        t: I18n.tr("1 h")
+                    },
+                    {
+                        k: "86400",
+                        t: I18n.tr("24 h")
+                    },
+                    {
+                        k: "604800",
+                        t: I18n.tr("7 d")
+                    },
+                    {
+                        k: "0",
+                        t: I18n.tr("All")
+                    }
+                ]
+                current: String(page.span)
+                onPicked: k => page.span = Number(k)
+            }
         }
 
         ListView {
             id: list
+            ScrollBar {
+                parent: list
+                flick: list
+            }
+
 
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -168,7 +215,7 @@ Item {
                             StyledText {
                                 Layout.fillWidth: true
                                 visible: text !== ""
-                                text: ev.modelData.kind === "action-failed" ? "" : ev.modelData.detail
+                                text: ev.modelData.kind === "action-failed" || /^\d+$/.test(ev.modelData.detail) ? "" : ev.modelData.detail
                                 color: Theme.colors.textMuted
                                 font.pixelSize: Theme.font.small
                             }

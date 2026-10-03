@@ -301,8 +301,71 @@ Singleton {
         }[p] ?? p;
     }
 
+    // Seconds in an event's detail as a short duration.
+    function dur(secs: string): string {
+        const s = Number(secs);
+        if (!secs || isNaN(s))
+            return "";
+        if (s < 60)
+            return I18n.tr("%1 s", s);
+        return I18n.duration(s);
+    }
+
     function event(e: var): string {
+        const d = dur(e.detail);
         switch (e.kind) {
+        case "task-started":
+            return I18n.tr("%1 started in a terminal", e.name);
+        case "task-finished":
+            return d ? I18n.tr("%1 finished after %2", e.name, d) : I18n.tr("%1 finished", e.name);
+        case "service-started":
+            return I18n.tr("Service %1 started", e.name);
+        case "service-stopped":
+            return I18n.tr("Service %1 stopped", e.name);
+        case "cpu-busy":
+            return e.name ? I18n.tr("High CPU load, mostly %1", e.name) : I18n.tr("High CPU load");
+        case "cpu-calm":
+            return I18n.tr("CPU load back to normal after %1", d);
+        case "memory-pressure":
+            return e.name ? I18n.tr("Memory got tight, mostly %1", e.name) : I18n.tr("Memory got tight");
+        case "memory-ok":
+            return I18n.tr("Memory relaxed after %1", d);
+        case "io-wait":
+            return e.name ? I18n.tr("Programs wait for the disk, mostly %1", e.name) : I18n.tr("Programs wait for the disk");
+        case "io-ok":
+            return I18n.tr("Disk waits over after %1", d);
+        case "hot":
+            return I18n.tr("Processor at %1 °C", e.name);
+        case "cool":
+            return I18n.tr("Processor cooled down after %1", d);
+        case "throttling":
+            return I18n.tr("Processor throttles because of heat");
+        case "throttling-over":
+            return I18n.tr("Throttling over after %1", d);
+        case "ac-on":
+            return I18n.tr("Plugged in");
+        case "ac-off":
+            return e.name ? I18n.tr("On battery (%1 %)", e.name) : I18n.tr("On battery");
+        case "battery-low":
+            return I18n.tr("Battery at %1 %", e.name);
+        case "net-up":
+            return I18n.tr("%1 connected", e.name);
+        case "net-down":
+            return I18n.tr("%1 disconnected", e.name);
+        case "mounted":
+            return I18n.tr("%1 mounted", e.name);
+        case "unmounted":
+            return I18n.tr("%1 unmounted", e.name);
+        case "profile":
+            return I18n.tr("Power profile: %1", profile(e.name));
+        case "gpu-awake":
+            return I18n.tr("%1 woke up", e.name);
+        case "gpu-asleep":
+            return I18n.tr("%1 went to sleep", e.name);
+        case "resumed":
+            return I18n.tr("Woke up after %1", d);
+        case "boot":
+            return I18n.tr("Computer started");
         case "started":
             return I18n.tr("%1 started", e.name);
         case "closed":
@@ -334,11 +397,35 @@ Singleton {
         case "failed":
         case "not-responding":
         case "action-failed":
+        case "hot":
+        case "battery-low":
             return Theme.pulse.crit;
+        case "cpu-busy":
+        case "memory-pressure":
+        case "io-wait":
+        case "throttling":
+            return Theme.pulse.warn;
         case "started":
         case "responding":
         case "restarted":
+        case "task-started":
+        case "service-started":
+        case "cpu-calm":
+        case "memory-ok":
+        case "io-ok":
+        case "cool":
+        case "throttling-over":
+        case "net-up":
+        case "ac-on":
+        case "boot":
+        case "resumed":
             return Theme.pulse.ok;
+        case "mounted":
+        case "unmounted":
+        case "profile":
+        case "gpu-awake":
+        case "gpu-asleep":
+            return Theme.colors.primary;
         default:
             return Theme.colors.textMuted;
         }
@@ -355,7 +442,33 @@ Singleton {
             responding: "check",
             ended: "stop_circle",
             restarted: "restart_alt",
-            "action-failed": "warning"
+            "action-failed": "warning",
+            "task-started": "terminal",
+            "task-finished": "check",
+            "service-started": "services",
+            "service-stopped": "services",
+            "cpu-busy": "pulse_cpu",
+            "cpu-calm": "pulse_cpu",
+            "memory-pressure": "pulse_memory",
+            "memory-ok": "pulse_memory",
+            "io-wait": "storage",
+            "io-ok": "storage",
+            hot: "pulse_thermo",
+            cool: "pulse_thermo",
+            throttling: "pulse_thermo",
+            "throttling-over": "pulse_thermo",
+            "ac-on": "battery_charging_full",
+            "ac-off": "battery_full",
+            "battery-low": "battery_alert",
+            "net-up": "wifi",
+            "net-down": "signal_wifi_off",
+            mounted: "storage",
+            unmounted: "storage",
+            profile: "speed",
+            "gpu-awake": "pulse_gpu",
+            "gpu-asleep": "pulse_gpu",
+            resumed: "bedtime_off",
+            boot: "power_settings_new"
         }[kind] ?? "info";
     }
 

@@ -26,6 +26,29 @@ pub struct Backlog {
     pub coarse: BTreeMap<String, Vec<Option<f32>>>,
 }
 
+/// The activity timeline, kept across reboots: one event per line.
+pub fn events_file() -> PathBuf {
+    crate::paths::state_dir().join("pulse-events.jsonl")
+}
+
+/// How far back the timeline goes, and at most how many events.
+pub const EVENTS_DAYS: u64 = 7;
+pub const EVENTS_MAX: usize = 3000;
+
+/// Events of the last `EVENTS_DAYS` from the events file, oldest first.
+pub fn read_events(text: &str, now: u64) -> Vec<Event> {
+    let from = now.saturating_sub(EVENTS_DAYS * 86_400_000);
+    let mut v: Vec<Event> = text
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Event>(l).ok())
+        .filter(|e| e.t >= from)
+        .collect();
+    v.sort_by_key(|e| e.t);
+    let skip = v.len().saturating_sub(EVENTS_MAX);
+    v.drain(..skip);
+    v
+}
+
 /// The minute averages, kept across reboots: one JSON line per minute
 /// (`{"t":…,"v":{key:value}}`), appended, compacted once a day.
 pub fn history_file() -> PathBuf {
@@ -201,6 +224,9 @@ pub struct Recorder {
     /// Where the minutes go (None in tests).
     pub history: Option<PathBuf>,
     appended: usize,
+    /// Where the events go (None in tests).
+    pub events_path: Option<PathBuf>,
+    events_appended: usize,
 }
 
 impl Recorder {
@@ -220,6 +246,45 @@ impl Recorder {
             acc_start: 0,
             history: None,
             appended: 0,
+            events_path: None,
+            events_appended: 0,
+        }
+    }
+
+    /// The timeline of the last days from the events file.
+    pub fn load_events(&mut self, path: PathBuf, now: u64) {
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        self.events = read_events(&text, now).into();
+        self.events_path = Some(path);
+    }
+
+    fn append_events(&mut self, new: &[Event]) {
+        let Some(path) = &self.events_path else { return };
+        if new.is_empty() {
+            return;
+        }
+        use std::io::Write;
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(std::path::Path::new(".")));
+        let lines: String = new.iter().filter_map(|e| serde_json::to_string(e).ok()).map(|l| l + "\n").collect();
+        if std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .and_then(|mut f| f.write_all(lines.as_bytes()))
+            .is_err()
+        {
+            return;
+        }
+        self.events_appended += new.len();
+        if self.events_appended >= 1000 {
+            self.events_appended = 0;
+            let text = std::fs::read_to_string(path).unwrap_or_default();
+            let kept: String = read_events(&text, super::sample::now_ms())
+                .iter()
+                .filter_map(|e| serde_json::to_string(e).ok())
+                .map(|l| l + "\n")
+                .collect();
+            let _ = crate::config::write_atomic(path, &kept);
         }
     }
 
@@ -264,8 +329,10 @@ impl Recorder {
 
     /// Continues from a previous daemon's file (same interval only).
     pub fn resume(&mut self, b: Backlog) {
+        if self.events_path.is_none() {
+            self.events = b.events.clone().into();
+        }
         if b.interval != self.interval_ms {
-            self.events = b.events.into();
             return;
         }
         for (k, v) in b.series {
@@ -275,7 +342,6 @@ impl Recorder {
             }
             self.series.insert(k, q);
         }
-        self.events = b.events.into();
         self.last_t = b.t;
     }
 
@@ -331,8 +397,9 @@ impl Recorder {
                 self.acc_start = t;
             }
         }
+        self.append_events(&f.events);
         self.events.extend(f.events.iter().cloned());
-        while self.events.len() > super::engine::EVENT_KEEP {
+        while self.events.len() > EVENTS_MAX {
             self.events.pop_front();
         }
         self.last_t = f.sample.t;
@@ -369,8 +436,16 @@ pub fn spawn() {
             let mut monitor = Monitor::light();
             let mut rec = Recorder::new(cfg.record_interval_secs as u64 * 1000, cfg.history_minutes, cfg.long_history_hours);
             rec.load_history(history_file(), super::sample::now_ms());
-            if let Some(b) = load() {
-                rec.resume(b);
+            rec.load_events(events_file(), super::sample::now_ms());
+            match load() {
+                Some(b) => rec.resume(b),
+                // A fresh runtime directory: the computer just started.
+                None => {
+                    let boot = super::procfs::parse_stat(&std::fs::read_to_string("/proc/stat").unwrap_or_default()).boot_time;
+                    if boot > 0 {
+                        monitor.push_event_at(boot * 1000, "boot", "", "", "", "");
+                    }
+                }
             }
             let mut cfg_at = Instant::now();
             loop {
@@ -383,6 +458,7 @@ pub fn spawn() {
                     {
                         let mut fresh = Recorder::new(next.record_interval_secs as u64 * 1000, next.history_minutes, next.long_history_hours);
                         fresh.load_history(history_file(), super::sample::now_ms());
+                        fresh.load_events(events_file(), super::sample::now_ms());
                         fresh.resume(rec.backlog());
                         rec = fresh;
                     }
@@ -431,6 +507,28 @@ mod tests {
         assert_eq!(gpu, vec![None, Some(5.0), None, None, None, None, None, None]);
         // Older than the window: left out.
         assert_eq!(read_history(&text, 107 * m, 3)["cpu"].len(), 3);
+    }
+
+    #[test]
+    fn events_survive_in_their_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("e.jsonl");
+        let ev = |t: u64, kind: &str| Event {
+            t,
+            kind: kind.into(),
+            name: "x".into(),
+            icon: String::new(),
+            detail: String::new(),
+            key: String::new(),
+        };
+        let mut r = Recorder::new(1000, 5, 1);
+        r.load_events(path.clone(), 0);
+        r.append_events(&[ev(1, "started"), ev(2, "closed")]);
+        let now = 3;
+        let back = read_events(&std::fs::read_to_string(&path).unwrap(), now);
+        assert_eq!(back.iter().map(|e| e.kind.as_str()).collect::<Vec<_>>(), vec!["started", "closed"]);
+        // Older than a week: gone.
+        assert!(read_events(&std::fs::read_to_string(&path).unwrap(), 8 * 86_400_000).is_empty());
     }
 
     #[test]

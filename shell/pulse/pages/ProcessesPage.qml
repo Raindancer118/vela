@@ -561,6 +561,11 @@ Item {
 
         ListView {
             id: list
+            ScrollBar {
+                parent: list
+                flick: list
+            }
+
 
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -669,16 +674,6 @@ Item {
                 }
             }
 
-            Rectangle {
-                anchors.right: parent.right
-                visible: list.contentHeight > list.height
-                y: list.visibleArea.yPosition * list.height
-                width: Theme.size.scrollbarWidth
-                height: list.visibleArea.heightRatio * list.height
-                radius: width / 2
-                color: Theme.colors.textDisabled
-                opacity: list.moving ? 1 : Theme.opacity.scrollbarIdle
-            }
 
             delegate: Item {
                 id: row

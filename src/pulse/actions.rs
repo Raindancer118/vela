@@ -256,6 +256,37 @@ pub fn relaunch_spec(app: &AppFrame, desktop_file: Option<&Path>, term: &Termina
     })
 }
 
+/// Restarts one process: ends it and starts its command line again in the
+/// same folder with the same environment. Only the user's own processes.
+pub fn restart_process(pid: i32, cfg: &Config) -> Result<(), String> {
+    let st = super::procfs::parse_pid_stat(&std::fs::read_to_string(format!("/proc/{pid}/stat")).map_err(|_| "that process is gone".to_owned())?)
+        .ok_or("that process is gone")?;
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap_or_default();
+    // SAFETY: getuid cannot fail.
+    if super::procfs::status_uid(&status) != Some(unsafe { libc::getuid() }) {
+        return Err("only your own processes can be restarted".into());
+    }
+    if pid <= 1 || st.flags & super::procfs::PF_KTHREAD != 0 {
+        return Err("this process can't be restarted".into());
+    }
+    let started = start_of(pid).unwrap_or(0);
+    let cmdline = super::procfs::parse_cmdline(&std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default());
+    if cmdline.is_empty() {
+        return Err("it has no command line to start again".into());
+    }
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe"))
+        .map(|p| p.to_string_lossy().trim_end_matches(" (deleted)").to_owned())
+        .unwrap_or_default();
+    let probe = AppFrame::for_process(pid, started, cmdline, exe, st.comm);
+    let spec = relaunch_spec(&probe, None, &cfg.terminal)?;
+    signal(&still_same(&[pid], &[started]), libc::SIGTERM)?;
+    if !wait_gone(&[pid], Duration::from_secs(6)) {
+        signal(&still_same(&[pid], &[started]), libc::SIGKILL)?;
+        wait_gone(&[pid], Duration::from_secs(2));
+    }
+    launch::spawn_detached(&spec, cfg.general.systemd_scope && launch::systemd_scope_available()).map_err(|e| e.to_string())
+}
+
 /// Restarts an app: services through systemd, everything else by ending it
 /// and starting it again the way it was started.
 pub fn restart_app(app: &AppFrame, desktop_file: Option<&Path>, cfg: &Config) -> Result<(), String> {
@@ -468,6 +499,32 @@ mod tests {
         assert!(still_same(&[me], &[start - 100]).is_empty());
         assert_eq!(still_same(&[me], &[]), vec![me]);
         assert!(still_same(&[i32::MAX], &[start]).is_empty());
+    }
+
+    #[test]
+    fn restarts_a_single_process() {
+        let mut child = Command::new("sleep").arg("31.25").spawn().unwrap();
+        let pid = child.id() as i32;
+        std::thread::sleep(Duration::from_millis(50));
+        let cfg = Config {
+            general: crate::config::General {
+                systemd_scope: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        restart_process(pid, &cfg).unwrap();
+        let _ = child.wait();
+        assert!(wait_gone(&[pid], Duration::from_secs(2)));
+        // The new one runs: a sleep 31.25 of ours that isn't the old pid.
+        let again = std::fs::read_dir("/proc")
+            .unwrap()
+            .flatten()
+            .filter_map(|e| e.file_name().to_str()?.parse::<i32>().ok())
+            .any(|p| p != pid && std::fs::read(format!("/proc/{p}/cmdline")).is_ok_and(|c| c.ends_with(b"sleep\x0031.25\x00")));
+        assert!(again);
+        let _ = Command::new("pkill").args(["-f", "sleep 31.25$"]).status();
+        assert!(restart_process(1, &cfg).is_err());
     }
 
     #[test]

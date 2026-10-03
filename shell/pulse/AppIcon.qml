@@ -12,7 +12,11 @@ Item {
     property string fallback: ""
     property real size: 24
 
+    // Claude (Claude Code, the desktop app) always with its own logo.
+    readonly property bool isClaude: icon.toLowerCase() === "claude" || name.toLowerCase() === "claude" || icon.toLowerCase().startsWith("claude-")
     readonly property string source: {
+        if (isClaude)
+            return Qt.resolvedUrl("../assets/claude.svg");
         const a = icon !== "" ? Quickshell.iconPath(icon, true) : "";
         if (a !== "")
             return a;
