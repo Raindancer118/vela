@@ -1,10 +1,10 @@
 name: Changelog page
 
+# Only on release tags (and by hand): Pages names a deployment after the commit,
+# so a tag on a commit main already deployed would be skipped as a duplicate.
 on:
   push:
-    branches: [main]
     tags: ['[0-9]+.[0-9]+.[0-9]+']
-    paths: [docs/changelog.toml, scripts/changelog.py]
   workflow_dispatch:
 
 permissions:
