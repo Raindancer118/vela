@@ -89,6 +89,65 @@ pub fn data_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// Every symlink passed while resolving `path`, in order. inotify resolves them
+/// once when a watch is set up, so a profile switch that only repoints one
+/// (NixOS rebuild, home-manager, `nix profile install`) is invisible to a watch
+/// on the directory itself.
+pub fn symlinks_on(path: &Path) -> Vec<PathBuf> {
+    use std::collections::VecDeque;
+    use std::path::Component;
+
+    fn parts(p: &Path) -> impl Iterator<Item = Option<OsString>> + '_ {
+        p.components().filter_map(|c| match c {
+            Component::Normal(n) => Some(Some(n.to_os_string())),
+            Component::ParentDir => Some(None),
+            _ => None,
+        })
+    }
+
+    let mut found = Vec::new();
+    let mut cur = PathBuf::from("/");
+    let mut rest: VecDeque<Option<OsString>> = parts(path).collect();
+    while let Some(part) = rest.pop_front() {
+        let Some(name) = part else {
+            cur.pop();
+            continue;
+        };
+        let next = cur.join(&name);
+        match std::fs::read_link(&next) {
+            // Same limit as the kernel's ELOOP.
+            Ok(target) if found.len() < 40 => {
+                found.push(next);
+                if target.is_absolute() {
+                    cur = PathBuf::from("/");
+                }
+                for p in parts(&target).collect::<Vec<_>>().into_iter().rev() {
+                    rest.push_front(p);
+                }
+            }
+            Ok(_) => break,
+            Err(_) => cur = next,
+        }
+    }
+    found
+}
+
+/// Directories to watch, with the link names in each, so that repointing any of
+/// `links` is noticed. Links inside the Nix store never change (and the store
+/// churns on every build), so they are left out.
+pub fn link_watches(links: impl IntoIterator<Item = PathBuf>) -> std::collections::BTreeMap<PathBuf, std::collections::BTreeSet<OsString>> {
+    let mut out: std::collections::BTreeMap<PathBuf, std::collections::BTreeSet<OsString>> = Default::default();
+    for link in links {
+        let (Some(dir), Some(name)) = (link.parent(), link.file_name()) else {
+            continue;
+        };
+        if !dir.starts_with("/nix/store") {
+            out.entry(dir.to_path_buf()).or_default().insert(name.to_os_string());
+        }
+    }
+    out
+}
+
 /// Expands a leading `~` or `~/`.
 pub fn expand_tilde(path: &str) -> PathBuf {
     if path == "~" {
@@ -214,6 +273,55 @@ pub fn find_executable(cmd: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn link_watches_group_by_parent_and_skip_the_store() {
+        let w = link_watches([
+            PathBuf::from("/run/current-system"),
+            PathBuf::from("/nix/store/abc-system/sw"),
+            PathBuf::from("/home/u/.nix-profile"),
+            PathBuf::from("/nix/var/nix/profiles/per-user/u/profile"),
+            PathBuf::from("/nix/var/nix/profiles/per-user/u/profile-3-link"),
+            PathBuf::from("/run/current-system"),
+        ]);
+        let got: Vec<(&str, Vec<&str>)> = w
+            .iter()
+            .map(|(d, n)| (d.to_str().unwrap(), n.iter().map(|n| n.to_str().unwrap()).collect()))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("/home/u", vec![".nix-profile"]),
+                ("/nix/var/nix/profiles/per-user/u", vec!["profile", "profile-3-link"]),
+                ("/run", vec!["current-system"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn symlinks_on_follows_a_nix_like_profile_chain() {
+        use std::os::unix::fs::symlink;
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().canonicalize().unwrap();
+        // store/gen-2/share/applications, profiles/profile -> profile-2-link -> ../store/gen-2,
+        // current -> profiles/profile (absolute).
+        std::fs::create_dir_all(root.join("store/gen-2/share/applications")).unwrap();
+        std::fs::create_dir_all(root.join("profiles")).unwrap();
+        symlink("../store/gen-2", root.join("profiles/profile-2-link")).unwrap();
+        symlink("profile-2-link", root.join("profiles/profile")).unwrap();
+        symlink(root.join("profiles/profile"), root.join("current")).unwrap();
+
+        let found = symlinks_on(&root.join("current/share/applications"));
+        assert_eq!(
+            found,
+            vec![root.join("current"), root.join("profiles/profile"), root.join("profiles/profile-2-link")]
+        );
+        assert!(symlinks_on(&root.join("store/gen-2/share/applications")).is_empty());
+        // Missing paths and loops end the walk instead of hanging.
+        assert!(symlinks_on(&root.join("nope/applications")).is_empty());
+        symlink("loop", root.join("loop")).unwrap();
+        assert!(!symlinks_on(&root.join("loop/x")).is_empty());
+    }
 
     #[test]
     fn tilde_expansion() {

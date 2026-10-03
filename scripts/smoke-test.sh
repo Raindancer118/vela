@@ -41,6 +41,15 @@ fi
 
 fail() { echo "FAIL: $*"; echo "--- daemon log"; cat "$tmp/daemon.log"; exit 1; }
 
+# Applications reached through a Nix-style profile link (current -> profile ->
+# profile-1-link -> store/gen-1); a rebuild only repoints the links.
+desktop() { printf '[Desktop Entry]\nType=Application\nName=%s\nExec=true\n' "$1" >"$tmp/store/$2/share/applications/$1.desktop"; }
+mkdir -p "$tmp/store/gen-1/share/applications" "$tmp/store/gen-2/share/applications" "$tmp/profiles"
+desktop VelaSmokeOld gen-1 && desktop VelaSmokeOld gen-2 && desktop VelaSmokeNew gen-2
+ln -s ../store/gen-1 "$tmp/profiles/profile-1-link" && ln -s profile-1-link "$tmp/profiles/profile"
+ln -s "$tmp/profiles/profile" "$tmp/current"
+export XDG_DATA_DIRS="$tmp/current/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+
 "$BIN" daemon >"$tmp/daemon.log" 2>&1 &
 daemon_pid=$!
 for _ in $(seq 100); do "$BIN" status 2>/dev/null && break; sleep 0.1; done
@@ -57,6 +66,19 @@ for cmd in show hide toggle toggle "settings" "settings claude" "settings home" 
     kill -0 "$daemon_pid" 2>/dev/null || fail "daemon died after '$cmd'"
 done
 grep -q "found .* applications" "$tmp/daemon.log" || fail "application scan did not finish"
+
+# Profile switch: repoint the generation link atomically, like nix-env/nixos-rebuild.
+apps() { grep -o "found [0-9]* applications" "$tmp/daemon.log" | tail -1 | grep -o "[0-9]*"; }
+sleep 1
+before=$(apps)
+ln -s ../store/gen-2 "$tmp/profiles/profile-2-link"
+ln -s profile-2-link "$tmp/profiles/profile.tmp" && mv -T "$tmp/profiles/profile.tmp" "$tmp/profiles/profile"
+for _ in $(seq 50); do [[ "$(apps)" == $((before + 1)) ]] && break; sleep 0.1; done
+[[ "$(apps)" == $((before + 1)) ]] || fail "profile switch not noticed ($before -> $(apps) applications)"
+# And again after the switch: the watches must follow the new generation.
+desktop VelaSmokeNewer gen-2
+for _ in $(seq 50); do [[ "$(apps)" == $((before + 2)) ]] && break; sleep 0.1; done
+[[ "$(apps)" == $((before + 2)) ]] || fail "new generation not watched ($before -> $(apps) applications)"
 
 status="$XDG_CACHE_HOME/vela/updates.json"
 for _ in $(seq 100); do grep -qs '"running":null' "$status" && grep -qs "fake pacman" "$XDG_STATE_HOME"/vela/updates/*.log && break; sleep 0.1; done

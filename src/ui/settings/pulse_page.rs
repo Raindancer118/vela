@@ -94,7 +94,7 @@ pub fn build(b: &Binder) -> adw::PreferencesPage {
     ));
     window.add(&b.switch(
         "Show kernel threads",
-        "List the kernel's own threads in Apps & processes",
+        "List the kernel's own threads in Apps &amp; processes",
         |c| c.pulse.show_kernel,
         |c, v| c.pulse.show_kernel = v,
     ));
@@ -102,7 +102,7 @@ pub fn build(b: &Binder) -> adw::PreferencesPage {
 
     let keys = group(
         "Keys",
-        "For the selected app or process in Apps & processes, or the app whose details are open. One key (k) or Delete, Insert, Home, End, Space, F1–F12; empty = off. The keys act right away, without asking.",
+        "For the selected app or process in Apps &amp; processes, or the app whose details are open. One key (k) or Delete, Insert, Home, End, Space, F1–F12; empty = off. The keys act right away, without asking.",
     );
     keys.add(&b.entry("Kill (force quit)", |c| c.pulse.key_force.clone(), |c, v| c.pulse.key_force = v));
     keys.add(&b.entry("End (ask to close)", |c| c.pulse.key_end.clone(), |c, v| c.pulse.key_end = v));

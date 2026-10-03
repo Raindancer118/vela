@@ -42,7 +42,8 @@ pub struct Daemon {
     status_listeners: RefCell<Vec<StatusListener>>,
     catalog_listeners: RefCell<Vec<CatalogListener>>,
     app_monitors: RefCell<Vec<gio::FileMonitor>>,
-    rescan_pending: RefCell<Option<glib::SourceId>>,
+    /// Debounced rescan and whether it also re-sets the watches.
+    rescan_pending: RefCell<Option<(glib::SourceId, bool)>>,
     use_scope: bool,
 }
 
@@ -221,6 +222,7 @@ impl Daemon {
             Command::Settings(page) => self.open_settings_page(page),
             Command::Reload => {
                 self.store.reload_from_disk();
+                self.watch_app_dirs();
                 self.rescan_apps();
                 self.engine.rebuild_index();
             }
@@ -280,9 +282,16 @@ impl Daemon {
     }
 
     fn watch_app_dirs(self: &Rc<Self>) {
+        // gio shares one inotify watch per path string: while an old monitor for the
+        // same path lives, a new one keeps watching the old (pre-switch) directory.
+        for m in self.app_monitors.take() {
+            m.cancel();
+        }
         let mut monitors = Vec::new();
+        let mut links = Vec::new();
         for dir in paths::data_dirs() {
             let apps = dir.join("applications");
+            links.extend(paths::symlinks_on(&apps));
             if !apps.is_dir() {
                 continue;
             }
@@ -291,23 +300,49 @@ impl Daemon {
             };
             let weak = Rc::downgrade(self);
             m.connect_changed(move |_, _, _, _| {
-                let Some(d) = weak.upgrade() else { return };
-                // Package installs touch many files at once: debounce.
-                if let Some(id) = d.rescan_pending.borrow_mut().take() {
-                    id.remove();
+                if let Some(d) = weak.upgrade() {
+                    d.schedule_rescan(false);
                 }
-                let weak = Rc::downgrade(&d);
-                let id = glib::timeout_add_local_once(Duration::from_millis(800), move || {
+            });
+            monitors.push(m);
+        }
+        // A NixOS rebuild or profile switch only repoints symlinks; the watches above
+        // still sit on the old generation. Watch the links and re-watch on a change.
+        for (dir, names) in paths::link_watches(links) {
+            let Ok(m) = gio::File::for_path(&dir).monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE) else {
+                continue;
+            };
+            let weak = Rc::downgrade(self);
+            m.connect_changed(move |_, file, other, _| {
+                let named = |f: Option<&gio::File>| f.and_then(|f| f.basename()).is_some_and(|n| names.contains(n.as_os_str()));
+                if named(Some(file)) || named(other) {
                     if let Some(d) = weak.upgrade() {
-                        d.rescan_pending.borrow_mut().take();
-                        d.rescan_apps();
+                        d.schedule_rescan(true);
                     }
-                });
-                *d.rescan_pending.borrow_mut() = Some(id);
+                }
             });
             monitors.push(m);
         }
         *self.app_monitors.borrow_mut() = monitors;
+    }
+
+    /// Package installs and profile switches touch many files at once: debounce.
+    fn schedule_rescan(self: &Rc<Self>, mut rewatch: bool) {
+        if let Some((id, pending)) = self.rescan_pending.borrow_mut().take() {
+            id.remove();
+            rewatch |= pending;
+        }
+        let weak = Rc::downgrade(self);
+        let id = glib::timeout_add_local_once(Duration::from_millis(800), move || {
+            let Some(d) = weak.upgrade() else { return };
+            d.rescan_pending.borrow_mut().take();
+            if rewatch {
+                log::info!("an application directory was repointed (profile switch), watching it again");
+                d.watch_app_dirs();
+            }
+            d.rescan_apps();
+        });
+        *self.rescan_pending.borrow_mut() = Some((id, rewatch));
     }
 
     // -------------------------------------------------------------- actions
