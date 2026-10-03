@@ -118,6 +118,9 @@ struct Layout {
     factor: f64,
     off_x: i32,
     off_y: i32,
+    /// The canvas in layout units. Tiles stay inside: one poking out would grow the
+    /// canvas and shift the whole page under the pointer.
+    bounds: Rect,
 }
 
 impl Layout {
@@ -174,8 +177,12 @@ fn arrangement(store: &HyprStore) -> gtk::Widget {
             let mut l = layout.borrow_mut();
             let Some(l) = l.as_mut() else { return };
             let (x, y) = (sx + (dx / l.factor).round() as i32, sy + (dy / l.factor).round() as i32);
+            let (x, y) = hyprmon::clamp(l.rects[i], l.bounds, x, y);
             let threshold = (24.0 / l.factor) as i32;
             let (x, y) = hyprmon::snap(&l.rects, i, x, y, threshold);
+            if !hyprmon::fits(Rect { x, y, ..l.rects[i] }, l.bounds) {
+                return;
+            }
             l.rects[i].x = x;
             l.rects[i].y = y;
             let (px, py) = l.to_px(x, y);
@@ -243,7 +250,8 @@ fn arrangement(store: &HyprStore) -> gtk::Widget {
             let factor = (600.0 / span_w).min(240.0 / span_h);
             let off_x = (f64::from(max_x - min_x) * 0.3) as i32 - min_x;
             let off_y = (f64::from(max_y - min_y) * 0.3) as i32 - min_y;
-            fixed.set_size_request((span_w * factor) as i32, (span_h * factor) as i32);
+            let (canvas_w, canvas_h) = ((span_w * factor) as i32, (span_h * factor) as i32);
+            fixed.set_size_request(canvas_w, canvas_h);
             let mut l = Layout {
                 monitors: monitors.clone(),
                 rects,
@@ -251,6 +259,12 @@ fn arrangement(store: &HyprStore) -> gtk::Widget {
                 factor,
                 off_x,
                 off_y,
+                bounds: Rect {
+                    x: -off_x,
+                    y: -off_y,
+                    w: (f64::from(canvas_w) / factor) as i32,
+                    h: (f64::from(canvas_h) / factor) as i32,
+                },
             };
             for (i, m) in monitors.iter().enumerate() {
                 let r = l.rects[i];

@@ -281,6 +281,15 @@ pub fn hit(rects: &[Rect], x: i32, y: i32) -> Option<usize> {
     rects.iter().position(|r| (r.x..r.x + r.w).contains(&x) && (r.y..r.y + r.h).contains(&y))
 }
 
+/// Top-left position closest to `x`,`y` at which `r` lies inside `bounds`.
+pub fn clamp(r: Rect, bounds: Rect, x: i32, y: i32) -> (i32, i32) {
+    (x.min(bounds.x + bounds.w - r.w).max(bounds.x), y.min(bounds.y + bounds.h - r.h).max(bounds.y))
+}
+
+pub fn fits(r: Rect, bounds: Rect) -> bool {
+    r.x >= bounds.x && r.y >= bounds.y && r.x + r.w <= bounds.x + bounds.w && r.y + r.h <= bounds.y + bounds.h
+}
+
 /// Shifts the layout so its top-left corner is at 0,0.
 pub fn normalize(rects: &mut [Rect]) {
     let (Some(min_x), Some(min_y)) = (rects.iter().map(|r| r.x).min(), rects.iter().map(|r| r.y).min()) else {
@@ -412,6 +421,23 @@ mod tests {
         let mut r = vec![Rect { x: -100, y: 50, w: 10, h: 10 }, Rect { x: 0, y: 0, w: 10, h: 10 }];
         normalize(&mut r);
         assert_eq!((r[0].x, r[0].y, r[1].x, r[1].y), (0, 50, 100, 0));
+    }
+
+    #[test]
+    fn clamp_keeps_the_rect_inside_the_bounds() {
+        let bounds = Rect {
+            x: -100,
+            y: -50,
+            w: 1000,
+            h: 500,
+        };
+        let r = Rect { x: 0, y: 0, w: 200, h: 100 };
+        assert_eq!(clamp(r, bounds, 10, 20), (10, 20));
+        assert_eq!(clamp(r, bounds, -500, -500), (-100, -50));
+        assert_eq!(clamp(r, bounds, 5000, 5000), (700, 350));
+        assert!(fits(Rect { x: 700, y: 350, ..r }, bounds));
+        assert!(!fits(Rect { x: 701, y: 0, ..r }, bounds));
+        assert!(!fits(Rect { x: 0, y: -51, ..r }, bounds));
     }
 
     #[test]
