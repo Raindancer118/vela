@@ -15,6 +15,7 @@
   curl,
   gnutar,
   gzip,
+  lxqt,
 }:
 let
   cargo = (builtins.fromTOML (builtins.readFile ../Cargo.toml)).package;
@@ -67,6 +68,14 @@ rustPlatform.buildRustPackage {
         gzip
       ]
     })
+    # A user service may start without the system's PATH: Pulse needs the
+    # host's setuid sudo, systemctl, journalctl, nvidia-smi, powerprofilesctl.
+    # vela adds the per-user profiles itself (paths::complete_nixos_env).
+    # lxqt-openssh-askpass is the password dialog of last resort.
+    gappsWrapperArgs+=(
+      --suffix PATH : /run/wrappers/bin:/run/current-system/sw/bin:${lib.getBin lxqt.lxqt-openssh-askpass}/bin
+      --suffix XDG_DATA_DIRS : /run/current-system/sw/share
+    )
   '';
 
   meta = {

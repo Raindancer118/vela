@@ -4,6 +4,7 @@
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    vela::paths::complete_nixos_env();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("vela=info"))
         .format_timestamp_millis()
         .init();

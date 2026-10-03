@@ -14,6 +14,14 @@ for f in bin/vela bin/vela-daemon bin/vela-share-picker bin/vela-pulse share/vel
     [[ -e "$out/$f" ]] || { echo "FAIL: package lacks $f"; exit 1; }
 done
 "$out/bin/vela" --version
+# Pulse and the launcher need the host's setuid sudo, systemd tools and the
+# profiles' apps, which a user service's environment may lack.
+for w in /run/wrappers/bin /run/current-system/sw/bin /run/current-system/sw/share lxqt-openssh-askpass; do
+    grep -aqF -- "$w" "$out/bin/vela" || { echo "FAIL: wrapper lacks $w"; exit 1; }
+done
+env -i HOME="$tmp" USER=u PATH=/nonexistent "$out/bin/vela" pulse snapshot >"$tmp/snap.json"
+grep -q '"sample"' "$tmp/snap.json" || { echo "FAIL: pulse snapshot"; head -c 400 "$tmp/snap.json"; exit 1; }
+env -i HOME="$tmp" USER=u PATH=/nonexistent "$out/bin/vela" pulse doctor | grep -q . || { echo "FAIL: pulse doctor"; exit 1; }
 # Shortcuts from Settings reach Hyprland through these globals.
 for g in vela_super_tap vela_panel_keys vela_launcher_command vela_settings_file; do
     grep -q "$g" "$out/share/vela/vela.lua" || { echo "FAIL: packaged vela.lua lacks $g"; exit 1; }

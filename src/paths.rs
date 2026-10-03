@@ -1,7 +1,7 @@
 //! XDG base directories, `~` expansion and executable lookup.
 
 use std::env;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -81,12 +81,7 @@ pub fn data_dirs() -> Vec<PathBuf> {
     dirs.extend(system.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
     // A systemd user service often starts with a reduced environment, so make
     // sure flatpak/snap exports are found even if XDG_DATA_DIRS lacks them.
-    for extra in [
-        home_dir().join(".local/share/flatpak/exports/share"),
-        PathBuf::from("/var/lib/flatpak/exports/share"),
-        PathBuf::from("/var/lib/snapd/desktop"),
-        PathBuf::from("/usr/share"),
-    ] {
+    for extra in extra_data_dirs(&home_dir(), &user_name(), crate::nixos::running_nixos()) {
         if !dirs.contains(&extra) && extra.is_dir() {
             dirs.push(extra);
         }
@@ -115,27 +110,88 @@ pub fn display_path(path: &Path) -> String {
     }
 }
 
-fn user_bin_dirs() -> Vec<PathBuf> {
-    let home = home_dir();
-    vec![
-        home.join(".local/bin"),
-        home.join(".cargo/bin"),
-        home.join("bin"),
-        PathBuf::from("/usr/local/bin"),
-        PathBuf::from("/usr/bin"),
-    ]
+fn user_name() -> String {
+    env::var("USER").unwrap_or_default()
+}
+
+/// Where NixOS puts programs and their data, in its own PATH order
+/// (`/run/wrappers/bin` holds the setuid sudo).
+fn nix_profile_dirs(home: &Path, user: &str, sub: &str) -> Vec<PathBuf> {
+    let mut dirs = vec![
+        home.join(".nix-profile").join(sub),
+        home.join(".local/state/nix/profile").join(sub),
+        PathBuf::from(format!("/etc/profiles/per-user/{user}/{sub}")),
+        PathBuf::from("/nix/var/nix/profiles/default").join(sub),
+        PathBuf::from("/run/current-system/sw").join(sub),
+    ];
+    if sub == "bin" {
+        dirs.insert(0, PathBuf::from("/run/wrappers/bin"));
+    }
+    dirs
+}
+
+fn extra_bin_dirs(home: &Path, user: &str, nixos: bool) -> Vec<PathBuf> {
+    let mut dirs = vec![home.join(".local/bin"), home.join(".cargo/bin"), home.join("bin")];
+    if nixos {
+        dirs.extend(nix_profile_dirs(home, user, "bin"));
+    } else {
+        dirs.extend([PathBuf::from("/usr/local/bin"), PathBuf::from("/usr/bin")]);
+    }
+    dirs
+}
+
+fn extra_data_dirs(home: &Path, user: &str, nixos: bool) -> Vec<PathBuf> {
+    let mut dirs = vec![
+        home.join(".local/share/flatpak/exports/share"),
+        PathBuf::from("/var/lib/flatpak/exports/share"),
+        PathBuf::from("/var/lib/snapd/desktop"),
+    ];
+    if nixos {
+        dirs.extend(nix_profile_dirs(home, user, "share"));
+    } else {
+        dirs.push(PathBuf::from("/usr/share"));
+    }
+    dirs
+}
+
+/// `current` (a PATH-like list) with the missing ones of `extra` at the end.
+fn appended(current: Option<&OsStr>, extra: &[PathBuf]) -> OsString {
+    let mut parts: Vec<PathBuf> = current
+        .map(|p| env::split_paths(p).filter(|d| !d.as_os_str().is_empty()).collect())
+        .unwrap_or_default();
+    for dir in extra {
+        if !parts.contains(dir) {
+            parts.push(dir.clone());
+        }
+    }
+    env::join_paths(parts).unwrap_or_default()
 }
 
 /// PATH for launched children: the inherited PATH plus common user binary
 /// directories that a systemd user service usually doesn't have.
 pub fn child_path_env() -> OsString {
-    let mut parts: Vec<PathBuf> = env::var_os("PATH").map(|p| env::split_paths(&p).collect()).unwrap_or_default();
-    for dir in user_bin_dirs() {
-        if !parts.contains(&dir) {
-            parts.push(dir);
-        }
+    appended(
+        env::var_os("PATH").as_deref(),
+        &extra_bin_dirs(&home_dir(), &user_name(), crate::nixos::running_nixos()),
+    )
+}
+
+/// On NixOS a user service or a bare exec may start without the profiles in
+/// PATH and XDG_DATA_DIRS (setuid sudo, systemctl, claude, apps, icons).
+/// Completes both for this process and everything it starts; call first
+/// thing in main, before any thread exists.
+pub fn complete_nixos_env() {
+    if !crate::nixos::running_nixos() {
+        return;
     }
-    env::join_paths(parts).unwrap_or_default()
+    let (home, user) = (home_dir(), user_name());
+    let path = child_path_env();
+    let data = appended(env::var_os("XDG_DATA_DIRS").as_deref(), &nix_profile_dirs(&home, &user, "share"));
+    // SAFETY: called at the start of main, while the process is single-threaded.
+    unsafe {
+        env::set_var("PATH", path);
+        env::set_var("XDG_DATA_DIRS", data);
+    }
 }
 
 fn is_executable(path: &Path) -> bool {
@@ -177,6 +233,40 @@ mod tests {
         // Directories and non-executable files are not executables.
         assert!(find_executable("/etc/hostname").is_none());
         assert!(find_executable("/usr").is_none());
+    }
+
+    #[test]
+    fn nixos_program_dirs_only_on_nixos() {
+        let home = Path::new("/home/u");
+        let nix = extra_bin_dirs(home, "u", true);
+        let expected = ["/run/wrappers/bin", "/etc/profiles/per-user/u/bin", "/home/u/.nix-profile/bin"];
+        for d in expected.into_iter().chain(["/run/current-system/sw/bin"]) {
+            assert!(nix.contains(&PathBuf::from(d)), "{d} missing");
+        }
+        // The setuid sudo comes before every other place that could have one.
+        let pos = |d: &str| nix.iter().position(|p| p == Path::new(d)).unwrap();
+        assert!(pos("/run/wrappers/bin") < pos("/run/current-system/sw/bin"));
+        let arch = extra_bin_dirs(home, "u", false);
+        assert!(arch.contains(&PathBuf::from("/usr/bin")));
+        assert!(!arch.iter().any(|p| p.starts_with("/run") || p.starts_with("/etc")));
+    }
+
+    #[test]
+    fn appends_missing_dirs_once() {
+        let extra = [PathBuf::from("/b"), PathBuf::from("/c")];
+        assert_eq!(appended(Some(OsStr::new("/a:/b")), &extra), OsString::from("/a:/b:/c"));
+        assert_eq!(appended(None, &extra), OsString::from("/b:/c"));
+        assert_eq!(appended(Some(OsStr::new("")), &extra), OsString::from("/b:/c"));
+    }
+
+    #[test]
+    fn nixos_data_dirs_only_on_nixos() {
+        let home = Path::new("/home/u");
+        let nix = extra_data_dirs(home, "u", true);
+        for d in ["/etc/profiles/per-user/u/share", "/home/u/.nix-profile/share", "/run/current-system/sw/share"] {
+            assert!(nix.contains(&PathBuf::from(d)), "{d} missing");
+        }
+        assert!(!extra_data_dirs(home, "u", false).iter().any(|p| p.starts_with("/run/current-system")));
     }
 
     #[test]

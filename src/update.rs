@@ -610,9 +610,15 @@ pub fn fingerprint_failed(line: &str) -> bool {
 /// known askpass program. vela.service usually lacks the variable, which
 /// shells set in their own config.
 pub fn find_askpass(env_value: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
-    env_value
+    askpass_from(env_value, std::env::var_os("SSH_ASKPASS").as_deref())
+}
+
+fn askpass_from(env_value: Option<&std::ffi::OsStr>, ssh_askpass: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+    [env_value, ssh_askpass]
+        .into_iter()
+        .flatten()
         .map(PathBuf::from)
-        .filter(|p| p.is_file())
+        .find(|p| p.is_file())
         .or_else(|| {
             ["ksshaskpass", "ssh-askpass", "lxqt-openssh-askpass", "x11-ssh-askpass"]
                 .iter()
@@ -1278,6 +1284,16 @@ mod tests {
         assert!(fingerprint_failed("Failed to match fingerprint"));
         assert!(fingerprint_failed("sudo: no askpass program specified, try setting SUDO_ASKPASS"));
         assert!(!fingerprint_failed(":: Synchronizing package databases..."));
+    }
+
+    #[test]
+    fn askpass_falls_back_to_ssh_askpass() {
+        // NixOS sets SSH_ASKPASS (programs.ssh.askPassword), not SUDO_ASKPASS.
+        let own = std::env::current_exe().unwrap();
+        let found = askpass_from(None, Some(own.as_os_str()));
+        assert_eq!(found, Some(own.clone()));
+        let found = askpass_from(Some(std::ffi::OsStr::new("/nonexistent/a")), Some(own.as_os_str()));
+        assert_eq!(found, Some(own));
     }
 
     #[test]
