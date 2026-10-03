@@ -1,0 +1,267 @@
+# One entry per pushed tag. Date, time, lines and commits come from git;
+# scripts/changelog.py refuses to build while a tag has no entry here.
+# area: launcher, panel, hyprland, settings, claude, pulse, updates, nixos, install, share, docs
+
+[intro]
+title = "The logbook"
+lede = "Every tag we pushed, newest on top. vela started as a Spotlight clone on a Wednesday evening and was a whole desktop shell by Saturday afternoon."
+
+["0.46.6"]
+area = ["nixos", "launcher"]
+title = "Apps from a NixOS rebuild show up right away"
+notes = [
+  "A rebuild doesn't touch the application folders, it only repoints symlinks like /run/current-system. vela now watches every link on the way and follows the switch, so `vela reload` after a rebuild is no longer needed.",
+  "Settings → Pulse: the “&” in “Apps & processes” no longer breaks two descriptions.",
+]
+
+["0.46.5"]
+area = ["hyprland"]
+title = "Dragging a monitor no longer shakes the page"
+notes = ["A tile pulled past the edge grew the canvas, and everything below it moved under the pointer. Tiles now stay inside."]
+
+["0.46.4"]
+area = ["hyprland"]
+title = "Monitors stop flickering while you drag them"
+notes = [
+  "The drag gesture sat on the tile it moved, so every step fed into the next. One gesture on the canvas now picks the tile under the pointer.",
+  "The shell test runs on a private bus without portals: no more coredump per test run.",
+]
+
+["0.46.3"]
+area = ["pulse"]
+title = "Pulse opens again after you closed its window"
+notes = ["Closing the window ends Pulse. `vela pulse` asks a running Pulse whether it still has a window instead of assuming it does."]
+
+["0.46.2"]
+area = ["install"]
+title = "Updating while Pulse runs keeps its window"
+notes = ["Pulse and the share picker get their entry files last, so an instance that reloads mid-copy reloads once more with everything in place."]
+
+["0.46.1"]
+area = ["pulse"]
+title = "No more “Programs wait for the disk” on an idle disk"
+notes = ["io_uring waits (Ghostty, node) count as iowait. The finding now needs a busy disk, swapping or a process really waiting on storage."]
+
+["0.46.0"]
+area = ["pulse"]
+title = "CPU temperature in the graphs"
+notes = [
+  "Overall and per core on their own °C scale, recorded for the long ranges too. Cores the heat slows down turn red.",
+  "Asking Claude about a finding hands over that finding only, and says it may be a false alarm.",
+]
+
+["0.45.0"]
+area = ["pulse", "nixos"]
+title = "Pulse, a task manager"
+notes = [
+  "Apps and processes grouped from systemd cgroups. End, force quit, restart, pause, efficiency mode; keys k, g, r, p, e.",
+  "Diagnosis with a health score and findings, each with its own Claude button. Performance graphs over an hour, a day or a week.",
+  "An activity timeline that remembers seven days: load, heat, throttling, network, mounts, crashes, how long terminal tasks ran.",
+  "On NixOS, Pulse finds the host's tools even when started as a bare user service.",
+]
+
+["0.44.0"]
+area = ["nixos", "settings"]
+title = "Features switch on NixOS without a rebuild"
+notes = ["With Home Manager's stateDir, Settings → System → Features writes components.toml and applies it live."]
+
+["0.43.0"]
+area = ["launcher", "panel"]
+title = "Your own keys for launcher and control center"
+notes = ["Recorded like any shortcut, they replace a hyprland.lua bind on the same keys. The Super tap can be switched off; tap toggles the control center, hold peeks."]
+
+["0.42.1"]
+area = ["nixos"]
+title = "Home Manager update finds a flake in a subfolder"
+notes = []
+
+["0.42.0"]
+area = ["launcher"]
+title = "Launcher on the left or right, with its own clock"
+notes = ["Position and distance from the edge. A clock on the blurred backdrop, above a centred launcher or in the middle of the free side."]
+
+["0.41.0"]
+area = ["panel"]
+title = "Shuffle, repeat and sizes for the mini player"
+notes = ["Repeat cycles off → playlist → track. Player size, button size, icon-only buttons, album-art blur strength."]
+
+["0.40.0"]
+area = ["updates", "settings"]
+title = "vela updates itself"
+notes = ["Settings → System compares the installed and the latest release every 12 hours. Update keeps your component selection and settings; on NixOS it builds with nix."]
+
+["0.39.0"]
+area = ["panel"]
+title = "A mini player in the control center"
+notes = ["Spotify, or any MPRIS player that's playing. Album art, a progress bar you can drag, and it can take the Claude card's place while music runs."]
+
+["0.38.0"]
+area = ["panel"]
+title = "Clock size on the blur"
+notes = ["48 to 320 px, the date scales along. Layout switches grey out the moment they stop applying."]
+
+["0.37.0"]
+area = ["nixos", "install"]
+title = "NixOS support"
+notes = [
+  "A flake package and a Home Manager module. NixOS mode keeps config and Hyprland overrides in your repository and offers Apply & rebuild.",
+  "install.sh builds with nix there and leaves the pacman updates out.",
+]
+
+["0.36.0"]
+area = ["panel"]
+title = "A clock on the blur"
+notes = ["Clock and date large in the blurred area beside the control center, in any font, with a live preview."]
+
+["0.35.0"]
+area = ["updates"]
+title = "Every package shows where it is"
+notes = ["Waiting, downloading, building, installing, installed: read live from pacman, makepkg and Flatpak."]
+
+["0.34.1"]
+area = ["install"]
+title = "`vela components | head` no longer panics"
+notes = []
+
+["0.34.0"]
+area = ["install"]
+title = "Install only what you want"
+notes = ["Profiles (full, minimal, launcher, panel) or single components. Run install.sh again to change the selection; dropped parts are removed, settings stay."]
+
+["0.33.1"]
+area = ["updates"]
+title = "Fingerprint prompt on the monitor you're looking at"
+notes = []
+
+["0.33.0"]
+area = ["updates"]
+title = "sudo asks properly, fingerprint included"
+notes = ["Always a password dialog, even from a service. While sudo waits for the reader, a fingerprint breathes on screen: a check mark when it's you, a red shake when it isn't."]
+
+["0.32.0"]
+area = ["settings"]
+title = "Blur per backdrop"
+notes = ["Launcher and control center each get their own blur switch next to their strength."]
+
+["0.31.0"]
+area = ["updates", "claude"]
+title = "Updates, inside the settings"
+notes = [
+  "pacman with paru or yay, and Flatpak: everything, only the database, or picked apps, with live output and a log.",
+  "A failed run shows its error lines next to Fix with Claude.",
+]
+
+["0.30.0"]
+area = ["settings"]
+title = "Dim without blur"
+notes = ["Switch the blur off and the backdrop only darkens the screen."]
+
+["0.29.0"]
+area = ["share"]
+title = "A screen-share picker"
+notes = ["Screens laid out as on your desk, windows, or a region. Live previews, search, keyboard navigation and a remember-my-choice switch."]
+
+["0.28.2"]
+area = ["docs", "panel"]
+title = "The control center in the README"
+notes = []
+
+["0.28.1"]
+area = ["claude"]
+title = "Plan badge in bold"
+notes = []
+
+["0.28.0"]
+area = ["panel", "docs"]
+title = "The control center looks like vela"
+notes = [
+  "GTK's font, Adwaita icons, the launcher's accent selection, real GTK sliders.",
+  "Claude plans read live from the profile, so a team seat upgraded to Max shows Max.",
+  "The README got its night-sail hero.",
+]
+
+["0.27.0"]
+area = ["hyprland", "claude"]
+title = "Shortcuts, window rules, autostart"
+notes = ["Keys recorded through an empty submap, 22 actions. Rules made by picking an open window, 24 effects. All three are tools in vela's MCP server too."]
+
+["0.26.0"]
+area = ["settings"]
+title = "The search understands German"
+notes = ["Stems, compound words, filler words. Groups rank by their best hit."]
+
+["0.25.0"]
+area = ["settings", "claude"]
+title = "Search every setting, or ask Claude"
+notes = ["Results are the real rows, usable in place (Ctrl+F). Ctrl+Enter hands the question to Claude Code with vela's new MCP server."]
+
+["0.24.0"]
+area = ["hyprland"]
+title = "Monitors"
+notes = ["Drag the arrangement, pick resolution, refresh rate, a scale Hyprland accepts, rotation, VRR. Anything that could leave a screen dark reverts unless you keep it."]
+
+["0.23.0"]
+area = ["hyprland"]
+title = "All options"
+notes = ["Every option Hyprland describes, searchable, with an only-changed filter and one reset for all."]
+
+["0.22.0"]
+area = ["hyprland"]
+title = "Animations, input, layouts, behaviour"
+notes = ["Duration, curve (springs included) and style per animation. Keyboard, mouse, touchpad, swipes. Dwindle, master, scrolling, groups."]
+
+["0.21.0"]
+area = ["hyprland"]
+title = "Hyprland settings arrive"
+notes = ["Gaps per edge, borders and gradients, corners, transparency, blur, shadow, glow. Applied live, kept in hyprland.toml."]
+
+["0.20.0"]
+area = ["claude", "panel"]
+title = "Claude usage in the control center"
+notes = [
+  "5-hour and 7-day usage per account, coloured, with reset time and plan. The daemon polls as often as the endpoint allows.",
+  "Compact notifications that unfold when the pointer rests on them. `vela set <key> <value>`.",
+  "0.9 to 0.19 shipped without tags; they're all in here.",
+]
+
+["0.8.1"]
+area = ["claude", "panel"]
+title = "Claude's notifications carry Claude's logo"
+notes = []
+
+["0.7.0"]
+area = ["launcher"]
+title = "A line between pinned and all other apps"
+notes = []
+
+["0.6.0"]
+area = ["launcher"]
+title = "Quieter grid"
+notes = ["No ring around the selected tile; tile background and outline are switches now, off by default."]
+
+["0.5.0"]
+area = ["panel", "settings"]
+title = "The control center"
+notes = [
+  "A Quickshell panel, brought over from Luna1506/nixos: sound, power modes, notifications, an optional clock.",
+  "`vela idle`: dim, lock, screen off and suspend, set from the settings.",
+  "Settings get a sidebar, theme swatches and a marker that glides.",
+]
+
+["0.4.0"]
+area = ["launcher"]
+title = "A blurred backdrop behind the launcher"
+notes = []
+
+["0.3.0"]
+area = ["launcher"]
+title = "A main monitor"
+notes = ["While it's connected, the launcher always opens there."]
+
+["0.2.0"]
+area = ["launcher", "claude"]
+title = "First tag"
+notes = [
+  "A Spotlight-style launcher for Hyprland: app grid, fuzzy search, files, and Ask Claude.",
+  "←/→ opens the selected result on the next monitor. The launcher stays open when the mouse wanders off.",
+]
