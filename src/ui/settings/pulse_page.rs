@@ -75,6 +75,12 @@ pub fn build(b: &Binder) -> adw::PreferencesPage {
         |c, i| c.pulse.sensor_view = ["list", "graphs", "chart"].get(i).copied().unwrap_or("list").into(),
     ));
     window.add(&b.switch(
+        "Mark throttled cores",
+        "Performance → CPU per core: cores the heat slows down right now turn red",
+        |c| c.pulse.throttle_tint,
+        |c, v| c.pulse.throttle_tint = v,
+    ));
+    window.add(&b.switch(
         "Heat map",
         "Tint the CPU, memory, disk and GPU cells of the process table by load",
         |c| c.pulse.heat_map,

@@ -49,6 +49,8 @@ pub struct CpuFreq {
     pub epp: String,
     /// Package + core throttle events since boot (Intel), summed.
     pub throttle_events: u64,
+    /// Per logical CPU: its core's throttle events since boot (Intel).
+    pub core_throttles: Vec<u64>,
 }
 
 pub fn cpu_freq(sys: &Path) -> CpuFreq {
@@ -68,9 +70,26 @@ pub fn cpu_freq(sys: &Path) -> CpuFreq {
             f.epp = read(&freq.join("energy_performance_preference")).unwrap_or_default();
             f.throttle_events = read_u64(&dir.join("thermal_throttle/package_throttle_count")).unwrap_or(0);
         }
-        f.throttle_events += read_u64(&dir.join("thermal_throttle/core_throttle_count")).unwrap_or(0);
+        let core = read_u64(&dir.join("thermal_throttle/core_throttle_count")).unwrap_or(0);
+        f.throttle_events += core;
+        f.core_throttles.push(core);
     }
     f
+}
+
+/// Which CPUs the heat slows down right now: their core's counter rose in
+/// the last 2 s (a single tick would flicker). `last` keeps when it rose.
+pub fn core_throttling(prev: &[u64], now: &[u64], last: &mut Vec<u64>, t_ms: u64) -> Vec<bool> {
+    last.resize(now.len(), 0);
+    now.iter()
+        .enumerate()
+        .map(|(i, n)| {
+            if prev.get(i).is_some_and(|p| n > p) {
+                last[i] = t_ms;
+            }
+            last[i] > 0 && t_ms.saturating_sub(last[i]) < 2_000
+        })
+        .collect()
 }
 
 /// Model name and cache size from /proc/cpuinfo.
@@ -162,6 +181,25 @@ pub fn cpu_temperature(temps: &[Sensor]) -> Option<&Sensor> {
         }
     };
     temps.iter().filter_map(|s| Some((rank(s)?, s))).min_by_key(|(r, _)| *r).map(|(_, s)| s)
+}
+
+/// Per logical CPU: the reading of its physical core (coretemp's
+/// "Core <core_id>"). None where there is none — AMD's k10temp only knows
+/// the whole package.
+pub fn core_temperatures(sys: &Path, temps: &[Sensor], cpus: usize) -> Vec<Option<f64>> {
+    let mut by_core = std::collections::HashMap::new();
+    for s in temps.iter().filter(|s| s.chip == "coretemp") {
+        if let Some(core) = s.label.strip_prefix("Core ").and_then(|c| c.trim().parse::<u32>().ok()) {
+            by_core.entry(core).or_insert(s.celsius);
+        }
+    }
+    (0..cpus)
+        .map(|i| {
+            read(&sys.join(format!("devices/system/cpu/cpu{i}/topology/core_id")))
+                .and_then(|c| c.parse::<u32>().ok())
+                .and_then(|c| by_core.get(&c).copied())
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
@@ -529,6 +567,17 @@ mod tests {
         let f = cpu_freq(t.path());
         assert_eq!(f.mhz, vec![800, 4600, 2000, 1200]);
         assert_eq!((f.max_mhz, f.governor.as_str(), f.throttle_events), (5100, "powersave", 13));
+        assert_eq!(f.core_throttles, vec![2, 2, 2, 2]);
+    }
+
+    #[test]
+    fn a_core_counts_as_throttled_for_two_seconds() {
+        let mut last = Vec::new();
+        // First sample: nothing to compare with.
+        assert_eq!(core_throttling(&[], &[5, 5], &mut last, 1_000), vec![false, false]);
+        assert_eq!(core_throttling(&[5, 5], &[6, 5], &mut last, 2_000), vec![true, false]);
+        assert_eq!(core_throttling(&[6, 5], &[6, 5], &mut last, 3_500), vec![true, false]);
+        assert_eq!(core_throttling(&[6, 5], &[6, 5], &mut last, 4_100), vec![false, false]);
     }
 
     #[test]
@@ -536,6 +585,26 @@ mod tests {
         let (m, c) = cpu_model("processor\t: 0\nmodel name\t: Intel(R) Core(TM)   i7-10875H CPU @ 2.30GHz\ncache size\t: 16384 KB\n");
         assert_eq!(m, "Intel(R) Core(TM) i7-10875H CPU @ 2.30GHz");
         assert_eq!(c, "16384 KB");
+    }
+
+    #[test]
+    fn core_temperatures_follow_the_topology() {
+        let t = tempfile::tempdir().unwrap();
+        put(t.path(), "class/hwmon/hwmon6/name", "coretemp");
+        put(t.path(), "class/hwmon/hwmon6/temp1_label", "Package id 0");
+        put(t.path(), "class/hwmon/hwmon6/temp1_input", "80000");
+        put(t.path(), "class/hwmon/hwmon6/temp2_label", "Core 0");
+        put(t.path(), "class/hwmon/hwmon6/temp2_input", "70000");
+        put(t.path(), "class/hwmon/hwmon6/temp3_label", "Core 4");
+        put(t.path(), "class/hwmon/hwmon6/temp3_input", "75000");
+        // Two threads per core; cpu3's core has no sensor.
+        for (cpu, core) in [(0, 0), (1, 4), (2, 0), (3, 9)] {
+            put(t.path(), &format!("devices/system/cpu/cpu{cpu}/topology/core_id"), &core.to_string());
+        }
+        let (temps, _) = sensors(t.path());
+        assert_eq!(core_temperatures(t.path(), &temps, 4), vec![Some(70.0), Some(75.0), Some(70.0), None]);
+        // No per-core sensors (k10temp): nothing per core.
+        assert_eq!(core_temperatures(t.path(), &[], 2), vec![None, None]);
     }
 
     #[test]

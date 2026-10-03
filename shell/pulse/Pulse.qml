@@ -71,6 +71,12 @@ Singleton {
         Quickshell.execDetached([Quickshell.env("VELA_BIN") || "vela", "set", "pulse.sensor_view", v]);
     }
 
+    property bool cpuTemp: VelaConfig.pulse.cpuTemp ?? false
+    function setCpuTemp(on: bool): void {
+        cpuTemp = on;
+        Quickshell.execDetached([Quickshell.env("VELA_BIN") || "vela", "set", "pulse.cpu_temp", String(on)]);
+    }
+
     // The window's range buttons keep the choice in the settings.
     function setRange(secs: int): void {
         range = secs;
@@ -183,6 +189,7 @@ Singleton {
         push("cpu.system", f.cpu.system);
         push("cpu.iowait", f.cpu.iowait);
         f.cpu.cores.forEach((c, i) => push("core." + i, c, 120));
+        (f.cpu.coreTemps ?? []).forEach((t, i) => push("core.temp." + i, t, 120));
         push("cpu.mhz", f.cpu.avgMhz);
         if (f.cpu.temp !== null && f.cpu.temp !== undefined)
             push("cpu.temp", f.cpu.temp);

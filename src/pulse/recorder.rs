@@ -180,6 +180,11 @@ pub fn points(f: &Frame) -> Vec<(String, f32)> {
     for (i, c) in s.cpu.cores.iter().enumerate() {
         p.push((format!("core.{i}"), *c as f32));
     }
+    for (i, t) in s.cpu.core_temps.iter().enumerate() {
+        if let Some(t) = t {
+            p.push((format!("core.temp.{i}"), *t as f32));
+        }
+    }
     for g in &s.gpus {
         p.push((format!("gpu.{}", g.card), g.busy.unwrap_or(0.0) as f32));
         if let (Some(u), Some(t)) = (g.vram_used, g.vram_total)

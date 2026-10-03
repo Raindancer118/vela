@@ -143,6 +143,10 @@ pub struct CpuSample {
     pub epp: String,
     pub temp: Option<f64>,
     pub temp_crit: Option<f64>,
+    /// Per logical CPU; empty when no core has a sensor of its own.
+    pub core_temps: Vec<Option<f64>>,
+    /// Per logical CPU: slowed down by heat right now.
+    pub core_throttled: Vec<bool>,
     /// Throttle events in the last tick.
     pub throttled: u64,
     pub throttle_total: u64,
@@ -247,6 +251,8 @@ pub struct Sampler {
     prev_net: HashMap<String, NetStat>,
     prev_rc6: HashMap<String, u64>,
     prev_throttle: u64,
+    prev_core_throttles: Vec<u64>,
+    core_throttled_at: Vec<u64>,
     prev_procs: HashMap<i32, PrevProc>,
     statics: HashMap<i32, Static>,
     users: HashMap<u32, String>,
@@ -290,6 +296,8 @@ impl Sampler {
             prev_net: HashMap::new(),
             prev_rc6: HashMap::new(),
             prev_throttle: 0,
+            prev_core_throttles: Vec::new(),
+            core_throttled_at: Vec::new(),
             prev_procs: HashMap::new(),
             statics: HashMap::new(),
             users: users.into_iter().collect(),
@@ -440,6 +448,8 @@ impl Sampler {
             0
         };
         self.prev_throttle = freq.throttle_events;
+        cpu.core_throttled = hw::core_throttling(&self.prev_core_throttles, &freq.core_throttles, &mut self.core_throttled_at, now_ms());
+        self.prev_core_throttles = freq.core_throttles;
         let uptime: f64 = self.read("uptime").split_whitespace().next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
         cpu.uptime = uptime as u64;
         let psi_cpu = procfs::parse_pressure(&self.read("pressure/cpu"));
@@ -449,6 +459,10 @@ impl Sampler {
         if let Some(t) = hw::cpu_temperature(&sensors) {
             cpu.temp = Some(t.celsius);
             cpu.temp_crit = t.crit.or(t.high);
+        }
+        cpu.core_temps = hw::core_temperatures(&self.sys_root, &sensors, cpu.cores.len());
+        if cpu.core_temps.iter().all(Option::is_none) {
+            cpu.core_temps.clear();
         }
 
         // Memory

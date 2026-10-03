@@ -158,6 +158,8 @@ pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) ->
             "heatMap": cfg.pulse.heat_map,
             "showKernel": cfg.pulse.show_kernel,
             "sensorView": cfg.pulse.sensor_view,
+            "cpuTemp": cfg.pulse.cpu_temp,
+            "throttleTint": cfg.pulse.throttle_tint,
             "keys": {
                 "force": cfg.pulse.key_force,
                 "end": cfg.pulse.key_end,

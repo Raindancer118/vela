@@ -84,6 +84,8 @@ Singleton {
             heatMap: true,
             showKernel: false,
             sensorView: "list",
+            cpuTemp: false,
+            throttleTint: true,
             intervalMs: 1000,
             record: true,
             claude: true,

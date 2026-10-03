@@ -463,6 +463,7 @@ Singleton {
                 "Pausing…": "Wird pausiert …",
                 "Peak": "Spitze",
                 "Per core": "Pro Kern",
+                "throttled": "gedrosselt",
                 "PID": "PID",
                 "Power": "Energie",
                 "Power draw from the battery": "Leistungsaufnahme aus dem Akku",

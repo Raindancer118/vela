@@ -29,6 +29,14 @@ Item {
     property var format: v => Fmt.num(v, 0, Qt.locale())
     property string label2: ""
     property string label1: ""
+    // Optional third series on its own scale (temperature over usage).
+    property var values3: []
+    property color color3: Theme.pulse.heat
+    property string label3: ""
+    property var format3: v => Fmt.num(v, 0, Qt.locale())
+    // Fixed top of the third series; 0 = scale to its data.
+    property real max3: 0
+    readonly property real top3: max3 > 0 ? Math.max(max3, ...values3.slice(-points - 2).filter(v => v !== null)) : Fmt.niceMax(values3.slice(-points - 2).filter(v => v !== null), 1)
 
     // Live graphs move with every sample; recorded ones (long ranges) don't.
     property bool live: true
@@ -58,12 +66,15 @@ Item {
         }
     }
     onScaleTopChanged: rebuild()
+    onValues3Changed: line3.paths = coords(values3, top3)
+    onTop3Changed: line3.paths = coords(values3, top3)
     onWidthChanged: rebuild()
     onHeightChanged: rebuild()
     Component.onCompleted: rebuild()
 
     // Polyline pieces; null values (nothing recorded then) split them.
-    function coords(vals: var): var {
+    function coords(vals: var, top: real): var {
+        top = top || root.scaleTop;
         const n = vals.length;
         const h = root.height;
         const pad = root.lineWidth;
@@ -78,8 +89,8 @@ Item {
                 continue;
             }
             const x = (i - (n - 1)) * root.step + root.width + root.step;
-            const v = Math.max(0, Math.min(root.scaleTop, vals[i]));
-            cur.push(Qt.point(x, h - pad - v / root.scaleTop * (h - 2 * pad)));
+            const v = Math.max(0, Math.min(top, vals[i]));
+            cur.push(Qt.point(x, h - pad - v / top * (h - 2 * pad)));
         }
         if (cur.length > 0)
             out.push(cur);
@@ -93,6 +104,7 @@ Item {
         line1.paths = p;
         area.paths = p.map(s => [Qt.point(s[0].x, height)].concat(s, [Qt.point(s[s.length - 1].x, height)]));
         line2.paths = coords(values2);
+        line3.paths = coords(values3, top3);
     }
 
     // Grid: quarters.
@@ -173,6 +185,17 @@ Item {
                     id: line2
                 }
             }
+
+            ShapePath {
+                strokeWidth: root.lineWidth
+                strokeColor: root.values3.length > 0 ? root.color3 : "transparent"
+                fillColor: "transparent"
+                joinStyle: ShapePath.RoundJoin
+                capStyle: ShapePath.RoundCap
+                PathMultiline {
+                    id: line3
+                }
+            }
         }
     }
 
@@ -241,7 +264,10 @@ Item {
                     const v1 = raw === null ? I18n.tr("no data") : (root.label1 ? root.label1 + " " : "") + root.format(raw ?? 0);
                     const i2 = root.values2.length - 1 - hover.back;
                     const v2 = root.values2.length > 0 && i2 >= 0 ? "   " + (root.label2 ? root.label2 + " " : "") + root.format(root.values2[i2]) : "";
-                    return v1 + v2 + "  ·  " + ago;
+                    const i3 = root.values3.length - 1 - hover.back;
+                    const r3 = i3 >= 0 ? root.values3[i3] : null;
+                    const v3 = r3 !== null && r3 !== undefined ? "   " + (root.label3 ? root.label3 + " " : "") + root.format3(r3) : "";
+                    return v1 + v2 + v3 + "  ·  " + ago;
                 }
             }
         }

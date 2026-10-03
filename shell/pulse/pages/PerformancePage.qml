@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import qs
 import qs.components
 import qs.pulse
@@ -17,7 +18,11 @@ Item {
     function ser(key: string): var {
         return Pulse.longRange ? Pulse.longSeries(key) : Pulse.series(key, pts + 2);
     }
-    property bool perCore: false
+    // VELA_PULSE_PERCORE=1: test hook for screenshots.
+    property bool perCore: Quickshell.env("VELA_PULSE_PERCORE") === "1"
+    readonly property bool showTemp: Pulse.cpuTemp && page.f?.cpu.temp != null
+    // Shared °C scale: 100 or the chip's critical mark.
+    readonly property real tempTop: Math.max(100, page.f?.cpu.tempCrit ?? 0)
 
     readonly property var devices: {
         const f = page.f;
@@ -159,6 +164,11 @@ Item {
         property alias format: g.format
         property alias label1: g.label1
         property alias label2: g.label2
+        property alias values3: g.values3
+        property alias label3: g.label3
+        property alias color3: g.color3
+        property alias format3: g.format3
+        property alias max3: g.max3
         property string title
         property string rightText
 
@@ -411,6 +421,14 @@ Item {
                     }
 
                     PillButton {
+                        visible: page.kind === "cpu" && page.f?.cpu.temp != null
+                        icon: "thermostat"
+                        style: Pulse.cpuTemp ? "filled" : "tonal"
+                        text: I18n.tr("Temperature")
+                        onClicked: Pulse.setCpuTemp(!Pulse.cpuTemp)
+                    }
+
+                    PillButton {
                         visible: page.kind === "cpu"
                         icon: "grid"
                         text: page.perCore ? I18n.tr("Overall") : I18n.tr("Per core")
@@ -465,10 +483,15 @@ Item {
                         anchors.fill: parent
                         visible: page.kind === "cpu" && !page.perCore
                         title: I18n.tr("Usage over %1", ({ 60: I18n.tr("60 seconds"), 300: I18n.tr("5 minutes"), 3600: I18n.tr("1 hour"), 86400: I18n.tr("24 hours"), 604800: I18n.tr("7 days") })[Pulse.range] ?? "")
-                        rightText: "100 %"
+                        rightText: page.showTemp ? "100 % · " + Fmt.celsius(page.tempTop, page.loc) : "100 %"
                         values: page.ser("cpu")
                         values2: page.ser("cpu.iowait")
                         label2: I18n.tr("I/O wait")
+                        values3: page.showTemp ? page.ser("cpu.temp") : []
+                        label3: I18n.tr("Temperature")
+                        color3: Theme.pulse.heat
+                        max3: page.tempTop
+                        format3: v => Fmt.celsius(v, page.loc)
                         color: Theme.pulse.cpu
                         color2: Theme.pulse.disk
                         max: 100
@@ -489,13 +512,22 @@ Item {
 
                             Rectangle {
                                 required property int index
+                                // Slowed down by heat right now: the tile turns red.
+                                readonly property bool throttled: VelaConfig.pulse.throttleTint && (page.f?.cpu.coreThrottled?.[index] ?? false)
+                                readonly property color tint: throttled ? Theme.pulse.crit : Theme.pulse.cpu
 
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 radius: 6
-                                color: Theme.withAlpha(Theme.pulse.cpu, 0.04)
+                                color: Theme.withAlpha(tint, throttled ? 0.14 : 0.04)
                                 border.width: 1
-                                border.color: Theme.withAlpha(Theme.pulse.cpu, 0.28)
+                                border.color: Theme.withAlpha(tint, throttled ? 0.55 : 0.28)
+                                Behavior on color {
+                                    ColorAnim {}
+                                }
+                                Behavior on border.color {
+                                    ColorAnim {}
+                                }
 
                                 Graph {
                                     anchors.fill: parent
@@ -507,15 +539,23 @@ Item {
                                     max: 100
                                     grid: false
                                     lineWidth: 1.5
-                                    color: Theme.pulse.cpu
+                                    color: parent.tint
                                     format: v => Fmt.percent(v, page.loc)
+                                    // Its core's sensor, else the package's.
+                                    readonly property bool ownTemp: (page.f?.cpu.coreTemps?.length ?? 0) > parent.index
+                                    values3: !page.showTemp ? [] : ownTemp ? (Pulse.longRange ? Pulse.longSeries("core.temp." + parent.index) : Pulse.series("core.temp." + parent.index, Math.min(page.pts, 120) + 2)) : page.ser("cpu.temp")
+                                    label3: I18n.tr("Temperature")
+                                    color3: Theme.pulse.heat
+                                    max3: page.tempTop
+                                    format3: v => Fmt.celsius(v, page.loc)
                                 }
 
                                 StyledText {
                                     x: 6
                                     y: 4
-                                    text: I18n.tr("CPU %1", parent.index) + "  " + Fmt.mhz(page.f?.cpu.mhz[parent.index] ?? 0, page.loc)
-                                    color: Theme.colors.textMuted
+                                    readonly property var temp: page.f?.cpu.coreTemps?.[parent.index] ?? page.f?.cpu.temp ?? null
+                                    text: I18n.tr("CPU %1", parent.index) + "  " + Fmt.mhz(page.f?.cpu.mhz[parent.index] ?? 0, page.loc) + (page.showTemp && temp !== null ? "  " + Fmt.celsius(temp, page.loc) : "") + (parent.throttled ? "  " + I18n.tr("throttled") : "")
+                                    color: parent.throttled ? Theme.pulse.crit : Theme.colors.textMuted
                                     font.pixelSize: Theme.font.small - 1
                                 }
                             }

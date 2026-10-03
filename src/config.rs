@@ -55,6 +55,10 @@ pub struct Pulse {
     pub show_kernel: bool,
     /// Performance → Sensors: list, graphs (one per sensor) or chart (all in one).
     pub sensor_view: String,
+    /// Performance → CPU: the temperature in the graphs (overall and per core).
+    pub cpu_temp: bool,
+    /// Performance → CPU per core: cores the heat slows down right now turn red.
+    pub throttle_tint: bool,
     /// Ask Claude also gets the system log (warnings and errors) and Pulse's
     /// activity of this many hours, as a private file; 0 = off.
     pub claude_log_hours: u32,
@@ -84,6 +88,8 @@ impl Default for Pulse {
             heat_map: true,
             show_kernel: false,
             sensor_view: "list".into(),
+            cpu_temp: false,
+            throttle_tint: true,
             claude_log_hours: 0,
             key_force: "k".into(),
             key_end: "g".into(),
@@ -1026,6 +1032,10 @@ mod tests {
         let mut c = Config::default();
         c.set_value("pulse.smooth_graphs", "false").unwrap();
         assert!(!c.pulse.smooth_graphs);
+        assert!(!c.pulse.cpu_temp);
+        c.set_value("pulse.cpu_temp", "true").unwrap();
+        assert!(c.pulse.cpu_temp);
+        assert!(c.pulse.throttle_tint);
     }
 
     #[test]
