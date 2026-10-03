@@ -110,6 +110,26 @@ const VRR: [(Option<i64>, &str); 5] = [
     (Some(3), "Fullscreen games only"),
 ];
 
+/// The drawn arrangement: layout rects and their tiles, scaled into the canvas.
+struct Layout {
+    monitors: Vec<MonitorInfo>,
+    rects: Vec<Rect>,
+    tiles: Vec<gtk::Box>,
+    factor: f64,
+    off_x: i32,
+    off_y: i32,
+}
+
+impl Layout {
+    fn to_px(&self, x: i32, y: i32) -> (f64, f64) {
+        (f64::from(x + self.off_x) * self.factor, f64::from(y + self.off_y) * self.factor)
+    }
+
+    fn to_layout(&self, px: f64, py: f64) -> (i32, i32) {
+        ((px / self.factor).floor() as i32 - self.off_x, (py / self.factor).floor() as i32 - self.off_y)
+    }
+}
+
 fn arrangement(store: &HyprStore) -> gtk::Widget {
     let fixed = gtk::Fixed::new();
     let frame = gtk::Box::builder().css_classes(["vela-monitor-canvas"]).halign(gtk::Align::Fill).build();
@@ -124,13 +144,83 @@ fn arrangement(store: &HyprStore) -> gtk::Widget {
     outer.append(&frame);
     outer.append(&hint);
 
+    // One drag gesture on the canvas, not one per tile: a gesture on the tile reports
+    // offsets in the tile's own coordinates, which shift every time the tile moves —
+    // the tile then jumps back and forth between two positions while dragging.
+    let layout: Rc<RefCell<Option<Layout>>> = Rc::new(RefCell::new(None));
+    let dragging: Rc<Cell<Option<(usize, i32, i32)>>> = Rc::new(Cell::new(None));
+    let drag = gtk::GestureDrag::new();
+    {
+        let (layout, dragging) = (layout.clone(), dragging.clone());
+        drag.connect_drag_begin(move |g, px, py| {
+            let l = layout.borrow();
+            let Some(l) = l.as_ref() else { return };
+            let (x, y) = l.to_layout(px, py);
+            let Some(i) = hyprmon::hit(&l.rects, x, y) else {
+                g.set_state(gtk::EventSequenceState::Denied);
+                return;
+            };
+            dragging.set(Some((i, l.rects[i].x, l.rects[i].y)));
+            l.tiles[i].add_css_class("dragging");
+            l.tiles[i].set_cursor_from_name(Some("grabbing"));
+        });
+    }
+    {
+        let (layout, dragging, fixed) = (layout.clone(), dragging.clone(), fixed.downgrade());
+        drag.connect_drag_update(move |_, dx, dy| {
+            let (Some((i, sx, sy)), Some(f)) = (dragging.get(), fixed.upgrade()) else {
+                return;
+            };
+            let mut l = layout.borrow_mut();
+            let Some(l) = l.as_mut() else { return };
+            let (x, y) = (sx + (dx / l.factor).round() as i32, sy + (dy / l.factor).round() as i32);
+            let threshold = (24.0 / l.factor) as i32;
+            let (x, y) = hyprmon::snap(&l.rects, i, x, y, threshold);
+            l.rects[i].x = x;
+            l.rects[i].y = y;
+            let (px, py) = l.to_px(x, y);
+            f.move_(&l.tiles[i], px, py);
+        });
+    }
+    {
+        let (layout, dragging, store, fixed) = (layout.clone(), dragging.clone(), store.clone(), fixed.downgrade());
+        drag.connect_drag_end(move |_, _, _| {
+            let Some((i, _, _)) = dragging.take() else { return };
+            let (Some(f), Some((monitors, mut placed))) = (
+                fixed.upgrade(),
+                layout.borrow().as_ref().map(|l| {
+                    l.tiles[i].remove_css_class("dragging");
+                    l.tiles[i].set_cursor_from_name(Some("grab"));
+                    (l.monitors.clone(), l.rects.clone())
+                }),
+            ) else {
+                return;
+            };
+            hyprmon::normalize(&mut placed);
+            let rules: Vec<MonitorRule> = monitors
+                .iter()
+                .zip(&placed)
+                .filter(|(m, r)| (m.x, m.y) != (r.x, r.y))
+                .map(|(m, r)| MonitorRule {
+                    position: (r.x, r.y),
+                    ..rule_for(&store, m)
+                })
+                .collect();
+            if !rules.is_empty() {
+                apply_and_confirm(f.upcast_ref(), &store, rules);
+            }
+        });
+    }
+    fixed.add_controller(drag);
+
     let build = {
-        let (store, fixed) = (store.clone(), fixed.downgrade());
+        let (store, fixed, layout) = (store.clone(), fixed.downgrade(), layout.clone());
         Rc::new(move || {
             let Some(fixed) = fixed.upgrade() else { return };
             while let Some(c) = fixed.first_child() {
                 fixed.remove(&c);
             }
+            layout.replace(None);
             let monitors: Vec<MonitorInfo> = store.monitors().into_iter().filter(|m| !m.disabled).collect();
             if monitors.is_empty() {
                 return;
@@ -154,10 +244,16 @@ fn arrangement(store: &HyprStore) -> gtk::Widget {
             let off_x = (f64::from(max_x - min_x) * 0.3) as i32 - min_x;
             let off_y = (f64::from(max_y - min_y) * 0.3) as i32 - min_y;
             fixed.set_size_request((span_w * factor) as i32, (span_h * factor) as i32);
-            let to_px = move |x: i32, y: i32| (f64::from(x + off_x) * factor, f64::from(y + off_y) * factor);
-            let rects = Rc::new(RefCell::new(rects));
+            let mut l = Layout {
+                monitors: monitors.clone(),
+                rects,
+                tiles: Vec::new(),
+                factor,
+                off_x,
+                off_y,
+            };
             for (i, m) in monitors.iter().enumerate() {
-                let r = rects.borrow()[i];
+                let r = l.rects[i];
                 let tile = gtk::Box::builder()
                     .orientation(gtk::Orientation::Vertical)
                     .valign(gtk::Align::Center)
@@ -179,61 +275,11 @@ fn arrangement(store: &HyprStore) -> gtk::Widget {
                 );
                 tile.append(&inner);
                 tile.set_cursor_from_name(Some("grab"));
-                let (px, py) = to_px(r.x, r.y);
+                let (px, py) = l.to_px(r.x, r.y);
                 fixed.put(&tile, px, py);
-
-                let drag = gtk::GestureDrag::new();
-                let start = Rc::new(Cell::new((0, 0)));
-                {
-                    let (rects, start, tile) = (rects.clone(), start.clone(), tile.downgrade());
-                    drag.connect_drag_begin(move |_, _, _| {
-                        let r = rects.borrow()[i];
-                        start.set((r.x, r.y));
-                        if let Some(t) = tile.upgrade() {
-                            t.add_css_class("dragging");
-                            t.set_cursor_from_name(Some("grabbing"));
-                        }
-                    });
-                }
-                {
-                    let (rects, start, tile, fixed) = (rects.clone(), start.clone(), tile.downgrade(), fixed.downgrade());
-                    drag.connect_drag_update(move |_, dx, dy| {
-                        let (sx, sy) = start.get();
-                        let (x, y) = (sx + (dx / factor) as i32, sy + (dy / factor) as i32);
-                        let threshold = (24.0 / factor) as i32;
-                        let (x, y) = hyprmon::snap(&rects.borrow(), i, x, y, threshold);
-                        rects.borrow_mut()[i].x = x;
-                        rects.borrow_mut()[i].y = y;
-                        if let (Some(t), Some(f)) = (tile.upgrade(), fixed.upgrade()) {
-                            let (px, py) = to_px(x, y);
-                            f.move_(&t, px, py);
-                        }
-                    });
-                }
-                {
-                    let (rects, store, monitors, tile) = (rects.clone(), store.clone(), monitors.clone(), tile.downgrade());
-                    drag.connect_drag_end(move |_, _, _| {
-                        let Some(t) = tile.upgrade() else { return };
-                        t.remove_css_class("dragging");
-                        t.set_cursor_from_name(Some("grab"));
-                        let mut placed = rects.borrow().clone();
-                        hyprmon::normalize(&mut placed);
-                        let rules: Vec<MonitorRule> = monitors
-                            .iter()
-                            .zip(&placed)
-                            .filter(|(m, r)| (m.x, m.y) != (r.x, r.y))
-                            .map(|(m, r)| MonitorRule {
-                                position: (r.x, r.y),
-                                ..rule_for(&store, m)
-                            })
-                            .collect();
-                        if !rules.is_empty() {
-                            apply_and_confirm(t.upcast_ref(), &store, rules);
-                        }
-                    });
-                }
-                tile.add_controller(drag);
+                l.tiles.push(tile);
             }
+            layout.replace(Some(l));
         })
     };
     build();

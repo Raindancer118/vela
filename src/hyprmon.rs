@@ -276,6 +276,11 @@ pub fn snap(rects: &[Rect], moving: usize, x: i32, y: i32, threshold: i32) -> (i
         .unwrap_or((me.x, me.y))
 }
 
+/// Index of the monitor whose rect contains the layout point.
+pub fn hit(rects: &[Rect], x: i32, y: i32) -> Option<usize> {
+    rects.iter().position(|r| (r.x..r.x + r.w).contains(&x) && (r.y..r.y + r.h).contains(&y))
+}
+
 /// Shifts the layout so its top-left corner is at 0,0.
 pub fn normalize(rects: &mut [Rect]) {
     let (Some(min_x), Some(min_y)) = (rects.iter().map(|r| r.x).min(), rects.iter().map(|r| r.y).min()) else {
@@ -407,5 +412,24 @@ mod tests {
         let mut r = vec![Rect { x: -100, y: 50, w: 10, h: 10 }, Rect { x: 0, y: 0, w: 10, h: 10 }];
         normalize(&mut r);
         assert_eq!((r[0].x, r[0].y, r[1].x, r[1].y), (0, 50, 100, 0));
+    }
+
+    #[test]
+    fn hit_finds_the_monitor_under_the_pointer() {
+        let rects = [
+            Rect { x: 0, y: 0, w: 1920, h: 1200 },
+            Rect {
+                x: 1920,
+                y: 0,
+                w: 1536,
+                h: 864,
+            },
+        ];
+        assert_eq!(hit(&rects, 10, 10), Some(0));
+        assert_eq!(hit(&rects, 1920, 0), Some(1));
+        assert_eq!(hit(&rects, 3455, 863), Some(1));
+        assert_eq!(hit(&rects, 3456, 10), None);
+        assert_eq!(hit(&rects, 2000, 900), None);
+        assert_eq!(hit(&rects, -1, 10), None);
     }
 }
