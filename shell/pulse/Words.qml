@@ -271,7 +271,7 @@ Singleton {
         case "show-perf":
             return I18n.tr("Details");
         case "claude":
-            return I18n.tr("Ask Claude");
+            return "Claude";
         }
         return x.action;
     }

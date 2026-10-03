@@ -10,6 +10,8 @@ Rectangle {
 
     property string text
     property string icon
+    // A picture in the icon's place (in its own colours, e.g. a logo).
+    property url image
     property string style: "tonal"
 
     readonly property color contentColor: {
@@ -65,8 +67,16 @@ Rectangle {
         anchors.centerIn: parent
         spacing: Theme.spacing.xs
 
+        Image {
+            visible: root.image.toString() !== ""
+            source: root.image
+            sourceSize: Qt.size(Theme.icon.small * 2, Theme.icon.small * 2)
+            Layout.preferredWidth: Theme.icon.small
+            Layout.preferredHeight: Theme.icon.small
+        }
+
         MaterialIcon {
-            visible: root.icon !== ""
+            visible: root.icon !== "" && root.image.toString() === ""
             icon: root.icon
             size: Theme.icon.small
             color: root.contentColor

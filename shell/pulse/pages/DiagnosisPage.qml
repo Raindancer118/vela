@@ -385,6 +385,7 @@ Flickable {
 
                                             style: modelData.action === "force" ? "danger" : index === 0 && modelData.action !== "show-app" && modelData.action !== "show-perf" ? "filled" : "tonal"
                                             icon: Words.fixIcon(modelData.action)
+                                            image: modelData.action === "claude" ? Qt.resolvedUrl("../../assets/claude.svg") : ""
                                             text: Words.fix(modelData)
                                             onClicked: PulseUi.doFix(modelData)
                                         }
@@ -475,8 +476,14 @@ Flickable {
 
                                 PillButton {
                                     visible: VelaConfig.pulse.claude
-                                    text: I18n.tr("Ask Claude")
+                                    image: Qt.resolvedUrl("../../assets/claude.svg")
+                                    text: "Claude"
                                     onClicked: Pulse.askClaude("crash:" + parent.parent.modelData.exe)
+
+                                    Tip {
+                                        text: I18n.tr("Ask Claude about the crash")
+                                        shown: parent.hovered
+                                    }
                                 }
                             }
                         }

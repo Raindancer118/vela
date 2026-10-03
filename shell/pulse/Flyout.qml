@@ -308,7 +308,8 @@ Item {
                                     PillButton {
                                         readonly property string f: parent.parent.parent.modelData
                                         visible: f === "crashed" && VelaConfig.pulse.claude
-                                        text: I18n.tr("Ask Claude")
+                                        image: Qt.resolvedUrl("../assets/claude.svg")
+                                        text: "Claude"
                                         onClicked: Pulse.askClaude("crash:" + (root.app?.exe ?? ""))
                                     }
                                 }

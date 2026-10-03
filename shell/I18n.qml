@@ -139,6 +139,7 @@ Singleton {
                 "In a terminal": "Im Terminal",
                 "Logs": "Logs",
                 "%1 events": "%1 Ereignisse",
+                "Ask Claude about the crash": "Claude zum Absturz fragen",
                 "Memory got tight": "Arbeitsspeicher wurde knapp",
                 "Memory got tight, mostly %1": "Arbeitsspeicher wurde knapp, vor allem %1",
                 "Memory relaxed after %1": "Speicher nach %1 wieder entspannt",
