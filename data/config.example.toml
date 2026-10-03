@@ -171,6 +171,9 @@ heat_map = true
 show_kernel = false
 # Performance → Sensors: "list", "graphs" (one per sensor) or "chart" (all in one).
 sensor_view = "list"
+# Ask Claude also gets the system log (warnings and errors) and Pulse's
+# activity of the last hours, as a private file; 0 = off.
+claude_log_hours = 0
 # Keys in the window for the selected app or process: one character or
 # Delete, Insert, Home, End, Space, F1–F12; "" = off. They act right away.
 key_force = "k"

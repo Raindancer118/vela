@@ -105,6 +105,21 @@ pub fn build(b: &Binder) -> adw::PreferencesPage {
     keys.add(&b.entry("Efficiency mode", |c| c.pulse.key_efficiency.clone(), |c, v| c.pulse.key_efficiency = v));
     p.add(&keys);
 
+    if crate::components::has(crate::components::Component::Claude) {
+        let claude = group("Claude", "What “Ask Claude to investigate” hands over besides the current snapshot.");
+        claude.add(&b.spin(
+            "Log of the last hours",
+            "System log (warnings and errors) and Pulse's activity, as a private file; 0 = off. It may contain personal data.",
+            0.0,
+            168.0,
+            1.0,
+            0,
+            |c| c.pulse.claude_log_hours as f64,
+            |c, v| c.pulse.claude_log_hours = v.round() as u32,
+        ));
+        p.add(&claude);
+    }
+
     let rec = group(
         "In the background",
         "The vela daemon keeps a light record, so Pulse opens with history and knows what crashed, hung or ran out of memory while it was closed.",

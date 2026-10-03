@@ -55,6 +55,9 @@ pub struct Pulse {
     pub show_kernel: bool,
     /// Performance → Sensors: list, graphs (one per sensor) or chart (all in one).
     pub sensor_view: String,
+    /// Ask Claude also gets the system log (warnings and errors) and Pulse's
+    /// activity of this many hours, as a private file; 0 = off.
+    pub claude_log_hours: u32,
     /// Keys in the window for the selected app or process: one character
     /// (`k`) or a key name (`Delete`, `F5`); empty = off. No confirmation.
     pub key_force: String,
@@ -81,6 +84,7 @@ impl Default for Pulse {
             heat_map: true,
             show_kernel: false,
             sensor_view: "list".into(),
+            claude_log_hours: 0,
             key_force: "k".into(),
             key_end: "g".into(),
             key_restart: "r".into(),
@@ -723,6 +727,7 @@ impl Config {
             p.start_page = "overview".into();
         }
         p.long_history_hours = p.long_history_hours.min(24 * 7);
+        p.claude_log_hours = p.claude_log_hours.min(24 * 7);
         p.range_secs = match p.range_secs {
             0..180 => 60,
             180..1800 => 300,

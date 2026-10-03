@@ -179,7 +179,8 @@ pub struct Launcher {
     state: RefCell<SearchState>,
     generation: Cell<u64>,
     had_focus: Cell<bool>,
-    suppress_autohide: Cell<bool>,
+    /// While its own context menu is open (the popover takes the focus).
+    suppress_autohide: Rc<Cell<bool>>,
     preview: Cell<bool>,
     shown_at: Cell<Option<Instant>>,
     request: RefCell<Option<RequestHandler>>,
@@ -358,7 +359,7 @@ impl Launcher {
             state: RefCell::default(),
             generation: Cell::new(0),
             had_focus: Cell::new(false),
-            suppress_autohide: Cell::new(false),
+            suppress_autohide: Rc::new(Cell::new(false)),
             preview: Cell::new(false),
             shown_at: Cell::new(None),
             request: RefCell::default(),
@@ -880,9 +881,10 @@ impl Launcher {
         let reorderable = pinned && cfg.apps.grid != GridSource::All;
         let click = gtk::GestureClick::builder().button(3).build();
         let tile_weak = tile.downgrade();
+        let guard = self.suppress_autohide.clone();
         click.connect_pressed(move |_, _, _, _| {
             if let (Some(tile), Some(h)) = (tile_weak.upgrade(), &handler) {
-                context_menu(tile.upcast_ref(), &key, pinned, reorderable, h.clone());
+                context_menu(tile.upcast_ref(), &key, pinned, reorderable, h.clone(), guard.clone());
             }
         });
         tile.add_controller(click);
@@ -1100,11 +1102,12 @@ impl Launcher {
                 let key = e.key.clone();
                 let pinned = self.config.borrow().apps.pinned.contains(&key);
                 let handler = self.request.borrow().clone();
+                let guard = self.suppress_autohide.clone();
                 let click = gtk::GestureClick::builder().button(3).build();
                 let row_weak = row.downgrade();
                 click.connect_pressed(move |_, _, _, _| {
                     if let (Some(row), Some(h)) = (row_weak.upgrade(), &handler) {
-                        context_menu(row.upcast_ref(), &key, pinned, false, h.clone());
+                        context_menu(row.upcast_ref(), &key, pinned, false, h.clone(), guard.clone());
                     }
                 });
                 row.add_controller(click);
@@ -1261,7 +1264,9 @@ fn scroll_into_view(scroller: &gtk::ScrolledWindow, widget: &gtk::Widget) {
 }
 
 /// Right-click menu for tiles and app rows.
-fn context_menu(anchor: &gtk::Widget, key: &str, pinned: bool, reorderable: bool, handler: Rc<dyn Fn(Request)>) {
+fn context_menu(anchor: &gtk::Widget, key: &str, pinned: bool, reorderable: bool, handler: Rc<dyn Fn(Request)>, guard: Rc<Cell<bool>>) {
+    // The popover takes the keyboard: the launcher must not hide meanwhile.
+    guard.set(true);
     let pop = gtk::Popover::new();
     pop.set_parent(anchor);
     pop.set_has_arrow(false);
@@ -1289,9 +1294,13 @@ fn context_menu(anchor: &gtk::Widget, key: &str, pinned: bool, reorderable: bool
         add("Move right", Request::MovePin(key.to_owned(), 1));
     }
     pop.set_child(Some(&b));
-    pop.connect_closed(|p| {
+    pop.connect_closed(move |p| {
         let p = p.clone();
-        glib::idle_add_local_once(move || p.unparent());
+        let guard = guard.clone();
+        glib::idle_add_local_once(move || {
+            p.unparent();
+            guard.set(false);
+        });
     });
     pop.popup();
 }
