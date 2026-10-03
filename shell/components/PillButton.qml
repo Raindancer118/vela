@@ -13,6 +13,9 @@ Rectangle {
     // A picture in the icon's place (in its own colours, e.g. a logo).
     property url image
     property string style: "tonal"
+    // A switch: shows a small toggle at the end and lights up when checked.
+    property bool checkable: false
+    property bool checked: false
 
     readonly property color contentColor: {
         switch (style) {
@@ -35,6 +38,8 @@ Rectangle {
     radius: Theme.radius.small
     opacity: enabled ? 1 : Theme.opacity.disabled
     color: {
+        if (checkable)
+            return checked ? Theme.colors.selected : Theme.colors.tile;
         switch (style) {
         case "filled":
             return Theme.colors.selected;
@@ -46,7 +51,7 @@ Rectangle {
             return Theme.colors.tile;
         }
     }
-    border.width: style === "filled" ? Theme.size.border : 0
+    border.width: style === "filled" || checkable && checked ? Theme.size.border : 0
     border.color: Theme.colors.selectedRing
 
     Behavior on color {
@@ -79,13 +84,37 @@ Rectangle {
             visible: root.icon !== "" && root.image.toString() === ""
             icon: root.icon
             size: Theme.icon.small
-            color: root.contentColor
+            color: root.checkable && root.checked ? Theme.colors.primary : root.contentColor
         }
 
         StyledText {
             text: root.text
             color: root.contentColor
             font.weight: Theme.font.weightMedium
+        }
+
+        Rectangle {
+            visible: root.checkable
+            Layout.leftMargin: Theme.spacing.xs
+            implicitWidth: 26
+            implicitHeight: 14
+            radius: 7
+            color: root.checked ? Theme.colors.primary : Theme.withAlpha(Theme.colors.text, 0.18)
+            Behavior on color {
+                ColorAnim {}
+            }
+
+            Rectangle {
+                width: 10
+                height: 10
+                radius: 5
+                y: 2
+                x: root.checked ? parent.width - width - 2 : 2
+                color: root.checked ? Theme.colors.background : Theme.colors.text
+                Behavior on x {
+                    SpringAnim {}
+                }
+            }
         }
     }
 }

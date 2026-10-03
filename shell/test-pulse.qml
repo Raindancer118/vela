@@ -5,6 +5,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs
+import qs.components
 import qs.pulse
 import "pulse/Fmt.js" as Fmt
 import "pulse/Model.js" as Model
@@ -29,6 +30,19 @@ ShellRoot {
         id: model
     }
 
+    // A switch button shows whether it is on.
+    PillButton {
+        id: toggleOff
+
+        checkable: true
+    }
+    PillButton {
+        id: toggleOn
+
+        checkable: true
+        checked: true
+    }
+
     // A victim for the k key.
     Process {
         id: victim
@@ -44,6 +58,7 @@ ShellRoot {
         expect("bytes", Fmt.bytes(1536, en) === "1.50 KB" && Fmt.bytes(0, en) === "0 B" && Fmt.bytes(3 * 1024 * 1024 * 1024, en) === "3.00 GB");
         expect("bits", Fmt.bits(125000, en) === "1.0 Mbit/s");
         expect("percent", Fmt.percent(5.25, en) === "5.3 %" && Fmt.percent(50, en) === "50 %");
+        expect("toggle state", !Qt.colorEqual(toggleOn.color, toggleOff.color) && toggleOn.border.width > 0 && toggleOff.border.width === 0);
         expect("niceMax", Fmt.niceMax([0.3, 7.2], 1) === 8 && Fmt.niceMax([], 1) === 1);
         expect("clock", Fmt.clock(3725) === "1:02:05");
         Model.sync(model, ["a", "b", "c"]);

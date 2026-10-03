@@ -53,6 +53,12 @@ TOML
 
 fail() { echo "FAIL: $*"; exit 1; }
 
+# MaterialIcon draws nothing for a name without an SVG in assets/icons.
+echo ":: icons"
+missing="$(find shell -name '*.qml' -print0 | xargs -0 grep -hoE '\bicon: "[a-z0-9_-]+"' | sed -E 's/icon: "(.*)"/\1/' | sort -u |
+    while read -r n; do [[ -f "shell/assets/icons/$n.svg" ]] || echo "$n"; done)"
+[[ -z "$missing" ]] || fail "icons without an SVG: $missing"
+
 echo ":: settings"
 timeout 20 qs -p shell/test-settings.qml >"$tmp/settings.log" 2>&1 || true
 grep -E "PASS|FAIL" "$tmp/settings.log" || { cat "$tmp/settings.log"; fail "settings test gave no result"; }

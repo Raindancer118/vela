@@ -422,8 +422,9 @@ Item {
 
                     PillButton {
                         visible: page.kind === "cpu" && page.f?.cpu.temp != null
-                        icon: "thermostat"
-                        style: Pulse.cpuTemp ? "filled" : "tonal"
+                        icon: "pulse_thermo"
+                        checkable: true
+                        checked: Pulse.cpuTemp
                         text: I18n.tr("Temperature")
                         onClicked: Pulse.setCpuTemp(!Pulse.cpuTemp)
                     }
