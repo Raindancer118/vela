@@ -20,7 +20,7 @@ for w in /run/wrappers/bin /run/current-system/sw/bin /run/current-system/sw/sha
     grep -aqF -- "$w" "$out/bin/vela" || { echo "FAIL: wrapper lacks $w"; exit 1; }
 done
 env -i HOME="$tmp" USER=u PATH=/nonexistent "$out/bin/vela" pulse snapshot >"$tmp/snap.json"
-grep -q '"sample"' "$tmp/snap.json" || { echo "FAIL: pulse snapshot"; head -c 400 "$tmp/snap.json"; exit 1; }
+grep -q '"apps"' "$tmp/snap.json" || { echo "FAIL: pulse snapshot"; head -c 400 "$tmp/snap.json"; exit 1; }
 env -i HOME="$tmp" USER=u PATH=/nonexistent "$out/bin/vela" pulse doctor | grep -q . || { echo "FAIL: pulse doctor"; exit 1; }
 # Shortcuts from Settings reach Hyprland through these globals.
 for g in vela_super_tap vela_panel_keys vela_launcher_command vela_settings_file; do
