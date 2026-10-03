@@ -463,8 +463,29 @@ pub fn focus_window(address: &str) -> Result<(), String> {
     )])
 }
 
+/// Claude's arguments without anything that skips its permission prompts:
+/// Pulse hands it logs, process names and window titles that any program
+/// can shape, so every action Claude takes on them has to be confirmed.
+pub fn without_bypass(args: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut it = args.iter().peekable();
+    while let Some(a) = it.next() {
+        if a == "--dangerously-skip-permissions" || a == "--allow-dangerously-skip-permissions" || a == "--permission-mode=bypassPermissions" {
+            continue;
+        }
+        if a == "--permission-mode" && it.peek().is_some_and(|m| *m == "bypassPermissions") {
+            it.next();
+            continue;
+        }
+        out.push(a.clone());
+    }
+    out
+}
+
 pub fn ask_claude(prompt: &str, cfg: &Config) -> Result<(), String> {
-    let spec = launch::claude_spec(&cfg.claude, &cfg.terminal, prompt).map_err(|e| e.to_string())?;
+    let mut claude = cfg.claude.clone();
+    claude.args = without_bypass(&claude.args);
+    let spec = launch::claude_spec(&claude, &cfg.terminal, prompt).map_err(|e| e.to_string())?;
     launch::spawn_detached(&spec, launch::systemd_scope_available()).map_err(|e| e.to_string())
 }
 
@@ -483,6 +504,18 @@ pub fn load_config() -> Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claude_asks_before_acting_on_pulse_data() {
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            without_bypass(&a(&["--dangerously-skip-permissions", "--model", "opus"])),
+            a(&["--model", "opus"])
+        );
+        assert_eq!(without_bypass(&a(&["--permission-mode", "bypassPermissions", "-c"])), a(&["-c"]));
+        assert_eq!(without_bypass(&a(&["--permission-mode", "plan"])), a(&["--permission-mode", "plan"]));
+        assert_eq!(without_bypass(&a(&["--permission-mode=bypassPermissions"])), a(&[]));
+    }
 
     #[test]
     fn signals_by_name() {
