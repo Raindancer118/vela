@@ -408,6 +408,7 @@ Singleton {
                 "It waits for a device that doesn't answer (a slow disk, a network share or a driver).": "Sie wartet auf ein Gerät, das nicht antwortet (langsame Platte, Netzwerkfreigabe oder Treiber).",
                 "It was updated while running and still uses the old files. Restart it to load the new version.": "Sie wurde im laufenden Betrieb aktualisiert und nutzt noch die alten Dateien. Ein Neustart lädt die neue Version.",
                 "just now": "gerade eben",
+                "Over — last seen %1 s ago": "Vorbei – zuletzt vor %1 s gesehen",
                 "Kernel": "Kernel",
                 "Kill process": "Prozess killen",
                 "Leave efficiency mode": "Effizienzmodus verlassen",

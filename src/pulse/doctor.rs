@@ -48,6 +48,9 @@ pub struct Finding {
     pub apps: Vec<String>,
     pub values: Value,
     pub fixes: Vec<Fix>,
+    /// Unix ms of the last frame that saw it, once it's over (see `Recent`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gone_since: Option<u64>,
 }
 
 pub struct Context<'a> {
@@ -103,6 +106,7 @@ pub fn diagnose(s: &Sample, apps: &[AppFrame], ctx: &Context) -> Vec<Finding> {
             apps,
             values,
             fixes,
+            gone_since: None,
         });
     };
 
@@ -443,8 +447,76 @@ pub fn diagnose(s: &Sample, apps: &[AppFrame], ctx: &Context) -> Vec<Finding> {
         );
     }
 
+    for f in &mut out {
+        if !f.fixes.iter().any(|x| x.action == "claude") {
+            f.fixes.push(fix("claude", &format!("finding:{}", f.id)));
+        }
+    }
     out.sort_by_key(|f| std::cmp::Reverse(f.severity));
     out
+}
+
+/// How long a finding stays after the last frame that saw it.
+pub const HOLD_MS: u64 = 30_000;
+
+/// Fixes that act on an app: dropped once the app is gone.
+const APP_ACTIONS: [&str; 6] = ["show-app", "end", "force", "restart", "resume", "efficiency"];
+
+fn actionable(f: &Finding) -> usize {
+    f.fixes.iter().filter(|x| x.action != "show-perf" && x.action != "claude").count()
+}
+
+/// Keeps findings for `HOLD_MS` after they end, and keeps a finding's apps
+/// and buttons while single frames know less (the top writer idles for a
+/// second) — otherwise the cards change under the cursor every second.
+#[derive(Default)]
+pub struct Recent {
+    /// Finding, last seen, when its buttons were last this rich (unix ms).
+    held: Vec<(Finding, u64, u64)>,
+}
+
+impl Recent {
+    pub fn apply(&mut self, now_ms: u64, fresh: Vec<Finding>, apps: &[AppFrame]) -> Vec<Finding> {
+        let mut next: Vec<(Finding, u64, u64)> = Vec::with_capacity(fresh.len());
+        for mut f in fresh {
+            let mut rich_at = now_ms;
+            if let Some((old, _, old_rich)) = self.held.iter().find(|(o, ..)| o.id == f.id)
+                && actionable(&f) == 0
+                && actionable(old) > 0
+                && now_ms.saturating_sub(*old_rich) < HOLD_MS
+            {
+                f.fixes = old.fixes.clone();
+                if f.apps.is_empty() {
+                    f.apps = old.apps.clone();
+                }
+                // Lists like `top` word the text; keep them with the buttons.
+                if let (Some(new), Some(old)) = (f.values.as_object_mut(), old.values.as_object()) {
+                    for (k, v) in old {
+                        let empty = |x: Option<&Value>| x.is_none_or(|x| x.is_null() || x.as_array().is_some_and(|a| a.is_empty()));
+                        if !empty(Some(v)) && empty(new.get(k)) {
+                            new.insert(k.clone(), v.clone());
+                        }
+                    }
+                }
+                rich_at = *old_rich;
+            }
+            next.push((f, now_ms, rich_at));
+        }
+        for (mut old, seen, rich) in std::mem::take(&mut self.held) {
+            if now_ms.saturating_sub(seen) < HOLD_MS && !next.iter().any(|(n, ..)| n.id == old.id) {
+                old.gone_since = Some(seen);
+                next.push((old, seen, rich));
+            }
+        }
+        for (f, ..) in &mut next {
+            let alive = |key: &str| apps.iter().any(|a| a.key == key);
+            f.fixes.retain(|x| !APP_ACTIONS.contains(&x.action.as_str()) || alive(&x.target));
+            f.apps.retain(|k| alive(k));
+        }
+        next.sort_by_key(|(f, ..)| std::cmp::Reverse(f.severity));
+        self.held = next;
+        self.held.iter().map(|(f, ..)| f.clone()).collect()
+    }
 }
 
 /// 100 = nothing to say.
@@ -533,7 +605,8 @@ pub fn report(s: &Sample, apps: &[AppFrame], findings: &[Finding], score: u32) -
         let _ = writeln!(r, "- none");
     }
     for f in findings {
-        let _ = writeln!(r, "- [{:?}] {}: {}", f.severity, f.kind, f.values);
+        let over = if f.gone_since.is_some() { " (over, seen in the last 30 s)" } else { "" };
+        let _ = writeln!(r, "- [{:?}] {}{over}: {}", f.severity, f.kind, f.values);
     }
     r
 }
@@ -622,7 +695,7 @@ mod tests {
         assert_eq!(f[0].severity, Severity::Warning);
         assert_eq!(f[0].apps, vec!["hog", "mid", "idle"]);
         let actions: Vec<&str> = f[0].fixes.iter().map(|x| x.action.as_str()).collect();
-        assert_eq!(actions, vec!["show-app", "efficiency", "end"]);
+        assert_eq!(actions, vec!["show-app", "efficiency", "end", "claude"]);
     }
 
     #[test]
@@ -651,7 +724,7 @@ mod tests {
         }
         let f = diagnose(&calm(), &[session, hypr, svc, win], &ctx());
         let r = f.iter().find(|x| x.kind == "needs-restart").unwrap();
-        let targets: Vec<&str> = r.fixes.iter().map(|x| x.target.as_str()).collect();
+        let targets: Vec<&str> = r.fixes.iter().filter(|x| x.action == "restart").map(|x| x.target.as_str()).collect();
         assert_eq!(targets, vec!["pipewire", "firefox"]);
     }
 
@@ -694,5 +767,101 @@ mod tests {
         let kinds: Vec<&str> = f.iter().map(|x| x.kind.as_str()).collect();
         assert!(kinds.contains(&"memory-leak") && kinds.contains(&"needs-restart") && kinds.contains(&"reboot-kernel"));
         assert!(report(&calm(), &[], &f, score(&f)).contains("not-responding"));
+    }
+
+    fn io_finding(apps: &[AppFrame]) -> Vec<Finding> {
+        let mut s = calm();
+        s.io.pressure_full = 40.0;
+        diagnose(&s, apps, &ctx())
+    }
+
+    fn disk_writer() -> AppFrame {
+        let mut a = app("claude", Kind::Task, 1.0, 1);
+        a.write_bps = 50e6;
+        a
+    }
+
+    #[test]
+    fn every_finding_can_go_to_claude_once() {
+        let f = io_finding(&[]);
+        assert_eq!(f[0].fixes.last(), Some(&fix("claude", "finding:io")));
+        let crash = Crash {
+            exe: "/usr/bin/x".into(),
+            name: "x".into(),
+            icon: String::new(),
+            count: 3,
+            signal: "SIGSEGV".into(),
+            last: 0,
+            running: None,
+        };
+        let c = Context {
+            crashes: std::slice::from_ref(&crash),
+            ..ctx()
+        };
+        let f = diagnose(&calm(), &[], &c);
+        let claude: Vec<&Fix> = f[0].fixes.iter().filter(|x| x.action == "claude").collect();
+        assert_eq!(claude, vec![&fix("claude", "crash:/usr/bin/x")]);
+    }
+
+    #[test]
+    fn findings_stay_for_30_seconds_after_they_end() {
+        let mut r = Recent::default();
+        let f = r.apply(1_000, io_finding(&[]), &[]);
+        assert_eq!(f[0].gone_since, None);
+        let f = r.apply(20_000, vec![], &[]);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].gone_since, Some(1_000));
+        assert!(r.apply(31_001, vec![], &[]).is_empty());
+    }
+
+    #[test]
+    fn a_returning_finding_is_active_again() {
+        let mut r = Recent::default();
+        r.apply(0, io_finding(&[]), &[]);
+        r.apply(5_000, vec![], &[]);
+        let f = r.apply(6_000, io_finding(&[]), &[]);
+        assert_eq!(f[0].gone_since, None);
+        assert_eq!(r.apply(35_000, vec![], &[])[0].gone_since, Some(6_000));
+    }
+
+    #[test]
+    fn buttons_dont_flicker_when_a_frame_knows_less() {
+        let w = disk_writer();
+        let mut r = Recent::default();
+        let rich = r.apply(0, io_finding(std::slice::from_ref(&w)), std::slice::from_ref(&w));
+        let actions = |f: &Finding| f.fixes.iter().map(|x| x.action.clone()).collect::<Vec<_>>();
+        assert_eq!(actions(&rich[0]), vec!["show-app", "efficiency", "end", "claude"]);
+        // Next second the writer is quiet: same buttons, apps and text.
+        let f = r.apply(1_000, io_finding(&[]), std::slice::from_ref(&w));
+        assert_eq!(actions(&f[0]), actions(&rich[0]));
+        assert_eq!(f[0].apps, vec!["claude"]);
+        assert_eq!(f[0].values["top"], rich[0].values["top"]);
+        // Long enough without it: the frame's own buttons.
+        let f = r.apply(31_000, io_finding(&[]), std::slice::from_ref(&w));
+        assert_eq!(actions(&f[0]), vec!["show-perf", "claude"]);
+    }
+
+    #[test]
+    fn another_top_app_replaces_the_held_buttons() {
+        let w = disk_writer();
+        let mut win = app("firefox", Kind::Window, 1.0, 1);
+        win.write_bps = 80e6;
+        let both = [w.clone(), win.clone()];
+        let mut r = Recent::default();
+        r.apply(0, io_finding(std::slice::from_ref(&w)), &both);
+        let f = r.apply(1_000, io_finding(std::slice::from_ref(&win)), &both);
+        assert_eq!(f[0].apps, vec!["firefox"]);
+        assert!(f[0].fixes.iter().all(|x| x.target == "firefox" || x.action == "claude"), "{:?}", f[0].fixes);
+    }
+
+    #[test]
+    fn held_buttons_drop_apps_that_are_gone() {
+        let w = disk_writer();
+        let mut r = Recent::default();
+        r.apply(0, io_finding(std::slice::from_ref(&w)), std::slice::from_ref(&w));
+        let f = r.apply(1_000, vec![], &[]);
+        assert!(f[0].apps.is_empty());
+        let actions: Vec<&str> = f[0].fixes.iter().map(|x| x.action.as_str()).collect();
+        assert_eq!(actions, vec!["claude"]);
     }
 }

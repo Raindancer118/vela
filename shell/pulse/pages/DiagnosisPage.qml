@@ -262,13 +262,15 @@ Flickable {
                         required property string key
                         readonly property var fd: Pulse.findings.find(x => x.id === key) ?? null
                         readonly property color accent: Words.severityColor(fd?.severity ?? "info")
+                        // Over, but kept for 30 s so its buttons can still be used.
+                        readonly property bool gone: (fd?.goneSince ?? 0) > 0
 
                         width: ListView.view.width
                         height: cardRow.implicitHeight + 2 * Theme.spacing.lg
                         radius: Theme.radius.card
                         color: Theme.colors.tile
                         border.width: 1
-                        border.color: Theme.withAlpha(accent, 0.35)
+                        border.color: Theme.withAlpha(accent, gone ? 0.15 : 0.35)
 
                         Rectangle {
                             x: 0
@@ -288,6 +290,10 @@ Flickable {
                             anchors.margins: Theme.spacing.lg
                             anchors.leftMargin: Theme.spacing.xl
                             spacing: Theme.spacing.lg
+                            opacity: card.gone ? 0.6 : 1
+                            Behavior on opacity {
+                                Anim {}
+                            }
 
                             Rectangle {
                                 Layout.alignment: Qt.AlignTop
@@ -322,6 +328,15 @@ Flickable {
                                     text: card.fd ? Words.text(card.fd) : ""
                                     color: Theme.colors.textMuted
                                     wrapMode: Text.Wrap
+                                }
+
+                                StyledText {
+                                    visible: card.gone
+                                    Layout.fillWidth: true
+                                    text: card.gone ? I18n.tr("Over — last seen %1 s ago", Math.max(1, Math.round((Pulse.frame.t - card.fd.goneSince) / 1000))) : ""
+                                    color: Theme.colors.textMuted
+                                    font.pixelSize: Theme.font.small
+                                    font.italic: true
                                 }
 
                                 // The apps involved.

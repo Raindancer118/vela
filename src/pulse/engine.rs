@@ -207,6 +207,7 @@ pub struct Monitor {
     seen_at: HashMap<String, u64>,
     watch: Watch,
     throttle: VecDeque<u64>,
+    recent: doctor::Recent,
     oom: Option<u64>,
     start: Instant,
 }
@@ -257,6 +258,7 @@ impl Monitor {
             seen_at: HashMap::new(),
             watch: Watch::default(),
             throttle: VecDeque::new(),
+            recent: doctor::Recent::default(),
             oom: None,
             start: Instant::now(),
         }
@@ -639,7 +641,7 @@ impl Monitor {
                 b
             },
         };
-        let findings = doctor::diagnose(&sample, &out_apps, &ctx);
+        let findings = self.recent.apply(sample.t, doctor::diagnose(&sample, &out_apps, &ctx), &out_apps);
         let score = doctor::score(&findings);
 
         let procs_out = with_procs.then(|| {
