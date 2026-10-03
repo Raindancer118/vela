@@ -16,8 +16,16 @@ ShellRoot {
     IpcHandler {
         target: "pulse"
 
-        function show(): void {
+        // Whether the window is there: `vela pulse` starts a fresh Pulse when not.
+        function present(): bool {
+            if (!win.visible)
+                return false;
             win.raise();
+            return true;
+        }
+
+        function close(): void {
+            win.visible = false;
         }
 
         function page(name: string): void {

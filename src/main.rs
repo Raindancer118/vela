@@ -444,16 +444,32 @@ fn open_pulse() -> ExitCode {
         return ExitCode::FAILURE;
     };
     let entry = dir.join("pulse.qml");
-    let shown = std::process::Command::new(&qs)
-        .arg("-p")
-        .arg(&entry)
-        .args(["ipc", "call", "pulse", "show"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success());
-    if shown {
+    let ipc = |args: &[&str]| {
+        std::process::Command::new(&qs)
+            .arg("-p")
+            .arg(&entry)
+            .arg("ipc")
+            .args(args)
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+    };
+    // Not `show`: `qs ipc call pulse show` is read as `qs ipc show` (list).
+    if ipc(&["call", "pulse", "present"]).as_deref() == Some("true") {
         return ExitCode::SUCCESS;
+    }
+    // Running without a window (closed by an older Pulse, a reload that lost
+    // it) or too old to say: end it and start a fresh one.
+    if ipc(&["show"]).is_some() {
+        ipc(&["call", "pulse", "quit"]);
+        for _ in 0..30 {
+            if ipc(&["show"]).is_none() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
     }
     let mut cmd = std::process::Command::new(qs);
     cmd.arg("-p").arg(&entry).arg("-d");

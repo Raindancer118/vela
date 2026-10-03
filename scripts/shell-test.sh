@@ -97,6 +97,15 @@ if [[ -n "$weston_pid" ]]; then
     qslog="$(ls -t "$XDG_RUNTIME_DIR"/quickshell/by-id/*/log.qslog 2>/dev/null | head -1 || true)"
     "$(dirname "$BIN")/vela-pulse" >>"$tmp/pulse.log" 2>&1 || fail "second vela-pulse (raise) failed"
     [[ "$(pgrep -fc "qs -p $PWD/shell/pulse.qml")" == 1 ]] || fail "vela-pulse started a second window"
+    [[ "$(qs -p "$PWD/shell/pulse.qml" ipc call pulse present 2>/dev/null)" == true ]] || fail "Pulse doesn't say its window is shown"
+    # A closed window ends Pulse; it used to linger without one, and opening
+    # Pulse again only "raised" nothing.
+    qs -p "$PWD/shell/pulse.qml" ipc call pulse close >/dev/null 2>&1 || true
+    for _ in $(seq 30); do pgrep -f "qs -p $PWD/shell/pulse.qml" >/dev/null || break; sleep 0.1; done
+    pgrep -f "qs -p $PWD/shell/pulse.qml" >/dev/null && fail "Pulse keeps running after its window closed"
+    VELA_SHELL_DIR="$PWD/shell" "$(dirname "$BIN")/vela-pulse" >>"$tmp/pulse.log" 2>&1 || fail "vela-pulse after closing failed"
+    for _ in $(seq 100); do pgrep -f "qs -p $PWD/shell/pulse.qml" >/dev/null && break; sleep 0.1; done
+    pgrep -f "qs -p $PWD/shell/pulse.qml" >/dev/null || fail "vela-pulse didn't open Pulse again after closing"
     pkill -f "qs -p $PWD/shell/pulse.qml" || true
     if [[ -n "$qslog" ]] && qs log "$qslog" 2>/dev/null | grep -E "ERROR.*(scene|qml)|Failed to load|TypeError|ReferenceError|is not defined|Cannot assign"; then
         fail "errors in the Pulse log"

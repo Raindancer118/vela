@@ -16,6 +16,10 @@ FloatingWindow {
     implicitHeight: 820
     minimumSize: Qt.size(900, 600)
     color: "transparent"
+    // Closed (its X, Super+Q, `vela pulse close`): end Pulse instead of
+    // lingering without a window.
+    onVisibleChanged: if (!visible)
+        Qt.quit()
 
     // Hyprland: focus this window (vela pulse while it is open).
     function raise(): void {
