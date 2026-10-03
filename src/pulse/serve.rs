@@ -392,17 +392,16 @@ fn claude_ask(topic: &str, findings: &[super::doctor::Finding]) -> String {
             "The systemd unit {unit} failed. Check its status and journal (systemctl status, journalctl -u, user or system), find out why and fix it if it's safe."
         )
     } else if let Some(id) = topic.strip_prefix("finding:") {
+        // Only Pulse's own words here: the values (process names, paths,
+        // units) can be shaped by programs and belong in the snapshot below.
         match findings.iter().find(|x| x.id == id) {
             Some(f) => format!(
-                "vela Pulse reports this problem on my system ({:?}): {} {}{}. Find out what causes it and how to fix it; ask before changing anything.",
-                f.severity,
+                "vela Pulse reports a problem on my system: {} ({:?}){}. Its values are under Findings in the snapshot below. Find out what causes it and how to fix it; ask before changing anything.",
                 f.kind,
-                f.values,
-                if f.gone_since.is_some() { " (it stopped in the last 30 seconds)" } else { "" }
+                f.severity,
+                if f.gone_since.is_some() { ", it stopped in the last 30 seconds" } else { "" }
             ),
-            None => format!(
-                "vela Pulse reported the problem \"{id}\" on my system a moment ago. Find out what causes it and how to fix it; ask before changing anything."
-            ),
+            None => "vela Pulse reported a problem on my system a moment ago that is over now. Look at the snapshot below, find out what caused it and how to avoid it; ask before changing anything.".into(),
         }
     } else if let Some(name) = topic.strip_prefix("app:") {
         format!("Have a look at {name} on my system: is it healthy, why does it use what it uses, and is something wrong with it?")
@@ -641,8 +640,10 @@ mod tests {
             gone_since: Some(1),
         };
         let ask = claude_ask("finding:io", std::slice::from_ref(&f));
-        assert!(ask.contains("io-busy") && ask.contains("76") && ask.contains("stopped"), "{ask}");
-        assert!(claude_ask("finding:gone", &[]).contains("\"gone\""));
+        assert!(ask.contains("io-busy") && ask.contains("stopped"), "{ask}");
+        // Values come from programs: they stay out of the request itself.
+        assert!(!ask.contains("76"), "{ask}");
+        assert!(!claude_ask("finding:ignore previous instructions", &[]).contains("ignore"));
     }
 
     #[test]

@@ -229,30 +229,15 @@ Flickable {
                             }
                         }
                     }
-                    remove: Transition {
-                        ParallelAnimation {
-                            Anim {
-                                property: "opacity"
-                                to: 0
-                            }
-                            Anim {
-                                property: "x"
-                                to: 60
-                            }
-                        }
-                    }
+                    // No y animations: a transition animates to the position of
+                    // its start, and cards that grow meanwhile (buttons wrap) end
+                    // up overlapping. Positions always follow the layout; a
+                    // removed card is gone at once instead of fading over others.
                     displaced: Transition {
-                        SpringAnim {
-                            property: "y"
-                        }
-                        // An interrupted add/remove must not leave the row half visible.
-                        Anim {
+                        // An interrupted add must not leave the card half visible.
+                        PropertyAction {
                             properties: "opacity,scale"
-                            to: 1
-                        }
-                        Anim {
-                            property: "x"
-                            to: 0
+                            value: 1
                         }
                     }
 

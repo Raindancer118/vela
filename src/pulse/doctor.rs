@@ -466,31 +466,42 @@ fn actionable(f: &Finding) -> usize {
     f.fixes.iter().filter(|x| x.action != "show-perf" && x.action != "claude").count()
 }
 
-/// Keeps findings for `HOLD_MS` after they end, and keeps a finding's apps
-/// and buttons while single frames know less (the top writer idles for a
-/// second) — otherwise the cards change under the cursor every second.
+/// Keeps findings for `HOLD_MS` after they end, and keeps a finding's apps,
+/// buttons and worst severity while single frames know less (the top writer
+/// idles for a second, pressure dips) — otherwise the cards change and swap
+/// places under the cursor every second.
 #[derive(Default)]
 pub struct Recent {
-    /// Finding, last seen, when its buttons were last this rich (unix ms).
-    held: Vec<(Finding, u64, u64)>,
+    held: Vec<Held>,
+}
+
+struct Held {
+    finding: Finding,
+    seen: u64,
+    /// When its buttons were last this rich (unix ms).
+    rich_at: u64,
+    peak: Severity,
+    peak_at: u64,
 }
 
 impl Recent {
     pub fn apply(&mut self, now_ms: u64, fresh: Vec<Finding>, apps: &[AppFrame]) -> Vec<Finding> {
-        let mut next: Vec<(Finding, u64, u64)> = Vec::with_capacity(fresh.len());
+        let recent = |t: u64| now_ms.saturating_sub(t) < HOLD_MS;
+        let mut next: Vec<Held> = Vec::with_capacity(fresh.len());
         for mut f in fresh {
+            let old = self.held.iter().find(|h| h.finding.id == f.id);
             let mut rich_at = now_ms;
-            if let Some((old, _, old_rich)) = self.held.iter().find(|(o, ..)| o.id == f.id)
+            if let Some(h) = old
                 && actionable(&f) == 0
-                && actionable(old) > 0
-                && now_ms.saturating_sub(*old_rich) < HOLD_MS
+                && actionable(&h.finding) > 0
+                && recent(h.rich_at)
             {
-                f.fixes = old.fixes.clone();
+                f.fixes = h.finding.fixes.clone();
                 if f.apps.is_empty() {
-                    f.apps = old.apps.clone();
+                    f.apps = h.finding.apps.clone();
                 }
                 // Lists like `top` word the text; keep them with the buttons.
-                if let (Some(new), Some(old)) = (f.values.as_object_mut(), old.values.as_object()) {
+                if let (Some(new), Some(old)) = (f.values.as_object_mut(), h.finding.values.as_object()) {
                     for (k, v) in old {
                         let empty = |x: Option<&Value>| x.is_none_or(|x| x.is_null() || x.as_array().is_some_and(|a| a.is_empty()));
                         if !empty(Some(v)) && empty(new.get(k)) {
@@ -498,24 +509,38 @@ impl Recent {
                         }
                     }
                 }
-                rich_at = *old_rich;
+                rich_at = h.rich_at;
             }
-            next.push((f, now_ms, rich_at));
+            let (mut peak, mut peak_at) = (f.severity, now_ms);
+            if let Some(h) = old
+                && h.peak > f.severity
+                && recent(h.peak_at)
+            {
+                (peak, peak_at) = (h.peak, h.peak_at);
+                f.severity = peak;
+            }
+            next.push(Held {
+                finding: f,
+                seen: now_ms,
+                rich_at,
+                peak,
+                peak_at,
+            });
         }
-        for (mut old, seen, rich) in std::mem::take(&mut self.held) {
-            if now_ms.saturating_sub(seen) < HOLD_MS && !next.iter().any(|(n, ..)| n.id == old.id) {
-                old.gone_since = Some(seen);
-                next.push((old, seen, rich));
+        for mut h in std::mem::take(&mut self.held) {
+            if recent(h.seen) && !next.iter().any(|n| n.finding.id == h.finding.id) {
+                h.finding.gone_since = Some(h.seen);
+                next.push(h);
             }
         }
-        for (f, ..) in &mut next {
+        for h in &mut next {
             let alive = |key: &str| apps.iter().any(|a| a.key == key);
-            f.fixes.retain(|x| !APP_ACTIONS.contains(&x.action.as_str()) || alive(&x.target));
-            f.apps.retain(|k| alive(k));
+            h.finding.fixes.retain(|x| !APP_ACTIONS.contains(&x.action.as_str()) || alive(&x.target));
+            h.finding.apps.retain(|k| alive(k));
         }
-        next.sort_by_key(|(f, ..)| std::cmp::Reverse(f.severity));
+        next.sort_by_key(|h| std::cmp::Reverse(h.finding.severity));
         self.held = next;
-        self.held.iter().map(|(f, ..)| f.clone()).collect()
+        self.held.iter().map(|h| h.finding.clone()).collect()
     }
 }
 
@@ -852,6 +877,17 @@ mod tests {
         let f = r.apply(1_000, io_finding(std::slice::from_ref(&win)), &both);
         assert_eq!(f[0].apps, vec!["firefox"]);
         assert!(f[0].fixes.iter().all(|x| x.target == "firefox" || x.action == "claude"), "{:?}", f[0].fixes);
+    }
+
+    #[test]
+    fn severity_holds_its_peak_so_the_order_stays() {
+        let mut s = calm();
+        s.io.pressure_full = 40.0;
+        let mut r = Recent::default();
+        assert_eq!(r.apply(0, diagnose(&s, &[], &ctx()), &[])[0].severity, Severity::Critical);
+        s.io.pressure_full = 15.0;
+        assert_eq!(r.apply(1_000, diagnose(&s, &[], &ctx()), &[])[0].severity, Severity::Critical);
+        assert_eq!(r.apply(31_000, diagnose(&s, &[], &ctx()), &[])[0].severity, Severity::Warning);
     }
 
     #[test]
