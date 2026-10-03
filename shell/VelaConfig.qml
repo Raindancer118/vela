@@ -83,6 +83,7 @@ Singleton {
             confirmEnd: false,
             heatMap: true,
             showKernel: false,
+            sensorView: "list",
             intervalMs: 1000,
             record: true,
             claude: true,

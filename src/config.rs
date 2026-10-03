@@ -34,8 +34,10 @@ pub struct Pulse {
     pub record: bool,
     /// Background sampling interval.
     pub record_interval_secs: u32,
-    /// How much background history to keep.
+    /// How much background history to keep at full resolution.
     pub history_minutes: u32,
+    /// Hours of minute averages for the long view (0 = none).
+    pub long_history_hours: u32,
     /// Update interval of the open window.
     pub interval_ms: u32,
     /// Graphs glide between samples; off = they jump one step per sample.
@@ -51,6 +53,8 @@ pub struct Pulse {
     pub heat_map: bool,
     /// List kernel threads in "Apps & processes".
     pub show_kernel: bool,
+    /// Performance → Sensors: list, graphs (one per sensor) or chart (all in one).
+    pub sensor_view: String,
     /// Keys in the window for the selected app or process: one character
     /// (`k`) or a key name (`Delete`, `F5`); empty = off. No confirmation.
     pub key_force: String,
@@ -68,6 +72,7 @@ impl Default for Pulse {
             record: true,
             record_interval_secs: 3,
             history_minutes: 60,
+            long_history_hours: 24,
             interval_ms: 1000,
             smooth_graphs: true,
             start_page: "overview".into(),
@@ -75,6 +80,7 @@ impl Default for Pulse {
             confirm_end: false,
             heat_map: true,
             show_kernel: false,
+            sensor_view: "list".into(),
             key_force: "k".into(),
             key_end: "g".into(),
             key_restart: "r".into(),
@@ -716,7 +722,17 @@ impl Config {
         if !PULSE_PAGES.contains(&p.start_page.as_str()) {
             p.start_page = "overview".into();
         }
-        p.range_secs = if p.range_secs >= 180 { 300 } else { 60 };
+        p.long_history_hours = p.long_history_hours.min(24 * 7);
+        p.range_secs = match p.range_secs {
+            0..180 => 60,
+            180..1800 => 300,
+            1800..43200 => 3600,
+            43200..302400 => 86_400,
+            _ => 604_800,
+        };
+        if !["list", "graphs", "chart"].contains(&p.sensor_view.as_str()) {
+            p.sensor_view = "list".into();
+        }
         for k in [&mut p.key_force, &mut p.key_end, &mut p.key_restart, &mut p.key_pause, &mut p.key_efficiency] {
             *k = pulse_key(k);
         }
@@ -988,6 +1004,7 @@ mod tests {
         let cfg = Config::from_toml("[pulse]\nstart_page = \"nowhere\"\nrange_secs = 200\ninterval_ms = 5\nhistory_minutes = 0\n").unwrap();
         assert_eq!(cfg.pulse.start_page, "overview");
         assert_eq!(cfg.pulse.range_secs, 300);
+        assert_eq!(Config::from_toml("[pulse]\nrange_secs = 86400\n").unwrap().pulse.range_secs, 86_400);
         assert_eq!(cfg.pulse.interval_ms, 250);
         assert_eq!(cfg.pulse.history_minutes, 5);
         assert_eq!(pulse_key(" K "), "k");

@@ -156,17 +156,21 @@ claude_workspace = "special:minimized"
 record = true
 record_interval_secs = 3
 history_minutes = 60
+# Minute averages for the long graphs (1 h / 24 h); 0 = none.
+long_history_hours = 24
 # Measurements per second while the window is open (milliseconds between).
 interval_ms = 1000
 # Graphs glide between measurements; false = one step per measurement.
 smooth_graphs = true
 # overview, processes, performance, diagnosis, services, activity
 start_page = "overview"
-# Performance graphs: 60 or 300 seconds.
+# Performance graphs: 60, 300, 3600 or 86400 seconds.
 range_secs = 60
 confirm_end = false
 heat_map = true
 show_kernel = false
+# Performance → Sensors: "list", "graphs" (one per sensor) or "chart" (all in one).
+sensor_view = "list"
 # Keys in the window for the selected app or process: one character or
 # Delete, Insert, Home, End, Space, F1–F12; "" = off. They act right away.
 key_force = "k"

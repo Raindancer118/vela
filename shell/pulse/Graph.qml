@@ -30,9 +30,13 @@ Item {
     property string label2: ""
     property string label1: ""
 
-    readonly property bool smooth: VelaConfig.pulse.smoothGraphs && Theme.anim.normal > 0
+    // Live graphs move with every sample; recorded ones (long ranges) don't.
+    property bool live: true
+    // Milliseconds between points, for the hover time.
+    property int stepMs: Pulse.interval
+    readonly property bool smooth: live && VelaConfig.pulse.smoothGraphs && Theme.anim.normal > 0
     readonly property real step: width / Math.max(1, points)
-    readonly property real wantTop: max > 0 ? max : Fmt.niceMax(values.slice(-points - 2).concat(values2.slice(-points - 2)), minMax)
+    readonly property real wantTop: max > 0 ? max : Fmt.niceMax(values.slice(-points - 2).concat(values2.slice(-points - 2)).filter(v => v !== null), minMax)
     property real scaleTop: wantTop
     Behavior on scaleTop {
         enabled: root.smooth
@@ -58,17 +62,27 @@ Item {
     onHeightChanged: rebuild()
     Component.onCompleted: rebuild()
 
+    // Polyline pieces; null values (nothing recorded then) split them.
     function coords(vals: var): var {
         const n = vals.length;
         const h = root.height;
         const pad = root.lineWidth;
         const out = [];
+        let cur = [];
         const from = Math.max(0, n - root.points - 2);
         for (let i = from; i < n; i++) {
+            if (vals[i] === null || vals[i] === undefined || isNaN(vals[i])) {
+                if (cur.length > 0)
+                    out.push(cur);
+                cur = [];
+                continue;
+            }
             const x = (i - (n - 1)) * root.step + root.width + root.step;
             const v = Math.max(0, Math.min(root.scaleTop, vals[i]));
-            out.push(Qt.point(x, h - pad - v / root.scaleTop * (h - 2 * pad)));
+            cur.push(Qt.point(x, h - pad - v / root.scaleTop * (h - 2 * pad)));
         }
+        if (cur.length > 0)
+            out.push(cur);
         return out;
     }
 
@@ -76,9 +90,9 @@ Item {
         if (width <= 0 || height <= 0)
             return;
         const p = coords(values);
-        line1.path = p;
-        area.path = p.length > 0 ? [Qt.point(p[0].x, height)].concat(p, [Qt.point(p[p.length - 1].x, height)]) : [];
-        line2.path = coords(values2);
+        line1.paths = p;
+        area.paths = p.map(s => [Qt.point(s[0].x, height)].concat(s, [Qt.point(s[s.length - 1].x, height)]));
+        line2.paths = coords(values2);
     }
 
     // Grid: quarters.
@@ -131,7 +145,7 @@ Item {
                         color: Theme.withAlpha(root.color, 0)
                     }
                 }
-                PathPolyline {
+                PathMultiline {
                     id: area
                 }
             }
@@ -142,7 +156,7 @@ Item {
                 fillColor: "transparent"
                 joinStyle: ShapePath.RoundJoin
                 capStyle: ShapePath.RoundCap
-                PathPolyline {
+                PathMultiline {
                     id: line1
                 }
             }
@@ -155,7 +169,7 @@ Item {
                 capStyle: ShapePath.RoundCap
                 strokeStyle: ShapePath.DashLine
                 dashPattern: [2, 2]
-                PathPolyline {
+                PathMultiline {
                     id: line2
                 }
             }
@@ -186,6 +200,7 @@ Item {
 
         Rectangle {
             readonly property real v: root.values[hover.idx] ?? 0
+            visible: root.values[hover.idx] !== null
             x: root.width - hover.back * root.step - width / 2
             y: root.height - root.lineWidth - Math.min(root.scaleTop, v) / root.scaleTop * (root.height - 2 * root.lineWidth) - height / 2
             width: 8
@@ -216,9 +231,10 @@ Item {
                 font.pixelSize: Theme.font.small
                 font.features: { "tnum": 1 }
                 text: {
-                    const secs = hover.back * Pulse.interval / 1000;
-                    const ago = secs < 1 ? I18n.tr("now") : I18n.tr("%1 s ago", Math.round(secs));
-                    const v1 = (root.label1 ? root.label1 + " " : "") + root.format(root.values[hover.idx] ?? 0);
+                    const secs = hover.back * root.stepMs / 1000;
+                    const ago = secs < 1 ? I18n.tr("now") : secs < 120 ? I18n.tr("%1 s ago", Math.round(secs)) : secs < 7200 ? I18n.tr("%1 min ago", Math.round(secs / 60)) : I18n.tr("%1 h ago", Math.round(secs / 3600));
+                    const raw = root.values[hover.idx];
+                    const v1 = raw === null ? I18n.tr("no data") : (root.label1 ? root.label1 + " " : "") + root.format(raw ?? 0);
                     const i2 = root.values2.length - 1 - hover.back;
                     const v2 = root.values2.length > 0 && i2 >= 0 ? "   " + (root.label2 ? root.label2 + " " : "") + root.format(root.values2[i2]) : "";
                     return v1 + v2 + "  ·  " + ago;

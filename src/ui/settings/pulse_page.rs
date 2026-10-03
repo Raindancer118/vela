@@ -63,9 +63,16 @@ pub fn build(b: &Binder) -> adw::PreferencesPage {
     window.add(&b.combo(
         "Graph range",
         "How far back the performance graphs reach",
-        &["1 minute", "5 minutes"],
-        |c| usize::from(c.pulse.range_secs >= 300),
-        |c, i| c.pulse.range_secs = if i == 1 { 300 } else { 60 },
+        &["1 minute", "5 minutes", "1 hour", "24 hours", "7 days"],
+        |c| [60, 300, 3600, 86_400, 604_800].iter().position(|s| *s == c.pulse.range_secs).unwrap_or(0),
+        |c, i| c.pulse.range_secs = [60, 300, 3600, 86_400, 604_800].get(i).copied().unwrap_or(60),
+    ));
+    window.add(&b.combo(
+        "Sensors",
+        "Performance → Sensors shows them as",
+        &["A list", "A graph each", "One chart"],
+        |c| ["list", "graphs", "chart"].iter().position(|v| *v == c.pulse.sensor_view).unwrap_or(0),
+        |c, i| c.pulse.sensor_view = ["list", "graphs", "chart"].get(i).copied().unwrap_or("list").into(),
     ));
     window.add(&b.switch(
         "Heat map",
@@ -127,6 +134,16 @@ pub fn build(b: &Binder) -> adw::PreferencesPage {
         0,
         |c| c.pulse.history_minutes as f64,
         |c, v| c.pulse.history_minutes = v.round() as u32,
+    ));
+    exp.add_row(&b.spin(
+        "Long history",
+        "Hours of minute averages for the long graphs (up to 168 = 7 days), kept across restarts",
+        0.0,
+        168.0,
+        1.0,
+        0,
+        |c| c.pulse.long_history_hours as f64,
+        |c, v| c.pulse.long_history_hours = v.round() as u32,
     ));
     rec.add(&exp);
     p.add(&rec);

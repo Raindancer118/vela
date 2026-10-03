@@ -783,8 +783,11 @@ mod tests {
         assert!(e.contains("confirm=true"), "{e}");
         let e = call("pulse_restart_app", &json!({ "app": "x", "confirm": false })).unwrap_err();
         assert!(e.contains("confirm=true"), "{e}");
-        let e = call("pulse_end_app", &json!({ "app": "Kernel", "confirm": true })).unwrap_err();
-        assert!(e.contains("part of the system"), "{e}");
+        // Containers (CI) have no kernel threads to find.
+        if std::fs::read_to_string("/proc/2/comm").is_ok_and(|c| c.trim() == "kthreadd") {
+            let e = call("pulse_end_app", &json!({ "app": "Kernel", "confirm": true })).unwrap_err();
+            assert!(e.contains("part of the system"), "{e}");
+        }
     }
 
     use super::*;

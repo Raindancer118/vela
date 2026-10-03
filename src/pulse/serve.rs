@@ -298,6 +298,22 @@ fn handle(cmd: &Value, monitor: &mut Monitor, state: &State, tx: &mpsc::Sender<M
             });
         }
         "events" => return Some(json!({ "type": "events", "list": monitor.events() })),
+        // The long view: what the daemon recorded, as it is now.
+        "history" => {
+            let secs = cmd.get("secs").and_then(Value::as_u64).unwrap_or(3600);
+            let tx = tx.clone();
+            std::thread::spawn(move || {
+                let v = if secs <= 3600 {
+                    // The last hour at the recorder's full resolution.
+                    let b = super::recorder::load().unwrap_or_default();
+                    json!({ "type": "history", "interval": b.interval, "series": b.series, "coarse": {}, "coarse_interval": 0 })
+                } else {
+                    let (step, coarse) = super::recorder::long_view(secs, 1500, super::sample::now_ms());
+                    json!({ "type": "history", "interval": 0, "series": {}, "coarse": coarse, "coarse_interval": step })
+                };
+                let _ = tx.send(Msg::Reply(v));
+            });
+        }
         "details" => {
             let pid = cmd.get("pid").and_then(Value::as_i64).unwrap_or(0) as i32;
             return Some(details(pid));

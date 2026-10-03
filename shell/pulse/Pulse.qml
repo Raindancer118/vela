@@ -34,6 +34,41 @@ Singleton {
     property int revision: 0
     // Seconds of history shown by the performance graphs.
     property int range: VelaConfig.pulse.rangeSecs ?? 60
+    // Ranges beyond what the window keeps itself come from the daemon.
+    readonly property bool longRange: range > 300
+    function longSeries(key: string): var {
+        root.revision;
+        return History.longGet(key, range).values;
+    }
+    function longPoints(): int {
+        return History.longGet("cpu", range).points;
+    }
+    function longStep(): int {
+        return History.longGet("cpu", range).step;
+    }
+    function loadLong(): void {
+        if (longRange)
+            send({
+                cmd: "history",
+                secs: range
+            });
+    }
+    onRangeChanged: loadLong()
+    onLongRangeChanged: loadLong()
+
+    Timer {
+        running: root.longRange && root.connected
+        interval: 15000
+        repeat: true
+        onTriggered: root.loadLong()
+    }
+
+    property string sensorView: VelaConfig.pulse.sensorView ?? "list"
+    function setSensorView(v: string): void {
+        sensorView = v;
+        Quickshell.execDetached([Quickshell.env("VELA_BIN") || "vela", "set", "pulse.sensor_view", v]);
+    }
+
     // The window's range buttons keep the choice in the settings.
     function setRange(secs: int): void {
         range = secs;
@@ -127,6 +162,10 @@ Singleton {
         case "details":
             details = m;
             break;
+        case "history":
+            History.setLong(m);
+            revision++;
+            break;
         case "events":
             events = m.list.slice().reverse();
             break;
@@ -164,6 +203,10 @@ Singleton {
             push("net.rx." + n.iface, n.rxBps);
             push("net.tx." + n.iface, n.txBps);
         }
+        for (const t of f.sensors)
+            push("sensor." + t.chip + "/" + t.label, t.celsius);
+        for (const fan of f.fans)
+            push("fan." + fan.chip + "/" + fan.label, fan.rpm);
         const watts = f.power.batteries.reduce((s, b) => s + (b.status === "discharging" ? b.watts : 0), 0);
         push("power.watts", watts);
 

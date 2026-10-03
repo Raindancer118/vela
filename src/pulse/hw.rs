@@ -118,8 +118,8 @@ pub fn sensors(sys: &Path) -> (Vec<Sensor>, Vec<Fan>) {
             if let Some(idx) = name.strip_prefix("temp").and_then(|r| r.strip_suffix("_input")) {
                 let Some(milli) = read_i64(&f) else { continue };
                 let c = milli as f64 / 1000.0;
-                // Unplugged probes read as -273 or absurd values.
-                if !(-40.0..=150.0).contains(&c) {
+                // Unplugged probes read as -273, 0 (ThinkPad) or absurd values.
+                if !(-40.0..=150.0).contains(&c) || milli == 0 {
                     continue;
                 }
                 let thr = |s: &str| {

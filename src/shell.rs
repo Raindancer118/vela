@@ -157,6 +157,7 @@ pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) ->
             "confirmEnd": cfg.pulse.confirm_end,
             "heatMap": cfg.pulse.heat_map,
             "showKernel": cfg.pulse.show_kernel,
+            "sensorView": cfg.pulse.sensor_view,
             "keys": {
                 "force": cfg.pulse.key_force,
                 "end": cfg.pulse.key_end,

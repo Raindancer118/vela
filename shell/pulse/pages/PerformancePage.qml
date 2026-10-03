@@ -12,7 +12,11 @@ Item {
 
     readonly property var f: Pulse.frame
     readonly property var loc: Qt.locale()
-    readonly property int pts: Pulse.range
+    readonly property int pts: Pulse.longRange ? Pulse.longPoints() : Pulse.range
+    // A series for the big graphs: live, or the daemon's recording.
+    function ser(key: string): var {
+        return Pulse.longRange ? Pulse.longSeries(key) : Pulse.series(key, pts + 2);
+    }
     property bool perCore: false
 
     readonly property var devices: {
@@ -99,6 +103,28 @@ Item {
     readonly property var disk: kind === "disk" ? f?.disks.find(x => x.name === arg) ?? null : null
     readonly property var net: kind === "net" ? f?.net.find(x => x.iface === arg) ?? null : null
     readonly property var bat: f?.power.batteries[0] ?? null
+    // Every temperature and fan with its own colour, in a stable order.
+    readonly property var readings: {
+        const t = (f?.sensors ?? []).map(x => ({
+                    key: "sensor." + x.chip + "/" + x.label,
+                    label: x.label,
+                    chip: x.chip,
+                    value: x.celsius,
+                    crit: x.crit,
+                    fan: false
+                }));
+        const n = Math.max(1, t.length);
+        t.forEach((x, i) => x.color = Qt.hsla((0.02 + i / n * 0.85) % 1, 0.62, Theme.pulse.light ? 0.45 : 0.66, 1));
+        const fans = (f?.fans ?? []).map(x => ({
+                    key: "fan." + x.chip + "/" + x.label,
+                    label: x.label,
+                    chip: x.chip,
+                    value: x.rpm,
+                    fan: true,
+                    color: Theme.colors.textMuted
+                }));
+        return t.concat(fans);
+    }
 
     component Stat: ColumnLayout {
         property string label
@@ -169,6 +195,8 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 1
                 points: page.pts
+                live: !Pulse.longRange
+                stepMs: Pulse.longRange ? Pulse.longStep() : Pulse.interval
             }
         }
     }
@@ -354,6 +382,29 @@ Item {
                         }
                     }
 
+                    Segmented {
+                        visible: page.kind === "sensors"
+                        options: [
+                            {
+                                k: "list",
+                                t: I18n.tr("List"),
+                                i: "list"
+                            },
+                            {
+                                k: "graphs",
+                                t: I18n.tr("Graphs"),
+                                i: "grid"
+                            },
+                            {
+                                k: "chart",
+                                t: I18n.tr("One chart"),
+                                i: "pulse_heart"
+                            }
+                        ]
+                        current: Pulse.sensorView
+                        onPicked: k => Pulse.setSensorView(k)
+                    }
+
                     PillButton {
                         visible: page.kind === "cpu"
                         icon: "grid"
@@ -361,52 +412,32 @@ Item {
                         onClicked: page.perCore = !page.perCore
                     }
 
-                    // History range.
-                    Rectangle {
-                        implicitHeight: 30
-                        implicitWidth: 150
-                        radius: 15
-                        color: Theme.withAlpha(Theme.colors.text, 0.05)
-
-                        Rectangle {
-                            x: Pulse.range === 60 ? 3 : parent.width / 2
-                            y: 3
-                            width: parent.width / 2 - 3
-                            height: parent.height - 6
-                            radius: height / 2
-                            color: Theme.colors.selected
-                            border.width: 1
-                            border.color: Theme.colors.selectedRing
-                            Behavior on x {
-                                SpringAnim {}
+                    // History range; beyond 5 minutes from the daemon's recording.
+                    Segmented {
+                        options: [
+                            {
+                                k: "60",
+                                t: I18n.tr("1 min")
+                            },
+                            {
+                                k: "300",
+                                t: I18n.tr("5 min")
+                            },
+                            {
+                                k: "3600",
+                                t: I18n.tr("1 h")
+                            },
+                            {
+                                k: "86400",
+                                t: I18n.tr("24 h")
+                            },
+                            {
+                                k: "604800",
+                                t: I18n.tr("7 d")
                             }
-                        }
-
-                        Row {
-                            anchors.fill: parent
-
-                            Repeater {
-                                model: [60, 300]
-
-                                Item {
-                                    required property int modelData
-
-                                    width: parent.width / 2
-                                    height: parent.height
-
-                                    Clickable {
-                                        radius: height / 2
-                                        onClicked: Pulse.setRange(parent.modelData)
-                                    }
-
-                                    StyledText {
-                                        anchors.centerIn: parent
-                                        text: parent.modelData === 60 ? I18n.tr("1 min") : I18n.tr("5 min")
-                                        font.pixelSize: Theme.font.small
-                                    }
-                                }
-                            }
-                        }
+                        ]
+                        current: String(Pulse.range)
+                        onPicked: k => Pulse.setRange(Number(k))
                     }
                 }
 
@@ -416,14 +447,22 @@ Item {
                     Layout.fillHeight: true
                     Layout.minimumHeight: 220
 
+                    StyledText {
+                        anchors.centerIn: parent
+                        z: 2
+                        visible: Pulse.longRange && !VelaConfig.pulse.record
+                        text: I18n.tr("Background recording is off (Settings → Pulse).")
+                        color: Theme.colors.textMuted
+                    }
+
                     // CPU overall
                     BigGraph {
                         anchors.fill: parent
                         visible: page.kind === "cpu" && !page.perCore
-                        title: I18n.tr("Usage over %1", Pulse.range === 60 ? I18n.tr("60 seconds") : I18n.tr("5 minutes"))
+                        title: I18n.tr("Usage over %1", ({ 60: I18n.tr("60 seconds"), 300: I18n.tr("5 minutes"), 3600: I18n.tr("1 hour"), 86400: I18n.tr("24 hours"), 604800: I18n.tr("7 days") })[Pulse.range] ?? "")
                         rightText: "100 %"
-                        values: Pulse.series("cpu", page.pts + 2)
-                        values2: Pulse.series("cpu.iowait", page.pts + 2)
+                        values: page.ser("cpu")
+                        values2: page.ser("cpu.iowait")
                         label2: I18n.tr("I/O wait")
                         color: Theme.pulse.cpu
                         color2: Theme.pulse.disk
@@ -456,8 +495,10 @@ Item {
                                 Graph {
                                     anchors.fill: parent
                                     anchors.margins: 1
-                                    values: Pulse.series("core." + parent.index, Math.min(page.pts, 120) + 2)
-                                    points: Math.min(page.pts, 120)
+                                    values: Pulse.longRange ? Pulse.longSeries("core." + parent.index) : Pulse.series("core." + parent.index, Math.min(page.pts, 120) + 2)
+                                    points: Pulse.longRange ? page.pts : Math.min(page.pts, 120)
+                                    live: !Pulse.longRange
+                                    stepMs: Pulse.longRange ? Pulse.longStep() : Pulse.interval
                                     max: 100
                                     grid: false
                                     lineWidth: 1.5
@@ -487,7 +528,7 @@ Item {
                             Layout.preferredHeight: 3
                             title: I18n.tr("Memory in use")
                             rightText: Fmt.bytes(page.f?.memory.total ?? 0, page.loc)
-                            values: Pulse.series("mem", page.pts + 2)
+                            values: page.ser("mem")
                             color: Theme.pulse.memory
                             max: 100
                             format: v => Fmt.percent(v, page.loc)
@@ -500,7 +541,7 @@ Item {
                             visible: (page.f?.memory.swapTotal ?? 0) > 0
                             title: I18n.tr("Swap")
                             rightText: Fmt.bytes(page.f?.memory.swapTotal ?? 0, page.loc)
-                            values: Pulse.series("swap", page.pts + 2)
+                            values: page.ser("swap")
                             color: Theme.withAlpha(Theme.pulse.memory, 0.7)
                             max: 100
                             format: v => Fmt.percent(v, page.loc)
@@ -572,7 +613,7 @@ Item {
                             Layout.preferredHeight: 3
                             title: page.gpu?.asleep ? I18n.tr("Asleep — saves power") : I18n.tr("Usage")
                             rightText: "100 %"
-                            values: Pulse.series("gpu." + page.arg, page.pts + 2)
+                            values: page.ser("gpu." + page.arg)
                             color: Theme.pulse.gpu
                             max: 100
                             format: v => Fmt.percent(v, page.loc)
@@ -585,7 +626,7 @@ Item {
                             visible: (page.gpu?.vramTotal ?? 0) > 0
                             title: I18n.tr("Video memory")
                             rightText: Fmt.bytes(page.gpu?.vramTotal ?? 0, page.loc)
-                            values: Pulse.series("vram." + page.arg, page.pts + 2)
+                            values: page.ser("vram." + page.arg)
                             color: Theme.withAlpha(Theme.pulse.gpu, 0.7)
                             max: 100
                             format: v => Fmt.percent(v, page.loc)
@@ -603,7 +644,7 @@ Item {
                             Layout.preferredHeight: 2
                             title: I18n.tr("Busy time")
                             rightText: "100 %"
-                            values: Pulse.series("disk.busy." + page.arg, page.pts + 2)
+                            values: page.ser("disk.busy." + page.arg)
                             color: Theme.pulse.disk
                             max: 100
                             format: v => Fmt.percent(v, page.loc)
@@ -614,8 +655,8 @@ Item {
                             Layout.fillHeight: true
                             Layout.preferredHeight: 2
                             title: I18n.tr("Transfer rate")
-                            values: Pulse.series("disk.r." + page.arg, page.pts + 2)
-                            values2: Pulse.series("disk.w." + page.arg, page.pts + 2)
+                            values: page.ser("disk.r." + page.arg)
+                            values2: page.ser("disk.w." + page.arg)
                             label1: I18n.tr("Read")
                             label2: I18n.tr("Write")
                             color: Theme.pulse.disk
@@ -629,8 +670,8 @@ Item {
                         anchors.fill: parent
                         visible: page.kind === "net"
                         title: I18n.tr("Throughput")
-                        values: Pulse.series("net.rx." + page.arg, page.pts + 2)
-                        values2: Pulse.series("net.tx." + page.arg, page.pts + 2)
+                        values: page.ser("net.rx." + page.arg)
+                        values2: page.ser("net.tx." + page.arg)
                         label1: I18n.tr("Down")
                         label2: I18n.tr("Up")
                         color: Theme.pulse.net
@@ -643,7 +684,7 @@ Item {
                         anchors.fill: parent
                         visible: page.kind === "power"
                         title: I18n.tr("Power draw from the battery")
-                        values: Pulse.series("power.watts", page.pts + 2)
+                        values: page.ser("power.watts")
                         color: Theme.pulse.power
                         minMax: 10
                         format: v => Fmt.watts(v, page.loc)
@@ -652,7 +693,7 @@ Item {
                     // Sensors: every temperature, then fans.
                     Flickable {
                         anchors.fill: parent
-                        visible: page.kind === "sensors"
+                        visible: page.kind === "sensors" && Pulse.sensorView === "list"
                         contentHeight: sensorGrid.implicitHeight
                         clip: true
 
@@ -722,6 +763,207 @@ Item {
                                         value: parent.modelData.rpm
                                         format: v => I18n.tr("%1 rpm", Math.round(v))
                                         font.weight: Theme.font.weightMedium
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Sensors, a graph each.
+                    Flickable {
+                        anchors.fill: parent
+                        visible: page.kind === "sensors" && Pulse.sensorView === "graphs"
+                        contentHeight: tilesGrid.implicitHeight
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        GridLayout {
+                            id: tilesGrid
+
+                            width: parent.width
+                            columns: Math.max(1, Math.floor(width / 300))
+                            columnSpacing: Theme.spacing.md
+                            rowSpacing: Theme.spacing.md
+
+                            Repeater {
+                                model: page.kind === "sensors" && Pulse.sensorView === "graphs" ? page.readings.length : 0
+
+                                Rectangle {
+                                    id: tile
+
+                                    required property int index
+                                    readonly property var r: page.readings[index] ?? ({ key: "", label: "", value: 0, fan: false })
+                                    readonly property bool hot: !r.fan && r.value >= (r.crit ?? 100) - 10
+
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 132
+                                    radius: Theme.radius.small
+                                    color: Theme.withAlpha(r.color, 0.04)
+                                    border.width: 1
+                                    border.color: Theme.withAlpha(tile.hot ? Theme.pulse.crit : r.color, 0.3)
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: Theme.spacing.sm
+                                        spacing: 2
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+
+                                            MaterialIcon {
+                                                icon: tile.r.fan ? "pulse_fan" : "pulse_thermo"
+                                                size: Theme.icon.small
+                                                color: tile.r.color
+                                            }
+
+                                            StyledText {
+                                                Layout.fillWidth: true
+                                                text: tile.r.label
+                                                font.pixelSize: Theme.font.small + 1
+                                            }
+
+                                            Counter {
+                                                value: tile.r.value
+                                                format: v => tile.r.fan ? I18n.tr("%1 rpm", Math.round(v)) : Fmt.celsius(v, page.loc)
+                                                font.weight: Theme.font.weightMedium
+                                                color: tile.hot ? Theme.pulse.crit : Theme.colors.text
+                                            }
+                                        }
+
+                                        StyledText {
+                                            text: tile.r.chip
+                                            color: Theme.colors.textMuted
+                                            font.pixelSize: Theme.font.small - 1
+                                        }
+
+                                        Graph {
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            values: page.ser(tile.r.key)
+                                            points: page.pts
+                                            live: !Pulse.longRange
+                                            stepMs: Pulse.longRange ? Pulse.longStep() : Pulse.interval
+                                            minMax: tile.r.fan ? 1000 : 50
+                                            grid: false
+                                            lineWidth: 1.5
+                                            color: tile.hot ? Theme.pulse.crit : tile.r.color
+                                            format: v => tile.r.fan ? I18n.tr("%1 rpm", Math.round(v)) : Fmt.celsius(v, page.loc)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // All temperatures in one chart; the legend highlights one.
+                    ColumnLayout {
+                        id: chart
+
+                        property string focusKey: ""
+                        readonly property var temps: page.readings.filter(r => !r.fan)
+                        readonly property real chartTop: Math.max(50, Fmt.niceMax(temps.map(t => Math.max(t.value, ...page.ser(t.key))), 50))
+
+                        anchors.fill: parent
+                        visible: page.kind === "sensors" && Pulse.sensorView === "chart"
+                        spacing: Theme.spacing.md
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            radius: Theme.radius.small
+                            color: Theme.withAlpha(Theme.pulse.sensor, 0.03)
+                            border.width: 1
+                            border.color: Theme.withAlpha(Theme.pulse.sensor, 0.25)
+
+                            Repeater {
+                                model: chart.visible ? chart.temps.length : 0
+
+                                Graph {
+                                    required property int index
+                                    readonly property var r: chart.temps[index] ?? ({ key: "", color: "transparent" })
+
+                                    anchors.fill: parent
+                                    anchors.margins: 1
+                                    values: page.ser(r.key)
+                                    points: page.pts
+                                    live: !Pulse.longRange
+                                    stepMs: Pulse.longRange ? Pulse.longStep() : Pulse.interval
+                                    max: chart.chartTop
+                                    fill: false
+                                    grid: index === 0
+                                    hoverable: false
+                                    lineWidth: chart.focusKey === r.key ? 3 : 1.8
+                                    color: r.color
+                                    opacity: chart.focusKey === "" || chart.focusKey === r.key ? 1 : 0.18
+                                    Behavior on opacity {
+                                        Anim {}
+                                    }
+                                }
+                            }
+
+                            StyledText {
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.margins: Theme.spacing.sm
+                                text: Fmt.celsius(chart.chartTop, page.loc)
+                                color: Theme.colors.textMuted
+                                font.pixelSize: Theme.font.small
+                            }
+                        }
+
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing.sm
+
+                            Repeater {
+                                model: chart.temps.length
+
+                                Rectangle {
+                                    required property int index
+                                    readonly property var r: chart.temps[index] ?? ({ key: "", label: "", value: 0, color: "transparent" })
+
+                                    implicitHeight: 28
+                                    implicitWidth: legendRow.implicitWidth + 2 * Theme.spacing.sm
+                                    radius: 14
+                                    color: chart.focusKey === r.key ? Theme.colors.selected : Theme.colors.chip
+                                    Behavior on color {
+                                        ColorAnim {
+                                            duration: Theme.anim.fast
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        onEntered: chart.focusKey = parent.r.key
+                                        onExited: if (chart.focusKey === parent.r.key)
+                                            chart.focusKey = ""
+                                    }
+
+                                    RowLayout {
+                                        id: legendRow
+
+                                        anchors.centerIn: parent
+                                        spacing: Theme.spacing.xs
+
+                                        Rectangle {
+                                            implicitWidth: 10
+                                            implicitHeight: 10
+                                            radius: 5
+                                            color: parent.parent.r.color
+                                        }
+
+                                        StyledText {
+                                            text: parent.parent.r.label
+                                            font.pixelSize: Theme.font.small
+                                        }
+
+                                        Counter {
+                                            value: parent.parent.r.value
+                                            format: v => Fmt.celsius(v, page.loc)
+                                            color: Theme.colors.textMuted
+                                            font.pixelSize: Theme.font.small
+                                        }
                                     }
                                 }
                             }

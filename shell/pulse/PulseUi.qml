@@ -48,7 +48,7 @@ Singleton {
         }
     }
     // Performance page: cpu, memory, gpu:<card>, disk:<name>, net:<iface>, power, sensors.
-    property string device: "cpu"
+    property string device: Quickshell.env("VELA_PULSE_DEVICE") || "cpu"
     property string query: ""
     // App whose details are open (flyout), "" = closed.
     property string detailKey: ""

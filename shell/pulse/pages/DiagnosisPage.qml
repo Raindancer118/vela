@@ -37,7 +37,7 @@ Flickable {
 
         x: Theme.spacing.xl
         y: Theme.spacing.xl
-        width: Math.min(page.width - 2 * Theme.spacing.xl, 1100)
+        width: page.width - 2 * Theme.spacing.xl
         spacing: Theme.spacing.lg
 
         // Hero
