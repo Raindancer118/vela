@@ -96,6 +96,18 @@ fn relief(a: &AppFrame) -> Vec<Fix> {
     f
 }
 
+/// Whether a process in D state waits on storage. Kernel threads mostly
+/// don't (GPU page flips, RCU) — only their writeback ones do.
+fn waits_on_storage(comm: &str) -> bool {
+    if comm.starts_with("rcu") {
+        return false;
+    }
+    if comm.starts_with("kworker") {
+        return comm.contains("flush") || comm.contains("writeback");
+    }
+    true
+}
+
 pub fn diagnose(s: &Sample, apps: &[AppFrame], ctx: &Context) -> Vec<Finding> {
     let mut out = Vec::new();
     let mut add = |id: String, kind: &str, severity: Severity, apps: Vec<String>, values: Value, fixes: Vec<Fix>| {
@@ -191,14 +203,18 @@ pub fn diagnose(s: &Sample, apps: &[AppFrame], ctx: &Context) -> Vec<Finding> {
 
     // Disk I/O.
     let io_top = top(apps, |a| a.read_bps + a.write_bps, 3);
-    if s.io.pressure_full >= 10.0 {
-        let busiest = s.disks.iter().max_by(|a, b| a.busy.total_cmp(&b.busy));
+    let busiest = s.disks.iter().max_by(|a, b| a.busy.total_cmp(&b.busy));
+    // PSI alone lies: io_uring waits (Ghostty, node) count as iowait while the
+    // disk idles. Only believe it when something really waits on storage.
+    let blocked: Vec<&String> = ctx.blocked_names.iter().filter(|n| waits_on_storage(n)).collect();
+    let io_real = busiest.is_some_and(|d| d.busy >= 50.0) || !blocked.is_empty() || swap_rate >= 1024.0 * 1024.0;
+    if s.io.pressure_full >= 10.0 && io_real {
         add(
             "io".into(),
             "io-busy",
             if s.io.pressure_full >= 30.0 { Severity::Critical } else { Severity::Warning },
             io_top.iter().map(|a| a.key.clone()).collect(),
-            json!({ "pressure": s.io.pressure_full, "disk": busiest.map(|d| d.name.clone()), "busy": busiest.map(|d| d.busy), "top": names(&io_top, |a| a.read_bps + a.write_bps), "blocked": ctx.blocked_names, "swapUsed": s.memory.swap_used }),
+            json!({ "pressure": s.io.pressure_full, "disk": busiest.map(|d| d.name.clone()), "busy": busiest.map(|d| d.busy), "top": names(&io_top, |a| a.read_bps + a.write_bps), "blocked": blocked, "swapUsed": s.memory.swap_used }),
             io_top.first().map(|a| relief(a)).unwrap_or_else(|| vec![fix("show-perf", "disk")]),
         );
     }
@@ -797,7 +813,56 @@ mod tests {
     fn io_finding(apps: &[AppFrame]) -> Vec<Finding> {
         let mut s = calm();
         s.io.pressure_full = 40.0;
+        s.disks.push(DiskSample {
+            name: "nvme0n1".into(),
+            busy: 90.0,
+            ..Default::default()
+        });
         diagnose(&s, apps, &ctx())
+    }
+
+    // Ghostty & co. wait on io_uring, which the kernel books as iowait: PSI
+    // shows heavy I/O pressure while the disk sleeps.
+    #[test]
+    fn io_pressure_without_disk_work_is_no_finding() {
+        let mut s = calm();
+        s.io.pressure_full = 60.0;
+        s.disks.push(DiskSample {
+            name: "nvme0n1".into(),
+            busy: 1.9,
+            ..Default::default()
+        });
+        assert!(diagnose(&s, &[], &ctx()).iter().all(|f| f.kind != "io-busy"));
+
+        let blocked = Context {
+            blocked_names: vec!["rsync".into()],
+            ..ctx()
+        };
+        assert!(diagnose(&s, &[], &blocked).iter().any(|f| f.kind == "io-busy"));
+
+        s.memory.swap_in_bps = 8e6;
+        assert!(diagnose(&s, &[], &ctx()).iter().any(|f| f.kind == "io-busy"));
+    }
+
+    // Kernel threads in D are mostly not storage (GPU page flips, RCU); the
+    // writeback ones are.
+    #[test]
+    fn only_storage_kernel_threads_make_io_pressure_real() {
+        let mut s = calm();
+        s.io.pressure_full = 60.0;
+        s.disks.push(DiskSample {
+            name: "nvme0n1".into(),
+            busy: 1.9,
+            ..Default::default()
+        });
+        let with = |names: &[&str]| Context {
+            blocked_names: names.iter().map(|n| n.to_string()).collect(),
+            ..ctx()
+        };
+        let io = |c: &Context| diagnose(&s, &[], c).iter().any(|f| f.kind == "io-busy");
+        assert!(!io(&with(&["kworker/u65:0+i915_flip", "rcu_gp"])));
+        assert!(io(&with(&["kworker/u64:2+flush-259:0"])));
+        assert!(io(&with(&["jbd2/nvme0n1p2-8"])));
     }
 
     fn disk_writer() -> AppFrame {
@@ -883,6 +948,11 @@ mod tests {
     fn severity_holds_its_peak_so_the_order_stays() {
         let mut s = calm();
         s.io.pressure_full = 40.0;
+        s.disks.push(DiskSample {
+            name: "nvme0n1".into(),
+            busy: 90.0,
+            ..Default::default()
+        });
         let mut r = Recent::default();
         assert_eq!(r.apply(0, diagnose(&s, &[], &ctx()), &[])[0].severity, Severity::Critical);
         s.io.pressure_full = 15.0;
