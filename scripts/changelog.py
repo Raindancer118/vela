@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Builds docs/changelog.html from docs/changelog.toml and the git tags.
 
-    python3 scripts/changelog.py [--check]
+    python3 scripts/changelog.py [--check | --notes TAG]
 
 Dates, times, lines and commits come from git; the words from the TOML. Every
-tag needs an entry, or the build stops (--check only checks that). The page is
+tag needs an entry, or the build stops (--check only checks that; the entry for
+the version in Cargo.toml may come before its tag). --notes prints a tag's entry
+as Markdown for the GitHub release. The page is
 self-contained: fonts (Instrument Serif/Sans, OFL, as in the README art) are
 subset and inlined, so it opens offline and loads nothing from elsewhere.
 Needs fontTools (python-fonttools).
@@ -137,16 +139,27 @@ def entry_html(t, e, max_lines):
       </li>"""
 
 
+def notes(tag):
+    e = tomllib.loads(SRC.read_text()).get(tag)
+    if e is None:
+        sys.exit(f"docs/changelog.toml has no entry for {tag}")
+    out = [f"**{e['title']}**", ""] + [f"- {n}" for n in e.get("notes", [])]
+    areas = " · ".join(AREAS[a][0] for a in e.get("area", []))
+    print("\n".join(out + ["", f"_{areas}_", "", "[Changelog](https://raindancer118.github.io/vela/)"]).replace("\n\n\n", "\n\n"))
+
+
 def build():
     data = tomllib.loads(SRC.read_text())
     all_tags = tags()
     missing = [t["tag"] for t in all_tags if t["tag"] not in data]
     if missing:
         sys.exit(f"docs/changelog.toml has no entry for: {', '.join(missing)}")
-    unknown = [k for k in data if k != "intro" and k not in {t["tag"] for t in all_tags}]
+    upcoming = tomllib.loads((ROOT / "Cargo.toml").read_text())["package"]["version"]
+    unknown = [k for k in data if k not in ("intro", upcoming) and k not in {t["tag"] for t in all_tags}]
     if unknown:
         sys.exit(f"docs/changelog.toml has entries without a tag: {', '.join(unknown)}")
     if "--check" in sys.argv:
+        print(f"docs/changelog.toml covers all {len(all_tags)} tags")
         return
 
     max_lines = max(t["lines"] for t in all_tags)
@@ -441,4 +454,7 @@ footer a { color: var(--ink-2); }
 """
 
 if __name__ == "__main__":
-    build()
+    if "--notes" in sys.argv:
+        notes(sys.argv[sys.argv.index("--notes") + 1])
+    else:
+        build()

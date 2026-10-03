@@ -182,6 +182,15 @@ check "nixos: --no-build reuses the nix package" grep -q nix-vela "$BIN/vela"
 ./uninstall.sh >>"$tmp/out.log" 2>&1
 check "nixos: uninstall drops the gc root" test ! -e "$DATA/vela/nix-package"
 
+# The release archive, installed the way self-update does it (no source, -y).
+./uninstall.sh --purge >>"$tmp/out.log" 2>&1 || true
+scripts/package.sh 0.0.0-test "$tmp/dist" >>"$tmp/out.log" 2>&1 || { cat "$tmp/out.log"; echo "FAIL: package.sh"; exit 1; }
+mkdir -p "$tmp/release" && tar -xzf "$tmp/dist/vela-0.0.0-test-$(uname -m)-linux.tar.gz" -C "$tmp/release" --strip-components=1
+check "release: install.sh from the archive" sh -c "cd '$tmp/release' && ./install.sh -y >>'$tmp/out.log' 2>&1"
+for b in vela vela-daemon vela-share-picker vela-pulse; do
+    check "release: installs $b" test -x "$BIN/$b"
+done
+
 if ((fails)); then
     echo "--- output"
     cat "$tmp/out.log"

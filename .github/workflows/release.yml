@@ -13,22 +13,21 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install dependencies
-        run: pacman -Syu --noconfirm --needed base-devel git rust gtk4 gtk4-layer-shell libadwaita github-cli
+        run: pacman -Syu --noconfirm --needed base-devel git rust gtk4 gtk4-layer-shell libadwaita github-cli python
       - uses: actions/checkout@v5
       - name: Test and build
         run: |
           cargo test --locked
           cargo build --release --locked
       - name: Package
-        run: |
-          name="vela-${GITHUB_REF_NAME}-x86_64-linux"
-          mkdir -p "dist/$name/target/release"
-          cp target/release/vela target/release/vela-daemon target/release/vela-share-picker "dist/$name/target/release/"
-          cp -r contrib data shell install.sh uninstall.sh README.md LICENSE Cargo.toml Cargo.lock "dist/$name/"
-          tar -C dist -czf "dist/$name.tar.gz" "$name"
+        run: scripts/package.sh "$GITHUB_REF_NAME" dist
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz --title "vela $GITHUB_REF_NAME" --generate-notes
+          if python3 scripts/changelog.py --notes "$GITHUB_REF_NAME" >notes.md; then
+            gh release create "$GITHUB_REF_NAME" dist/*.tar.gz --title "vela $GITHUB_REF_NAME" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.tar.gz --title "vela $GITHUB_REF_NAME" --generate-notes
+          fi

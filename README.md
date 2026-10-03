@@ -3,6 +3,7 @@
 
 <p align="center">
   <a href="https://github.com/Raindancer118/vela/releases"><img alt="release" src="https://img.shields.io/github/v/release/Raindancer118/vela?style=for-the-badge&labelColor=0d1330&color=7aa2f7&label=release"></a>
+  <a href="https://raindancer118.github.io/vela/"><img alt="changelog" src="https://img.shields.io/badge/changelog-every_tag-b4a0f5?style=for-the-badge&labelColor=0d1330"></a>
   <a href="https://github.com/Raindancer118/vela/actions"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/Raindancer118/vela/ci.yml?branch=main&style=for-the-badge&labelColor=0d1330&color=9ece6a&label=ci"></a>
   <img alt="Hyprland 0.55+" src="https://img.shields.io/badge/hyprland-0.55%2B-a9c1ff?style=for-the-badge&labelColor=0d1330">
   <img alt="Rust" src="https://img.shields.io/badge/rust-2024-f7a072?style=for-the-badge&labelColor=0d1330&logo=rust&logoColor=f7a072">
@@ -659,8 +660,10 @@ text set with HarfBuzz and stored as outlines), `scripts/readme-shots.sh`
 (screenshots from a throwaway vela that never takes the focus) and
 `scripts/readme-frame.py` (frames, gallery, the search demo).
 
-Releases: `git tag X.Y.Z && git push origin X.Y.Z`; GitHub Actions builds and
-publishes them.
+Releases: add the version to `docs/changelog.toml` (CI fails while a tag has
+no entry), then `git tag X.Y.Z && git push origin X.Y.Z`; GitHub Actions builds
+and publishes them with that entry as release notes, and rebuilds the
+[changelog page](https://raindancer118.github.io/vela/) (`scripts/changelog.py`).
 
 </details>
 

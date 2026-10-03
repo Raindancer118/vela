@@ -73,6 +73,16 @@ pub fn socket_path() -> PathBuf {
 
 /// Application data directories in priority order (highest first).
 pub fn data_dirs() -> Vec<PathBuf> {
+    data_dirs_with(|d| d.is_dir())
+}
+
+/// [`data_dirs`] including the extra ones that don't exist yet, to watch for
+/// them: a Nix profile appears with its first package.
+pub fn data_dirs_to_watch() -> Vec<PathBuf> {
+    data_dirs_with(|_| true)
+}
+
+fn data_dirs_with(keep_extra: impl Fn(&Path) -> bool) -> Vec<PathBuf> {
     let mut dirs = vec![xdg_dir("XDG_DATA_HOME", ".local/share")];
     let system = env::var("XDG_DATA_DIRS")
         .ok()
@@ -82,14 +92,15 @@ pub fn data_dirs() -> Vec<PathBuf> {
     // A systemd user service often starts with a reduced environment, so make
     // sure flatpak/snap exports are found even if XDG_DATA_DIRS lacks them.
     for extra in extra_data_dirs(&home_dir(), &user_name(), crate::nixos::running_nixos()) {
-        if !dirs.contains(&extra) && extra.is_dir() {
+        if !dirs.contains(&extra) && keep_extra(&extra) {
             dirs.push(extra);
         }
     }
     dirs
 }
 
-/// Every symlink passed while resolving `path`, in order. inotify resolves them
+/// Every symlink passed while resolving `path`, in order, and the first missing
+/// part if it doesn't exist (yet). inotify resolves symlinks
 /// once when a watch is set up, so a profile switch that only repoints one
 /// (NixOS rebuild, home-manager, `nix profile install`) is invisible to a watch
 /// on the directory itself.
@@ -126,6 +137,10 @@ pub fn symlinks_on(path: &Path) -> Vec<PathBuf> {
                 }
             }
             Ok(_) => break,
+            Err(_) if std::fs::symlink_metadata(&next).is_err() => {
+                found.push(next);
+                break;
+            }
             Err(_) => cur = next,
         }
     }
@@ -317,8 +332,19 @@ mod tests {
             vec![root.join("current"), root.join("profiles/profile"), root.join("profiles/profile-2-link")]
         );
         assert!(symlinks_on(&root.join("store/gen-2/share/applications")).is_empty());
-        // Missing paths and loops end the walk instead of hanging.
-        assert!(symlinks_on(&root.join("nope/applications")).is_empty());
+        // A path that doesn't exist yet (a profile before its first install) ends at
+        // the first missing part: its appearance is what to wait for.
+        assert_eq!(symlinks_on(&root.join("nope/share/applications")), vec![root.join("nope")]);
+        assert_eq!(
+            symlinks_on(&root.join("current/share/nope")),
+            vec![
+                root.join("current"),
+                root.join("profiles/profile"),
+                root.join("profiles/profile-2-link"),
+                root.join("store/gen-2/share/nope")
+            ]
+        );
+        // Loops end the walk instead of hanging.
         symlink("loop", root.join("loop")).unwrap();
         assert!(!symlinks_on(&root.join("loop/x")).is_empty());
     }

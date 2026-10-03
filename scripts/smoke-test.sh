@@ -44,11 +44,14 @@ fail() { echo "FAIL: $*"; echo "--- daemon log"; cat "$tmp/daemon.log"; exit 1; 
 # Applications reached through a Nix-style profile link (current -> profile ->
 # profile-1-link -> store/gen-1); a rebuild only repoints the links.
 desktop() { printf '[Desktop Entry]\nType=Application\nName=%s\nExec=true\n' "$1" >"$tmp/store/$2/share/applications/$1.desktop"; }
-mkdir -p "$tmp/store/gen-1/share/applications" "$tmp/store/gen-2/share/applications" "$tmp/profiles"
+mkdir -p "$tmp"/store/{gen-1,gen-2,system-2,user-1}/share/applications "$tmp/profiles"
 desktop VelaSmokeOld gen-1 && desktop VelaSmokeOld gen-2 && desktop VelaSmokeNew gen-2
+cp "$tmp"/store/gen-2/share/applications/*.desktop "$tmp/store/system-2/share/applications/" && desktop VelaSmokeSystem system-2
+desktop VelaSmokeUser user-1
 ln -s ../store/gen-1 "$tmp/profiles/profile-1-link" && ln -s profile-1-link "$tmp/profiles/profile"
 ln -s "$tmp/profiles/profile" "$tmp/current"
-export XDG_DATA_DIRS="$tmp/current/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+# "$tmp/user" is a profile that doesn't exist yet (~/.nix-profile before the first install).
+export XDG_DATA_DIRS="$tmp/current/share:$tmp/user/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 
 "$BIN" daemon >"$tmp/daemon.log" 2>&1 &
 daemon_pid=$!
@@ -79,6 +82,15 @@ for _ in $(seq 50); do [[ "$(apps)" == $((before + 1)) ]] && break; sleep 0.1; d
 desktop VelaSmokeNewer gen-2
 for _ in $(seq 50); do [[ "$(apps)" == $((before + 2)) ]] && break; sleep 0.1; done
 [[ "$(apps)" == $((before + 2)) ]] || fail "new generation not watched ($before -> $(apps) applications)"
+# NixOS repoints /run/current-system with ln -sfn, straight to the store.
+cp "$tmp/store/gen-2/share/applications/VelaSmokeNewer.desktop" "$tmp/store/system-2/share/applications/"
+ln -sfn "$tmp/store/system-2" "$tmp/current"
+for _ in $(seq 50); do [[ "$(apps)" == $((before + 3)) ]] && break; sleep 0.1; done
+[[ "$(apps)" == $((before + 3)) ]] || fail "ln -sfn switch not noticed ($before -> $(apps) applications)"
+# A profile that appears after the start.
+ln -s "$tmp/store/user-1" "$tmp/user"
+for _ in $(seq 50); do [[ "$(apps)" == $((before + 4)) ]] && break; sleep 0.1; done
+[[ "$(apps)" == $((before + 4)) ]] || fail "new profile not noticed ($before -> $(apps) applications)"
 
 status="$XDG_CACHE_HOME/vela/updates.json"
 for _ in $(seq 100); do grep -qs '"running":null' "$status" && grep -qs "fake pacman" "$XDG_STATE_HOME"/vela/updates/*.log && break; sleep 0.1; done

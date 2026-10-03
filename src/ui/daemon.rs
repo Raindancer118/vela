@@ -289,7 +289,7 @@ impl Daemon {
         }
         let mut monitors = Vec::new();
         let mut links = Vec::new();
-        for dir in paths::data_dirs() {
+        for dir in paths::data_dirs_to_watch() {
             let apps = dir.join("applications");
             links.extend(paths::symlinks_on(&apps));
             if !apps.is_dir() {

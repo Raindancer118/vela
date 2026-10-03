@@ -6,6 +6,15 @@
 title = "The logbook"
 lede = "Every tag we pushed, newest on top. vela started as a Spotlight clone on a Wednesday evening and was a whole desktop shell by Saturday afternoon."
 
+["0.46.7"]
+area = ["updates", "nixos", "launcher"]
+title = "Self-update works again"
+notes = [
+  "Since 0.45.0 the release archive lacked vela-pulse, so Settings → System → Update failed before installing anything. The archive now packs every binary the crate builds, and the installer test installs from it like the update does. NixOS was not affected: it builds from source with nix.",
+  "A Nix profile that appears after vela started (your first `nix profile install`, a new per-user profile) is picked up too, and so are switches that repoint /run/current-system with `ln -sfn`.",
+  "Release notes on GitHub now come from this changelog.",
+]
+
 ["0.46.6"]
 area = ["nixos", "launcher"]
 title = "Apps from a NixOS rebuild show up right away"
