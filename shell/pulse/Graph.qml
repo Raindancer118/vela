@@ -183,8 +183,12 @@ Item {
         anchors.fill: parent
         hoverEnabled: root.hoverable
         acceptedButtons: Qt.NoButton
-        readonly property int back: Math.max(0, Math.round((root.width - mouseX) / root.step))
+        // The newest point sits at width + step + plot.x (plot.x glides
+        // from 0 to −step); everything here uses the same positions.
+        readonly property real newestX: root.width + root.step + plot.x
+        readonly property int back: Math.max(0, Math.round((newestX - mouseX) / root.step))
         readonly property int idx: root.values.length - 1 - back
+        readonly property real px: newestX - back * root.step
     }
 
     Item {
@@ -192,7 +196,7 @@ Item {
         anchors.fill: parent
 
         Rectangle {
-            x: root.width - hover.back * root.step
+            x: hover.px
             width: 1
             height: parent.height
             color: Theme.withAlpha(Theme.colors.text, 0.25)
@@ -201,7 +205,7 @@ Item {
         Rectangle {
             readonly property real v: root.values[hover.idx] ?? 0
             visible: root.values[hover.idx] !== null
-            x: root.width - hover.back * root.step - width / 2
+            x: hover.px - width / 2
             y: root.height - root.lineWidth - Math.min(root.scaleTop, v) / root.scaleTop * (root.height - 2 * root.lineWidth) - height / 2
             width: 8
             height: 8
@@ -214,7 +218,7 @@ Item {
         Rectangle {
             id: tip
 
-            readonly property real tx: root.width - hover.back * root.step
+            readonly property real tx: hover.px
             x: Math.max(4, Math.min(root.width - width - 4, tx + (tx > root.width / 2 ? -width - 10 : 10)))
             y: 4
             width: tipText.implicitWidth + 2 * Theme.spacing.sm

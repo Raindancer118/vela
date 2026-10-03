@@ -34,8 +34,12 @@ Item {
             }
         }
     }
-    onPidChanged: if (pid > 0)
-        Pulse.loadDetails(pid)
+    onPidChanged: {
+        if (pid > 0)
+            Pulse.loadDetails(pid);
+        if (showLogs)
+            reloadLogs();
+    }
 
     // Switching between apps: the content fades through.
     SequentialAnimation {
@@ -72,8 +76,6 @@ Item {
     function reloadLogs(): void {
         Pulse.loadLogs(pid, app?.mainPid === pid ? (app?.unit ?? "") : "", app?.userUnit ?? false);
     }
-    onPidChanged: if (showLogs)
-        reloadLogs()
 
     Timer {
         running: root.open && root.showLogs

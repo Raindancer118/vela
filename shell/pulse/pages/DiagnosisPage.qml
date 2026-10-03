@@ -156,307 +156,333 @@ Flickable {
             }
         }
 
-        // All good
-        ColumnLayout {
-            visible: findingModel.count === 0 && Pulse.frame !== null
+        // Wide windows: crashes beside the findings.
+        GridLayout {
             Layout.fillWidth: true
-            Layout.topMargin: Theme.spacing.xl
-            spacing: Theme.spacing.sm
+            columns: page.width >= 1500 ? 2 : 1
+            columnSpacing: Theme.spacing.lg
+            rowSpacing: Theme.spacing.lg
 
-            Rectangle {
-                Layout.alignment: Qt.AlignHCenter
-                implicitWidth: 72
-                implicitHeight: 72
-                radius: 36
-                color: Theme.withAlpha(Theme.pulse.ok, 0.16)
-                scale: parent.visible ? 1 : 0.5
-                Behavior on scale {
-                    SpringAnim {
-                        duration: Theme.anim.slow * 2
-                    }
-                }
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
+                spacing: Theme.spacing.lg
 
-                MaterialIcon {
-                    anchors.centerIn: parent
-                    icon: "check"
-                    size: 36
-                    color: Theme.pulse.ok
-                }
-            }
-
-            StyledText {
-                Layout.alignment: Qt.AlignHCenter
-                text: I18n.tr("No problems found")
-                font.pixelSize: Theme.font.title
-                font.weight: Theme.font.weightMedium
-            }
-        }
-
-        // Findings
-        ListView {
-            id: findings
-
-            Layout.fillWidth: true
-            Layout.preferredHeight: contentHeight
-            interactive: false
-            model: findingModel
-            spacing: Theme.spacing.sm
-
-            add: Transition {
-                ParallelAnimation {
-                    Anim {
-                        property: "opacity"
-                        from: 0
-                        to: 1
-                        duration: Theme.anim.slow
-                    }
-                    SpringAnim {
-                        property: "scale"
-                        from: 0.96
-                        to: 1
-                    }
-                }
-            }
-            remove: Transition {
-                ParallelAnimation {
-                    Anim {
-                        property: "opacity"
-                        to: 0
-                    }
-                    Anim {
-                        property: "x"
-                        to: 60
-                    }
-                }
-            }
-            displaced: Transition {
-                SpringAnim {
-                    property: "y"
-                }
-                // An interrupted add/remove must not leave the row half visible.
-                Anim {
-                    properties: "opacity,scale"
-                    to: 1
-                }
-                Anim {
-                    property: "x"
-                    to: 0
-                }
-            }
-
-            delegate: Rectangle {
-                id: card
-
-                required property string key
-                readonly property var fd: Pulse.findings.find(x => x.id === key) ?? null
-                readonly property color accent: Words.severityColor(fd?.severity ?? "info")
-
-                width: ListView.view.width
-                height: cardRow.implicitHeight + 2 * Theme.spacing.lg
-                radius: Theme.radius.card
-                color: Theme.colors.tile
-                border.width: 1
-                border.color: Theme.withAlpha(accent, 0.35)
-
-                Rectangle {
-                    x: 0
-                    y: Theme.spacing.md
-                    width: 4
-                    height: parent.height - 2 * Theme.spacing.md
-                    radius: 2
-                    color: card.accent
-                }
-
-                RowLayout {
-                    id: cardRow
-
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: Theme.spacing.lg
-                    anchors.leftMargin: Theme.spacing.xl
-                    spacing: Theme.spacing.lg
+                // All good
+                ColumnLayout {
+                    visible: findingModel.count === 0 && Pulse.frame !== null
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.spacing.xl
+                    spacing: Theme.spacing.sm
 
                     Rectangle {
-                        Layout.alignment: Qt.AlignTop
-                        implicitWidth: 40
-                        implicitHeight: 40
-                        radius: 20
-                        color: Theme.withAlpha(card.accent, 0.15)
+                        Layout.alignment: Qt.AlignHCenter
+                        implicitWidth: 72
+                        implicitHeight: 72
+                        radius: 36
+                        color: Theme.withAlpha(Theme.pulse.ok, 0.16)
+                        scale: parent.visible ? 1 : 0.5
+                        Behavior on scale {
+                            SpringAnim {
+                                duration: Theme.anim.slow * 2
+                            }
+                        }
 
                         MaterialIcon {
                             anchors.centerIn: parent
-                            icon: Words.severityIcon(card.fd?.severity ?? "info")
-                            color: card.accent
+                            icon: "check"
+                            size: 36
+                            color: Theme.pulse.ok
                         }
                     }
 
-                    ColumnLayout {
-                        id: cardCol
-
-                        Layout.fillWidth: true
-                        spacing: Theme.spacing.xs
-
-                        StyledText {
-                            Layout.fillWidth: true
-                            text: card.fd ? Words.title(card.fd) : ""
-                            font.pixelSize: Theme.font.title
-                            font.weight: Theme.font.weightSemiBold
-                            wrapMode: Text.Wrap
-                        }
-
-                        StyledText {
-                            Layout.fillWidth: true
-                            text: card.fd ? Words.text(card.fd) : ""
-                            color: Theme.colors.textMuted
-                            wrapMode: Text.Wrap
-                        }
-
-                        // The apps involved.
-                        Flow {
-                            Layout.fillWidth: true
-                            Layout.topMargin: 2
-                            spacing: Theme.spacing.xs
-                            visible: (card.fd?.apps ?? []).length > 0
-
-                            Repeater {
-                                model: (card.fd?.apps ?? []).slice(0, 8)
-
-                                Rectangle {
-                                    required property string modelData
-                                    readonly property var a: Pulse.app(modelData)
-
-                                    visible: a !== null
-                                    implicitHeight: 28
-                                    implicitWidth: chipRow.implicitWidth + 2 * Theme.spacing.sm
-                                    radius: 14
-                                    color: Theme.colors.chip
-
-                                    Clickable {
-                                        radius: 14
-                                        onClicked: PulseUi.showApp(parent.modelData)
-                                    }
-
-                                    RowLayout {
-                                        id: chipRow
-
-                                        anchors.centerIn: parent
-                                        spacing: Theme.spacing.xs
-
-                                        AppIcon {
-                                            size: 16
-                                            icon: parent.parent.a?.icon ?? ""
-                                            name: parent.parent.a?.name ?? ""
-                                        }
-
-                                        StyledText {
-                                            text: parent.parent.a?.name ?? ""
-                                            font.pixelSize: Theme.font.small
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Flow {
-                            Layout.fillWidth: true
-                            Layout.topMargin: Theme.spacing.xs
-                            spacing: Theme.spacing.xs
-                            visible: (card.fd?.fixes ?? []).length > 0
-
-                            Repeater {
-                                model: (card.fd?.fixes ?? []).filter(x => x.action !== "claude" || VelaConfig.pulse.claude)
-
-                                PillButton {
-                                    required property var modelData
-                                    required property int index
-
-                                    style: modelData.action === "force" ? "danger" : index === 0 && modelData.action !== "show-app" && modelData.action !== "show-perf" ? "filled" : "tonal"
-                                    icon: Words.fixIcon(modelData.action)
-                                    text: Words.fix(modelData)
-                                    onClicked: PulseUi.doFix(modelData)
-                                }
-                            }
-                        }
+                    StyledText {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: I18n.tr("No problems found")
+                        font.pixelSize: Theme.font.title
+                        font.weight: Theme.font.weightMedium
                     }
                 }
-            }
-        }
 
-        // Crash history
-        ColumnLayout {
-            visible: Pulse.crashes.length > 0
-            Layout.fillWidth: true
-            spacing: Theme.spacing.xs
-
-            SectionLabel {
-                text: I18n.tr("Crashes in the last 24 hours")
-            }
-
-            Repeater {
-                model: Pulse.crashes
-
-                Rectangle {
-                    required property var modelData
+                // Findings
+                ListView {
+                    id: findings
 
                     Layout.fillWidth: true
-                    implicitHeight: 52
-                    radius: Theme.radius.small
-                    color: Theme.colors.tile
+                    Layout.preferredHeight: contentHeight
+                    interactive: false
+                    model: findingModel
+                    spacing: Theme.spacing.sm
 
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: Theme.spacing.md
-                        anchors.rightMargin: Theme.spacing.sm
-                        spacing: Theme.spacing.md
+                    add: Transition {
+                        ParallelAnimation {
+                            Anim {
+                                property: "opacity"
+                                from: 0
+                                to: 1
+                                duration: Theme.anim.slow
+                            }
+                            SpringAnim {
+                                property: "scale"
+                                from: 0.96
+                                to: 1
+                            }
+                        }
+                    }
+                    remove: Transition {
+                        ParallelAnimation {
+                            Anim {
+                                property: "opacity"
+                                to: 0
+                            }
+                            Anim {
+                                property: "x"
+                                to: 60
+                            }
+                        }
+                    }
+                    displaced: Transition {
+                        SpringAnim {
+                            property: "y"
+                        }
+                        // An interrupted add/remove must not leave the row half visible.
+                        Anim {
+                            properties: "opacity,scale"
+                            to: 1
+                        }
+                        Anim {
+                            property: "x"
+                            to: 0
+                        }
+                    }
 
-                        AppIcon {
-                            size: 26
-                            icon: parent.parent.modelData.icon
-                            name: parent.parent.modelData.name
+                    delegate: Rectangle {
+                        id: card
+
+                        required property string key
+                        readonly property var fd: Pulse.findings.find(x => x.id === key) ?? null
+                        readonly property color accent: Words.severityColor(fd?.severity ?? "info")
+
+                        width: ListView.view.width
+                        height: cardRow.implicitHeight + 2 * Theme.spacing.lg
+                        radius: Theme.radius.card
+                        color: Theme.colors.tile
+                        border.width: 1
+                        border.color: Theme.withAlpha(accent, 0.35)
+
+                        Rectangle {
+                            x: 0
+                            y: Theme.spacing.md
+                            width: 4
+                            height: parent.height - 2 * Theme.spacing.md
+                            radius: 2
+                            color: card.accent
                         }
 
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 0
+                        RowLayout {
+                            id: cardRow
 
-                            StyledText {
-                                text: parent.parent.parent.modelData.name
-                                font.weight: Theme.font.weightMedium
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: Theme.spacing.lg
+                            anchors.leftMargin: Theme.spacing.xl
+                            spacing: Theme.spacing.lg
+
+                            Rectangle {
+                                Layout.alignment: Qt.AlignTop
+                                implicitWidth: 40
+                                implicitHeight: 40
+                                radius: 20
+                                color: Theme.withAlpha(card.accent, 0.15)
+
+                                MaterialIcon {
+                                    anchors.centerIn: parent
+                                    icon: Words.severityIcon(card.fd?.severity ?? "info")
+                                    color: card.accent
+                                }
                             }
 
-                            StyledText {
+                            ColumnLayout {
+                                id: cardCol
+
                                 Layout.fillWidth: true
-                                text: parent.parent.parent.modelData.exe
-                                color: Theme.colors.textMuted
-                                font.pixelSize: Theme.font.small
+                                spacing: Theme.spacing.xs
+
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: card.fd ? Words.title(card.fd) : ""
+                                    font.pixelSize: Theme.font.title
+                                    font.weight: Theme.font.weightSemiBold
+                                    wrapMode: Text.Wrap
+                                }
+
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: card.fd ? Words.text(card.fd) : ""
+                                    color: Theme.colors.textMuted
+                                    wrapMode: Text.Wrap
+                                }
+
+                                // The apps involved.
+                                Flow {
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: 2
+                                    spacing: Theme.spacing.xs
+                                    visible: (card.fd?.apps ?? []).length > 0
+
+                                    Repeater {
+                                        model: (card.fd?.apps ?? []).slice(0, 8)
+
+                                        Rectangle {
+                                            required property string modelData
+                                            readonly property var a: Pulse.app(modelData)
+
+                                            visible: a !== null
+                                            implicitHeight: 28
+                                            implicitWidth: chipRow.implicitWidth + 2 * Theme.spacing.sm
+                                            radius: 14
+                                            color: Theme.colors.chip
+
+                                            Clickable {
+                                                radius: 14
+                                                onClicked: PulseUi.showApp(parent.modelData)
+                                            }
+
+                                            RowLayout {
+                                                id: chipRow
+
+                                                anchors.centerIn: parent
+                                                spacing: Theme.spacing.xs
+
+                                                AppIcon {
+                                                    size: 16
+                                                    icon: parent.parent.a?.icon ?? ""
+                                                    name: parent.parent.a?.name ?? ""
+                                                }
+
+                                                StyledText {
+                                                    text: parent.parent.a?.name ?? ""
+                                                    font.pixelSize: Theme.font.small
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Flow {
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: Theme.spacing.xs
+                                    spacing: Theme.spacing.xs
+                                    visible: (card.fd?.fixes ?? []).length > 0
+
+                                    Repeater {
+                                        model: (card.fd?.fixes ?? []).filter(x => x.action !== "claude" || VelaConfig.pulse.claude)
+
+                                        PillButton {
+                                            required property var modelData
+                                            required property int index
+
+                                            style: modelData.action === "force" ? "danger" : index === 0 && modelData.action !== "show-app" && modelData.action !== "show-perf" ? "filled" : "tonal"
+                                            icon: Words.fixIcon(modelData.action)
+                                            text: Words.fix(modelData)
+                                            onClicked: PulseUi.doFix(modelData)
+                                        }
+                                    }
+                                }
                             }
-                        }
-
-                        Chip {
-                            text: parent.parent.modelData.count === 1 ? I18n.tr("once") : I18n.tr("%1 times", parent.parent.modelData.count)
-                            tint: parent.parent.modelData.count >= 3 ? Theme.pulse.crit : Theme.pulse.warn
-                        }
-
-                        Chip {
-                            text: parent.parent.modelData.signal
-                        }
-
-                        StyledText {
-                            Layout.preferredWidth: 90
-                            horizontalAlignment: Text.AlignRight
-                            text: Words.ago(parent.parent.modelData.last / 1000)
-                            color: Theme.colors.textMuted
-                            font.pixelSize: Theme.font.small
-                        }
-
-                        PillButton {
-                            visible: VelaConfig.pulse.claude
-                            text: I18n.tr("Ask Claude")
-                            onClicked: Pulse.askClaude("crash:" + parent.parent.modelData.exe)
                         }
                     }
                 }
+
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: page.width < 1500
+                Layout.preferredWidth: page.width >= 1500 ? 520 : -1
+                Layout.alignment: Qt.AlignTop
+                visible: Pulse.crashes.length > 0
+                spacing: Theme.spacing.lg
+
+                // Crash history
+                ColumnLayout {
+                    visible: Pulse.crashes.length > 0
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing.xs
+
+                    SectionLabel {
+                        text: I18n.tr("Crashes in the last 24 hours")
+                    }
+
+                    Repeater {
+                        model: Pulse.crashes
+
+                        Rectangle {
+                            required property var modelData
+
+                            Layout.fillWidth: true
+                            implicitHeight: 52
+                            radius: Theme.radius.small
+                            color: Theme.colors.tile
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: Theme.spacing.md
+                                anchors.rightMargin: Theme.spacing.sm
+                                spacing: Theme.spacing.md
+
+                                AppIcon {
+                                    size: 26
+                                    icon: parent.parent.modelData.icon
+                                    name: parent.parent.modelData.name
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: 0
+                                    spacing: 0
+
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: parent.parent.parent.modelData.name
+                                        font.weight: Theme.font.weightMedium
+                                    }
+
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: parent.parent.parent.modelData.exe
+                                        color: Theme.colors.textMuted
+                                        font.pixelSize: Theme.font.small
+                                    }
+                                }
+
+                                Chip {
+                                    text: parent.parent.modelData.count === 1 ? I18n.tr("once") : I18n.tr("%1 times", parent.parent.modelData.count)
+                                    tint: parent.parent.modelData.count >= 3 ? Theme.pulse.crit : Theme.pulse.warn
+                                }
+
+                                Chip {
+                                    text: parent.parent.modelData.signal
+                                }
+
+                                StyledText {
+                                    Layout.preferredWidth: 90
+                                    horizontalAlignment: Text.AlignRight
+                                    text: Words.ago(parent.parent.modelData.last / 1000)
+                                    color: Theme.colors.textMuted
+                                    font.pixelSize: Theme.font.small
+                                }
+
+                                PillButton {
+                                    visible: VelaConfig.pulse.claude
+                                    text: I18n.tr("Ask Claude")
+                                    onClicked: Pulse.askClaude("crash:" + parent.parent.modelData.exe)
+                                }
+                            }
+                        }
+                    }
+                }
+
             }
         }
 

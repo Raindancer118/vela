@@ -114,6 +114,13 @@ ShellRoot {
         expect("unit name", Words.unitName("app-onlyoffice\\x2ddesktopeditors@75734ef238da49ffb092e917ba1ecc42.service") === "app-onlyoffice-desktopeditors");
     }
 
+    // Every part of the window must at least load.
+    Loader {
+        id: flyout
+
+        source: "pulse/Flyout.qml"
+    }
+
     // Pages are Items: they load without a window.
     Item {
         id: host
@@ -151,6 +158,7 @@ ShellRoot {
                     root.expect("page " + l.modelData, l.status === Loader.Ready);
                 }
                 const pid = victim.processId;
+                root.expect("flyout loads", flyout.status === Loader.Ready);
                 root.expect("victim listed", Pulse.procMap[pid] !== undefined);
                 PulseUi.page = "processes";
                 PulseUi.selected = "p:" + pid;

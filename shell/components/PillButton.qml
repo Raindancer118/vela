@@ -25,6 +25,7 @@ Rectangle {
         }
     }
 
+    readonly property alias hovered: area.containsMouse
     signal clicked
 
     implicitHeight: Theme.size.pillButton
@@ -51,6 +52,8 @@ Rectangle {
     }
 
     Clickable {
+        id: area
+
         radius: root.radius
         inverted: root.style === "danger"
         onClicked: root.clicked()
