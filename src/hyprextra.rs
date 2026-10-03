@@ -109,6 +109,12 @@ pub const ACTIONS: &[ActionDef] = &[
         lua: |a| format!("hl.dsp.exec_cmd({})", lua_string(a)),
     },
     ActionDef {
+        id: "pulse",
+        label: "Open Pulse (task manager)",
+        arg: Arg::None,
+        lua: |_| "hl.dsp.exec_cmd(vela_pulse_command or \"vela pulse\")".into(),
+    },
+    ActionDef {
         id: "close",
         label: "Close window",
         arg: Arg::None,

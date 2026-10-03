@@ -48,11 +48,13 @@ package() {
   install -Dm755 target/release/vela "$pkgdir/usr/bin/vela"
   install -Dm755 target/release/vela-daemon "$pkgdir/usr/bin/vela-daemon"
   install -Dm755 target/release/vela-share-picker "$pkgdir/usr/bin/vela-share-picker"
+  install -Dm755 target/release/vela-pulse "$pkgdir/usr/bin/vela-pulse"
   sed 's|@BINDIR@|/usr/bin|' contrib/systemd/vela.service.in | install -Dm644 /dev/stdin "$pkgdir/usr/lib/systemd/user/vela.service"
   install -Dm644 contrib/hyprland/vela.lua "$pkgdir/usr/share/vela/hyprland/vela.lua"
   find shell -type f \( -name '*.qml' -o -name '*.js' -o -name '*.svg' \) ! -name 'test-*' -exec install -Dm644 {} "$pkgdir/usr/share/vela/{}" \;
   install -Dm644 data/config.example.toml "$pkgdir/usr/share/vela/config.example.toml"
   install -Dm644 data/vela.desktop "$pkgdir/usr/share/applications/vela.desktop"
+  install -Dm644 data/vela-pulse.desktop "$pkgdir/usr/share/applications/vela-pulse.desktop"
   for icon in data/icons/*.svg; do
     install -Dm644 "$icon" "$pkgdir/usr/share/icons/hicolor/scalable/apps/$(basename "$icon")"
   done

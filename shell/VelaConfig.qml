@@ -75,6 +75,18 @@ Singleton {
             claudeUsageHidden: [],
             updatesTile: true
         })
+    // Pulse, the task manager.
+    property var pulse: ({
+            smoothGraphs: true,
+            startPage: "overview",
+            rangeSecs: 60,
+            confirmEnd: false,
+            heatMap: true,
+            showKernel: false,
+            intervalMs: 1000,
+            record: true,
+            claude: true
+        })
 
     function apply(line: string): void {
         try {
@@ -83,6 +95,8 @@ Singleton {
             colors = d.colors;
             appearance = d.appearance;
             panel = d.panel;
+            if (d.pulse)
+                pulse = d.pulse;
             loaded = true;
         } catch (e) {
             console.warn("VelaConfig: unreadable settings line:", e);

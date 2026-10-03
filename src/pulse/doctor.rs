@@ -1,0 +1,681 @@
+//! Turns a sample and the app list into findings: what slows the system
+//! down or is broken, why, and what would fix it. Findings carry a kind and
+//! raw values; the UI words them (and translates), `report` words them in
+//! English for Claude.
+
+use super::apps::Kind;
+use super::engine::{AppFrame, Crash, FailedUnit};
+use super::health::Flag;
+use super::sample::Sample;
+use serde::Serialize;
+use serde_json::{Value, json};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    Info,
+    Warning,
+    Critical,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Fix {
+    /// end, force, restart, resume, efficiency, profile, reboot,
+    /// unit-restart, unit-reset, show-app, show-perf, claude
+    pub action: String,
+    /// App key, unit, profile name or device.
+    pub target: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub detail: String,
+}
+
+fn fix(action: &str, target: &str) -> Fix {
+    Fix {
+        action: action.into(),
+        target: target.into(),
+        detail: String::new(),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Finding {
+    /// Stable per problem, so the UI can animate it in and out.
+    pub id: String,
+    pub kind: String,
+    pub severity: Severity,
+    pub apps: Vec<String>,
+    pub values: Value,
+    pub fixes: Vec<Fix>,
+}
+
+pub struct Context<'a> {
+    pub throttled_recently: u64,
+    pub reboot_needed: bool,
+    pub crashes: &'a [Crash],
+    pub failed_units: &'a [FailedUnit],
+    pub hung: usize,
+    pub hung_names: Vec<String>,
+    pub zombies: usize,
+    /// Processes waiting on I/O right now (state D).
+    pub blocked_names: Vec<String>,
+}
+
+fn user_app(a: &AppFrame) -> bool {
+    matches!(a.kind, Kind::Window | Kind::Background | Kind::Task)
+}
+
+fn top(apps: &[AppFrame], by: impl Fn(&AppFrame) -> f64, n: usize) -> Vec<&AppFrame> {
+    let mut v: Vec<&AppFrame> = apps.iter().filter(|a| a.kind != Kind::Kernel && by(a) > 0.0).collect();
+    v.sort_by(|a, b| by(b).total_cmp(&by(a)));
+    v.truncate(n);
+    v
+}
+
+fn names(apps: &[&AppFrame], value: impl Fn(&AppFrame) -> f64) -> Value {
+    apps.iter()
+        .map(|a| json!({ "key": a.key, "name": a.name, "icon": a.icon, "value": value(a) }))
+        .collect()
+}
+
+/// What can be done to the biggest consumer.
+fn relief(a: &AppFrame) -> Vec<Fix> {
+    let mut f = vec![fix("show-app", &a.key)];
+    if user_app(a) {
+        if a.kind == Kind::Background || a.kind == Kind::Task {
+            f.push(fix("efficiency", &a.key));
+        }
+        f.push(fix("end", &a.key));
+    } else if a.unit.as_deref().is_some_and(|u| u.ends_with(".service")) {
+        f.push(fix("unit-restart", &a.key));
+    }
+    f
+}
+
+pub fn diagnose(s: &Sample, apps: &[AppFrame], ctx: &Context) -> Vec<Finding> {
+    let mut out = Vec::new();
+    let mut add = |id: String, kind: &str, severity: Severity, apps: Vec<String>, values: Value, fixes: Vec<Fix>| {
+        out.push(Finding {
+            id,
+            kind: kind.into(),
+            severity,
+            apps,
+            values,
+            fixes,
+        });
+    };
+
+    // Broken apps first.
+    for a in apps.iter().filter(|a| a.flags.contains(&Flag::NotResponding)) {
+        add(
+            format!("anr:{}", a.key),
+            "not-responding",
+            Severity::Critical,
+            vec![a.key.clone()],
+            json!({ "name": a.name, "icon": a.icon }),
+            vec![fix("force", &a.key), fix("restart", &a.key)],
+        );
+    }
+    if ctx.hung > 0 {
+        let hung_apps: Vec<&AppFrame> = apps.iter().filter(|a| a.flags.contains(&Flag::Hung)).collect();
+        add(
+            "hung".into(),
+            "hung",
+            Severity::Warning,
+            hung_apps.iter().map(|a| a.key.clone()).collect(),
+            json!({ "count": ctx.hung, "names": ctx.hung_names, "apps": names(&hung_apps, |_| 0.0), "ioPressure": s.io.pressure_full }),
+            hung_apps.first().map(|a| vec![fix("show-app", &a.key)]).unwrap_or_default(),
+        );
+    }
+
+    // CPU.
+    let cpu_top = top(apps, |a| a.cpu, 3);
+    let cpu_sev = if s.cpu.pressure60 >= 60.0 {
+        Some(Severity::Critical)
+    } else if s.cpu.pressure >= 40.0 || s.cpu.usage >= 90.0 && s.cpu.pressure >= 20.0 {
+        Some(Severity::Warning)
+    } else {
+        None
+    };
+    if let Some(sev) = cpu_sev {
+        add(
+            "cpu".into(),
+            "cpu-busy",
+            sev,
+            cpu_top.iter().map(|a| a.key.clone()).collect(),
+            json!({ "usage": s.cpu.usage, "pressure": s.cpu.pressure, "top": names(&cpu_top, |a| a.cpu) }),
+            cpu_top.first().map(|a| relief(a)).unwrap_or_default(),
+        );
+    }
+
+    // Memory.
+    let mem_top = top(apps, |a| a.mem as f64, 3);
+    let avail_pct = if s.memory.total > 0 {
+        s.memory.available as f64 / s.memory.total as f64 * 100.0
+    } else {
+        100.0
+    };
+    let mem_sev = if s.memory.pressure_full >= 20.0 || avail_pct < 4.0 {
+        Some(Severity::Critical)
+    } else if s.memory.pressure >= 10.0 || s.memory.pressure_full >= 5.0 || avail_pct < 8.0 {
+        Some(Severity::Warning)
+    } else {
+        None
+    };
+    if let Some(sev) = mem_sev {
+        add(
+            "memory".into(),
+            "memory-low",
+            sev,
+            mem_top.iter().map(|a| a.key.clone()).collect(),
+            json!({ "available": s.memory.available, "total": s.memory.total, "availablePct": avail_pct, "pressure": s.memory.pressure, "top": names(&mem_top, |a| a.mem as f64) }),
+            mem_top.first().map(|a| relief(a)).unwrap_or_default(),
+        );
+    }
+    let swap_rate = s.memory.swap_in_bps + s.memory.swap_out_bps;
+    if swap_rate >= 5.0 * 1024.0 * 1024.0 {
+        add(
+            "swap".into(),
+            "swapping",
+            if mem_sev.is_some() { Severity::Critical } else { Severity::Warning },
+            mem_top.iter().map(|a| a.key.clone()).collect(),
+            json!({ "in": s.memory.swap_in_bps, "out": s.memory.swap_out_bps, "used": s.memory.swap_used, "top": names(&mem_top, |a| a.mem as f64) }),
+            vec![fix("show-perf", "memory")],
+        );
+    }
+
+    // Disk I/O.
+    let io_top = top(apps, |a| a.read_bps + a.write_bps, 3);
+    if s.io.pressure_full >= 10.0 {
+        let busiest = s.disks.iter().max_by(|a, b| a.busy.total_cmp(&b.busy));
+        add(
+            "io".into(),
+            "io-busy",
+            if s.io.pressure_full >= 30.0 { Severity::Critical } else { Severity::Warning },
+            io_top.iter().map(|a| a.key.clone()).collect(),
+            json!({ "pressure": s.io.pressure_full, "disk": busiest.map(|d| d.name.clone()), "busy": busiest.map(|d| d.busy), "top": names(&io_top, |a| a.read_bps + a.write_bps), "blocked": ctx.blocked_names, "swapUsed": s.memory.swap_used }),
+            io_top.first().map(|a| relief(a)).unwrap_or_else(|| vec![fix("show-perf", "disk")]),
+        );
+    }
+
+    // Heat.
+    if let Some(t) = s.cpu.temp {
+        let crit = s.cpu.temp_crit.unwrap_or(100.0);
+        let fan = s.fans.iter().map(|f| f.rpm).max();
+        if t >= crit - 5.0 || t >= 97.0 {
+            add(
+                "heat".into(),
+                "cpu-hot",
+                Severity::Critical,
+                cpu_top.iter().map(|a| a.key.clone()).collect(),
+                json!({ "temp": t, "crit": crit, "fan": fan }),
+                vec![fix("show-perf", "cpu")],
+            );
+        } else if ctx.throttled_recently > 0 {
+            add(
+                "throttle".into(),
+                "cpu-throttling",
+                Severity::Warning,
+                cpu_top.iter().map(|a| a.key.clone()).collect(),
+                json!({ "temp": t, "events": ctx.throttled_recently, "fan": fan }),
+                vec![fix("show-perf", "cpu")],
+            );
+        }
+    }
+
+    // Power.
+    let on_battery = !s.power.on_ac && s.power.batteries.iter().any(|b| b.status == "discharging");
+    if s.power_profile == "power-saver" && s.power.on_ac && s.cpu.pressure60 >= 10.0 {
+        add(
+            "profile".into(),
+            "power-saver-slow",
+            Severity::Info,
+            vec![],
+            json!({ "profile": s.power_profile }),
+            vec![fix("profile", "balanced"), fix("profile", "performance")],
+        );
+    }
+    if on_battery {
+        let watts: f64 = s.power.batteries.iter().map(|b| b.watts).sum();
+        if watts >= 25.0 {
+            add(
+                "drain".into(),
+                "battery-drain",
+                Severity::Warning,
+                cpu_top.iter().map(|a| a.key.clone()).collect(),
+                json!({ "watts": watts, "top": names(&cpu_top, |a| a.cpu) }),
+                if s.power_profile.is_empty() || s.power_profile == "power-saver" {
+                    vec![]
+                } else {
+                    vec![fix("profile", "power-saver")]
+                },
+            );
+        }
+        for g in s
+            .gpus
+            .iter()
+            .filter(|g| (g.vendor == "NVIDIA" || g.vendor == "AMD" && s.gpus.len() > 1) && !g.asleep)
+        {
+            let holders: Vec<&AppFrame> = apps.iter().filter(|a| a.gpus.contains(&g.card) && a.kind != Kind::System).collect();
+            add(
+                format!("dgpu:{}", g.card),
+                "dgpu-awake",
+                Severity::Info,
+                holders.iter().map(|a| a.key.clone()).collect(),
+                json!({ "gpu": g.name, "watts": g.watts, "apps": names(&holders, |_| 0.0) }),
+                holders.first().map(|a| vec![fix("show-app", &a.key)]).unwrap_or_default(),
+            );
+        }
+    }
+    for b in s
+        .power
+        .batteries
+        .iter()
+        .filter(|b| b.design_wh > 0.0 && b.full_wh > 0.0 && b.full_wh / b.design_wh < 0.7)
+    {
+        add(
+            format!("battery:{}", b.name),
+            "battery-worn",
+            Severity::Info,
+            vec![],
+            json!({ "health": b.full_wh / b.design_wh * 100.0, "cycles": b.cycles }),
+            vec![fix("show-perf", "power")],
+        );
+    }
+
+    // GPU.
+    for g in s.gpus.iter().filter(|g| g.busy.is_some_and(|b| b >= 95.0)) {
+        let gpu_top: Vec<&AppFrame> = top(apps, |a| if a.gpus.contains(&g.card) { a.gpu } else { 0.0 }, 3);
+        add(
+            format!("gpu:{}", g.card),
+            "gpu-busy",
+            Severity::Info,
+            gpu_top.iter().map(|a| a.key.clone()).collect(),
+            json!({ "gpu": g.name, "busy": g.busy, "top": names(&gpu_top, |a| a.gpu) }),
+            vec![fix("show-perf", &g.card)],
+        );
+    }
+
+    // Disk space.
+    for d in &s.disks {
+        for m in &d.mounts {
+            if m.total == 0 {
+                continue;
+            }
+            let used = m.used as f64 / m.total as f64;
+            let free = m.total.saturating_sub(m.used);
+            let small = m.total < 4 * 1024 * 1024 * 1024;
+            let sev = if used >= 0.97 || free < 512 * 1024 * 1024 && !small {
+                Some(Severity::Critical)
+            } else if used >= if small { 0.95 } else { 0.9 } {
+                Some(Severity::Warning)
+            } else {
+                None
+            };
+            if let Some(sev) = sev {
+                add(
+                    format!("disk:{}", m.path),
+                    "disk-full",
+                    sev,
+                    vec![],
+                    json!({ "path": m.path, "used": m.used, "total": m.total, "free": free }),
+                    vec![fix("show-perf", &d.name)],
+                );
+            }
+        }
+    }
+
+    // Per-app trouble.
+    for a in apps.iter().filter(|a| a.flags.contains(&Flag::Runaway)) {
+        add(
+            format!("runaway:{}", a.key),
+            "runaway",
+            Severity::Warning,
+            vec![a.key.clone()],
+            json!({ "name": a.name, "icon": a.icon, "cores": a.cpu_core / 100.0 }),
+            relief(a),
+        );
+    }
+    for a in apps.iter().filter(|a| a.flags.contains(&Flag::Leak)) {
+        let l = a.leak.as_ref();
+        add(
+            format!("leak:{}", a.key),
+            "memory-leak",
+            Severity::Warning,
+            vec![a.key.clone()],
+            json!({ "name": a.name, "icon": a.icon, "mem": a.mem, "perMinute": l.map(|l| l.per_minute), "minutes": l.map(|l| l.minutes) }),
+            vec![fix("restart", &a.key), fix("show-app", &a.key)],
+        );
+    }
+    for c in ctx.crashes.iter().filter(|c| c.count >= 3) {
+        let mut fixes = vec![fix("claude", &format!("crash:{}", c.exe))];
+        if let Some(k) = &c.running {
+            fixes.insert(0, fix("show-app", k));
+        }
+        add(
+            format!("crashes:{}", c.exe),
+            "keeps-crashing",
+            Severity::Warning,
+            c.running.iter().cloned().collect(),
+            json!({ "name": c.name, "icon": c.icon, "count": c.count, "signal": c.signal, "exe": c.exe, "last": c.last }),
+            fixes,
+        );
+    }
+    for u in ctx.failed_units.iter().take(6) {
+        add(
+            format!("failed:{}", u.unit),
+            "unit-failed",
+            Severity::Warning,
+            vec![],
+            json!({ "unit": u.unit, "description": u.description, "user": u.user }),
+            vec![
+                Fix {
+                    action: "unit-restart".into(),
+                    target: u.unit.clone(),
+                    detail: if u.user { "user".into() } else { "system".into() },
+                },
+                Fix {
+                    action: "unit-reset".into(),
+                    target: u.unit.clone(),
+                    detail: if u.user { "user".into() } else { "system".into() },
+                },
+                fix("claude", &format!("unit:{}", u.unit)),
+            ],
+        );
+    }
+    let restart: Vec<&AppFrame> = apps
+        .iter()
+        .filter(|a| a.flags.contains(&Flag::NeedsRestart) && a.kind != Kind::Kernel)
+        .collect();
+    if !restart.is_empty() {
+        add(
+            "restart".into(),
+            "needs-restart",
+            Severity::Info,
+            restart.iter().map(|a| a.key.clone()).collect(),
+            json!({ "apps": names(&restart, |_| 0.0), "count": restart.len() }),
+            restart
+                .iter()
+                .filter(|a| user_app(a) || a.unit.is_some())
+                .take(4)
+                .map(|a| fix("restart", &a.key))
+                .collect(),
+        );
+    }
+    if ctx.reboot_needed {
+        add("reboot".into(), "reboot-kernel", Severity::Warning, vec![], json!({}), vec![fix("reboot", "")]);
+    }
+    let paused: Vec<&AppFrame> = apps.iter().filter(|a| a.flags.contains(&Flag::Paused)).collect();
+    if !paused.is_empty() {
+        add(
+            "paused".into(),
+            "paused",
+            Severity::Info,
+            paused.iter().map(|a| a.key.clone()).collect(),
+            json!({ "apps": names(&paused, |_| 0.0) }),
+            paused.iter().take(3).map(|a| fix("resume", &a.key)).collect(),
+        );
+    }
+    if ctx.zombies >= 5 {
+        let parents: Vec<&AppFrame> = apps.iter().filter(|a| a.flags.contains(&Flag::Zombies)).collect();
+        add(
+            "zombies".into(),
+            "zombies",
+            Severity::Info,
+            parents.iter().map(|a| a.key.clone()).collect(),
+            json!({ "count": ctx.zombies, "apps": names(&parents, |_| 0.0) }),
+            parents.first().map(|a| vec![fix("restart", &a.key)]).unwrap_or_default(),
+        );
+    }
+    // The compositor itself working hard (blur, animations, many monitors).
+    if let Some(h) = apps
+        .iter()
+        .find(|a| a.kind == Kind::System && a.name.eq_ignore_ascii_case("hyprland") && a.cpu_core >= 40.0)
+    {
+        add(
+            "compositor".into(),
+            "compositor-busy",
+            Severity::Info,
+            vec![h.key.clone()],
+            json!({ "cores": h.cpu_core / 100.0 }),
+            vec![fix("show-app", &h.key)],
+        );
+    }
+
+    out.sort_by_key(|f| std::cmp::Reverse(f.severity));
+    out
+}
+
+/// 100 = nothing to say.
+pub fn score(findings: &[Finding]) -> u32 {
+    let lost: u32 = findings
+        .iter()
+        .map(|f| match f.severity {
+            Severity::Critical => 25,
+            Severity::Warning => 10,
+            Severity::Info => 2,
+        })
+        .sum();
+    100u32.saturating_sub(lost)
+}
+
+fn gib(b: f64) -> String {
+    format!("{:.1} GiB", b / 1024.0 / 1024.0 / 1024.0)
+}
+
+/// Plain-English report of the current state, for "Ask Claude".
+pub fn report(s: &Sample, apps: &[AppFrame], findings: &[Finding], score: u32) -> String {
+    let mut r = String::new();
+    use std::fmt::Write;
+    let _ = writeln!(r, "System health score: {score}/100");
+    let _ = writeln!(
+        r,
+        "CPU: {} ({} threads), {:.0}% busy, pressure {:.1}% (avg10), load {:.2} {:.2} {:.2}{}",
+        s.cpu.model,
+        s.cpu.logical,
+        s.cpu.usage,
+        s.cpu.pressure,
+        s.cpu.load[0],
+        s.cpu.load[1],
+        s.cpu.load[2],
+        s.cpu.temp.map(|t| format!(", {t:.0} °C")).unwrap_or_default()
+    );
+    let _ = writeln!(
+        r,
+        "Memory: {} of {} used, {} available, swap {} of {}, memory pressure {:.1}%",
+        gib(s.memory.used as f64),
+        gib(s.memory.total as f64),
+        gib(s.memory.available as f64),
+        gib(s.memory.swap_used as f64),
+        gib(s.memory.swap_total as f64),
+        s.memory.pressure
+    );
+    for g in &s.gpus {
+        let _ = writeln!(
+            r,
+            "GPU {} ({}): {}",
+            g.name,
+            g.driver,
+            if g.asleep {
+                "asleep".to_owned()
+            } else {
+                format!("{:.0}% busy", g.busy.unwrap_or(0.0))
+            }
+        );
+    }
+    for d in &s.disks {
+        for m in &d.mounts {
+            let _ = writeln!(r, "Disk {} {}: {} of {} used", d.name, m.path, gib(m.used as f64), gib(m.total as f64));
+        }
+    }
+    if !s.power_profile.is_empty() {
+        let _ = writeln!(r, "Power profile: {}, {}", s.power_profile, if s.power.on_ac { "on AC" } else { "on battery" });
+    }
+    let _ = writeln!(r, "\nTop apps by CPU:");
+    for a in top(apps, |a| a.cpu, 8) {
+        let _ = writeln!(
+            r,
+            "- {} ({:?}, pid {}): {:.1}% CPU, {} memory",
+            a.name,
+            a.kind,
+            a.main_pid,
+            a.cpu,
+            gib(a.mem as f64)
+        );
+    }
+    let _ = writeln!(r, "\nTop apps by memory:");
+    for a in top(apps, |a| a.mem as f64, 8) {
+        let _ = writeln!(r, "- {} ({:?}, pid {}): {}", a.name, a.kind, a.main_pid, gib(a.mem as f64));
+    }
+    let _ = writeln!(r, "\nFindings:");
+    if findings.is_empty() {
+        let _ = writeln!(r, "- none");
+    }
+    for f in findings {
+        let _ = writeln!(r, "- [{:?}] {}: {}", f.severity, f.kind, f.values);
+    }
+    r
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pulse::sample::{DiskSample, MountSample};
+
+    fn app(key: &str, kind: Kind, cpu: f64, mem: u64) -> AppFrame {
+        AppFrame {
+            key: key.into(),
+            kind,
+            name: key.into(),
+            icon: String::new(),
+            desktop_id: None,
+            unit: None,
+            user_unit: false,
+            main_pid: 1,
+            pids: vec![1],
+            starts: vec![],
+            windows: vec![],
+            cpu,
+            cpu_core: cpu * 16.0,
+            mem,
+            swap: 0,
+            gpu: 0.0,
+            vram: 0,
+            read_bps: 0.0,
+            write_bps: 0.0,
+            threads: 1,
+            started: 0,
+            user: "tom".into(),
+            uid: 1000,
+            flags: vec![],
+            health: 0,
+            leak: None,
+            gpus: vec![],
+            command: vec![],
+            exe: String::new(),
+            restart_reasons: vec![],
+            focused: false,
+        }
+    }
+
+    fn ctx<'a>() -> Context<'a> {
+        Context {
+            throttled_recently: 0,
+            reboot_needed: false,
+            crashes: &[],
+            failed_units: &[],
+            hung: 0,
+            hung_names: vec![],
+            zombies: 0,
+            blocked_names: vec![],
+        }
+    }
+
+    fn calm() -> Sample {
+        let mut s = Sample::default();
+        s.memory.total = 16 << 30;
+        s.memory.available = 10 << 30;
+        s.power.on_ac = true;
+        s
+    }
+
+    #[test]
+    fn calm_system_has_nothing_to_say() {
+        let f = diagnose(&calm(), &[app("a", Kind::Window, 5.0, 1 << 30)], &ctx());
+        assert!(f.is_empty(), "{f:?}");
+        assert_eq!(score(&f), 100);
+    }
+
+    #[test]
+    fn busy_cpu_names_the_top_app_and_offers_relief() {
+        let mut s = calm();
+        s.cpu.usage = 97.0;
+        s.cpu.pressure = 45.0;
+        let apps = [
+            app("idle", Kind::Window, 1.0, 1),
+            app("hog", Kind::Background, 80.0, 1),
+            app("mid", Kind::Service, 10.0, 1),
+        ];
+        let f = diagnose(&s, &apps, &ctx());
+        assert_eq!(f[0].kind, "cpu-busy");
+        assert_eq!(f[0].severity, Severity::Warning);
+        assert_eq!(f[0].apps, vec!["hog", "mid", "idle"]);
+        let actions: Vec<&str> = f[0].fixes.iter().map(|x| x.action.as_str()).collect();
+        assert_eq!(actions, vec!["show-app", "efficiency", "end"]);
+    }
+
+    #[test]
+    fn low_memory_and_swapping() {
+        let mut s = calm();
+        s.memory.available = 400 << 20;
+        s.memory.swap_out_bps = 20.0 * 1024.0 * 1024.0;
+        let f = diagnose(&s, &[app("big", Kind::Window, 1.0, 9 << 30)], &ctx());
+        let kinds: Vec<&str> = f.iter().map(|x| x.kind.as_str()).collect();
+        assert_eq!(kinds, vec!["memory-low", "swapping"]);
+        assert_eq!(f[0].severity, Severity::Critical);
+        assert_eq!(f[1].severity, Severity::Critical);
+        assert!(score(&f) <= 50);
+    }
+
+    #[test]
+    fn full_disk_thresholds_depend_on_size() {
+        let mut s = calm();
+        s.disks.push(DiskSample {
+            name: "nvme0n1".into(),
+            mounts: vec![
+                MountSample {
+                    path: "/".into(),
+                    fstype: "btrfs".into(),
+                    used: 92 << 30,
+                    total: 100 << 30,
+                },
+                MountSample {
+                    path: "/boot".into(),
+                    fstype: "vfat".into(),
+                    used: 920 << 20,
+                    total: 1 << 30,
+                },
+            ],
+            ..Default::default()
+        });
+        let f = diagnose(&s, &[], &ctx());
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].id, "disk:/");
+    }
+
+    #[test]
+    fn broken_apps_come_first() {
+        let mut hung = app("frozen", Kind::Window, 0.0, 1);
+        hung.flags = vec![Flag::NotResponding];
+        let mut leaky = app("leaky", Kind::Background, 0.0, 1);
+        leaky.flags = vec![Flag::Leak, Flag::NeedsRestart];
+        let c = Context { reboot_needed: true, ..ctx() };
+        let f = diagnose(&calm(), &[leaky, hung], &c);
+        assert_eq!(f[0].kind, "not-responding");
+        assert_eq!(f[0].fixes[0].action, "force");
+        let kinds: Vec<&str> = f.iter().map(|x| x.kind.as_str()).collect();
+        assert!(kinds.contains(&"memory-leak") && kinds.contains(&"needs-restart") && kinds.contains(&"reboot-kernel"));
+        assert!(report(&calm(), &[], &f, score(&f)).contains("not-responding"));
+    }
+}

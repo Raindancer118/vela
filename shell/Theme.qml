@@ -222,6 +222,41 @@ Singleton {
         readonly property int osdDotSpacing: 7
     }
 
+    // Pulse, the task manager (pulse.qml).
+    readonly property QtObject pulse: QtObject {
+        readonly property bool light: root.va.light
+        // One colour per resource, the same on every page.
+        readonly property color cpu: root.colors.primary
+        readonly property color memory: light ? "#8e44ad" : "#bb9af7"
+        readonly property color gpu: light ? "#2e7d32" : "#9ece6a"
+        readonly property color disk: light ? "#b26a00" : "#e0af68"
+        readonly property color diskWrite: light ? "#c2185b" : "#f7768e"
+        readonly property color net: light ? "#00838f" : "#7dcfff"
+        readonly property color netUp: light ? "#6a1b9a" : "#c0a0ff"
+        readonly property color power: light ? "#f9a825" : "#ffd866"
+        readonly property color sensor: light ? "#d84315" : "#ff9e64"
+        // Health: fine, worth a look, broken.
+        readonly property color ok: root.colors.usageLow
+        readonly property color warn: root.colors.usageMid
+        readonly property color crit: light ? "#c62828" : "#f7768e"
+        readonly property color efficiency: light ? "#2e7d32" : "#9ece6a"
+        // Heat-map cells in the process table (Windows 11 style): tint at full load.
+        readonly property real heatMax: 0.42
+        readonly property color heat: light ? "#f9a825" : "#e0af68"
+        readonly property color heatHot: crit
+        readonly property color graphGrid: root.withAlpha(root.colors.text, 0.06)
+        readonly property real graphFill: 0.22
+        readonly property int sidebarWidth: 216
+        readonly property int rowHeight: 40
+        readonly property int sectionHeight: 34
+        readonly property int columnWidth: 92
+        readonly property int flyoutWidth: 420
+        readonly property int tileMin: 220
+        readonly property int graphLine: 2
+        // Points kept per series (one per second).
+        readonly property int history: 300
+    }
+
     // Background opacity of the panel, popups and detail card.
     readonly property real surfaceOpacity: va.opacity
 }

@@ -71,6 +71,7 @@ pub fn run(opts: Options) -> glib::ExitCode {
     let (cmd_tx, cmd_rx) = async_channel::unbounded::<Command>();
     ipc::serve(listener, cmd_tx);
     crate::claude_usage::spawn_poller();
+    crate::pulse::recorder::spawn();
 
     let cmd_rx = RefCell::new(Some(cmd_rx));
     app.connect_startup(move |app| {

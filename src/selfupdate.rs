@@ -486,7 +486,7 @@ mod tests {
                 "--profile",
                 "full",
                 "--with",
-                "launcher,claude,hyprland,panel,idle,updates",
+                "launcher,claude,hyprland,panel,idle,updates,pulse",
                 "--without",
                 "share-picker",
                 "-y"
@@ -501,14 +501,20 @@ mod tests {
                 "--with",
                 "launcher",
                 "--without",
-                "claude,hyprland,panel,idle,share-picker,updates",
+                "claude,hyprland,panel,idle,share-picker,updates,pulse",
                 "-y"
             ]
         );
         t = Installed::parse("profile = \"full\"\n").unwrap();
         assert_eq!(
             install_args(Some(&t)),
-            ["--profile", "full", "--with", "launcher,claude,hyprland,panel,idle,share-picker,updates", "-y"]
+            [
+                "--profile",
+                "full",
+                "--with",
+                "launcher,claude,hyprland,panel,idle,share-picker,updates,pulse",
+                "-y"
+            ]
         );
     }
 
@@ -591,7 +597,7 @@ mod tests {
         crate::update::run("vela", &steps, &dir.path().join("log"), false, &mut |_| {}).unwrap();
         assert_eq!(
             std::fs::read_to_string(&args).unwrap().trim(),
-            "--profile minimal --with launcher --without claude,hyprland,panel,idle,share-picker,updates -y"
+            "--profile minimal --with launcher --without claude,hyprland,panel,idle,share-picker,updates,pulse -y"
         );
     }
 

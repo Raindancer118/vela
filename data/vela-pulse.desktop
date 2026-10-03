@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Pulse
+GenericName=Task Manager
+GenericName[de]=Taskmanager
+Comment=Apps, processes, performance and what slows your system down
+Comment[de]=Apps, Prozesse, Leistung und was dein System bremst
+Exec=vela-pulse
+Icon=vela-pulse
+Terminal=false
+Categories=System;Monitor;Utility;
+Keywords=task manager;taskmanager;process;processes;kill;cpu;memory;ram;gpu;performance;monitor;system monitor;services;htop;top;Prozesse;Leistung;Taskmanager;

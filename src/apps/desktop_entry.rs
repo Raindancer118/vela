@@ -46,6 +46,8 @@ pub struct DesktopEntry {
     pub hidden: bool,
     pub terminal: bool,
     pub dbus_activatable: bool,
+    /// StartupWMClass: the window class the app's windows get.
+    pub startup_wm_class: Option<String>,
     pub only_show_in: Vec<String>,
     pub not_show_in: Vec<String>,
     pub actions: Vec<DesktopAction>,
@@ -242,6 +244,7 @@ pub fn parse(content: &str, locales: &[String]) -> Result<DesktopEntry, ParseErr
         hidden: parse_bool(main.get("Hidden")),
         terminal: parse_bool(main.get("Terminal")),
         dbus_activatable: parse_bool(main.get("DBusActivatable")),
+        startup_wm_class: l.plain("StartupWMClass"),
         only_show_in: main.get("OnlyShowIn").map(|v| split_list(v)).unwrap_or_default(),
         not_show_in: main.get("NotShowIn").map(|v| split_list(v)).unwrap_or_default(),
         actions,

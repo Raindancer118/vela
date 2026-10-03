@@ -148,3 +148,22 @@ flatpak = true
 # "Fix with Claude" opens its terminal here without switching to it;
 # "" = a normal window.
 claude_workspace = "special:minimized"
+
+[pulse]
+# Pulse, the task manager (vela pulse, Ctrl+Shift+Esc).
+# The daemon records lightly in the background, so Pulse opens with history
+# and knows what crashed or hung while it was closed.
+record = true
+record_interval_secs = 3
+history_minutes = 60
+# Measurements per second while the window is open (milliseconds between).
+interval_ms = 1000
+# Graphs glide between measurements; false = one step per measurement.
+smooth_graphs = true
+# overview, processes, performance, diagnosis, services, activity
+start_page = "overview"
+# Performance graphs: 60 or 300 seconds.
+range_secs = 60
+confirm_end = false
+heat_map = true
+show_kernel = false

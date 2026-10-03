@@ -63,7 +63,8 @@ pub fn handle(req: &J) -> Option<J> {
     })
 }
 
-const INSTRUCTIONS: &str = "Changes Hyprland (the Wayland compositor) and the vela launcher/control center. \
+const INSTRUCTIONS: &str = "Changes Hyprland (the Wayland compositor) and the vela launcher/control center; \
+pulse_* tools read and act on processes, apps and system health (vela's task manager). \
 Hyprland changes apply instantly and persist; they override the user's hyprland.lua only for the options touched \
 (reset_hyprland_options undoes them). Find option names with search_hyprland_options before setting. \
 Gaps between windows: general:gaps_in; gaps to the screen edges: general:gaps_out; blur: decoration:blur:*.";
@@ -220,7 +221,50 @@ fn tools() -> J {
             json!({ "page": { "type": "string", "enum": ipc::SETTINGS_PAGES } }),
             &[],
         ),
+        tool(
+            "pulse_snapshot",
+            "Pulse (vela's task manager): the system right now — CPU, memory, GPUs, disks, network, power, sensors, and the apps grouped from processes (key, kind window/background/task/service/system, cpu % of all cores, memory, health flags). Takes about a second.",
+            json!({ "processes": { "type": "boolean", "description": "Also every process (large)" }, "limit": { "type": "integer", "description": "Max apps, by CPU+memory (default 40)" } }),
+            &[],
+        ),
+        tool(
+            "pulse_diagnose",
+            "Pulse's diagnosis: what slows the system down or is broken (overload, memory, swap, I/O, heat, throttling, full disks, hung or crashing apps, failed services, outdated code after updates, memory leaks) with the apps involved, plus recent crashes and failed units. Plain-English report.",
+            json!({}),
+            &[],
+        ),
+        tool(
+            "pulse_end_app",
+            "End an app found with pulse_snapshot (by key or name): SIGTERM to all its processes, or SIGKILL with force. Services are stopped through systemd. Ask the user first.",
+            json!({ "app": { "type": "string", "description": "App key or name" }, "force": { "type": "boolean" } }),
+            &["app"],
+        ),
+        tool(
+            "pulse_restart_app",
+            "Restart an app found with pulse_snapshot (by key or name): services through systemd, apps by ending them and starting them again the same way. Ask the user first.",
+            json!({ "app": { "type": "string", "description": "App key or name" } }),
+            &["app"],
+        ),
     ])
+}
+
+/// Two ticks (rates need a previous sample).
+fn pulse_frame(with_procs: bool) -> (crate::pulse::engine::Monitor, crate::pulse::engine::Frame) {
+    let mut m = crate::pulse::engine::Monitor::new();
+    m.tick(false);
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    let f = m.tick(with_procs);
+    (m, f)
+}
+
+fn pulse_find<'a>(f: &'a crate::pulse::engine::Frame, app: &str) -> Result<&'a crate::pulse::engine::AppFrame, String> {
+    let lower = app.to_lowercase();
+    f.apps
+        .iter()
+        .find(|a| a.key == app)
+        .or_else(|| f.apps.iter().find(|a| a.name.to_lowercase() == lower))
+        .or_else(|| f.apps.iter().find(|a| a.name.to_lowercase().contains(&lower)))
+        .ok_or_else(|| format!("no running app matches “{app}” (see pulse_snapshot)"))
 }
 
 fn load() -> Result<Overrides, String> {
@@ -637,6 +681,47 @@ pub fn call(name: &str, args: &J) -> Result<String, String> {
             ipc::send(&paths::socket_path(), ipc::Command::Settings(page))
                 .map(|_| "opened".into())
                 .map_err(|e| format!("vela isn't running: {e:?}"))
+        }
+        "pulse_snapshot" => {
+            let procs = args.get("processes").and_then(|v| v.as_bool()).unwrap_or(false);
+            let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(40) as usize;
+            let (_, mut f) = pulse_frame(procs);
+            let total = f.sample.memory.total.max(1) as f64;
+            f.apps
+                .sort_by(|a, b| (b.cpu + b.mem as f64 / total * 100.0).total_cmp(&(a.cpu + a.mem as f64 / total * 100.0)));
+            f.apps.truncate(limit);
+            let mut v = serde_json::to_value(&f).map_err(|e| e.to_string())?;
+            v.as_object_mut().map(|o| o.remove("events"));
+            Ok(v.to_string())
+        }
+        "pulse_diagnose" => {
+            let (_, f) = pulse_frame(false);
+            let mut r = crate::pulse::doctor::report(&f.sample, &f.apps, &f.findings, f.score);
+            for c in &f.crashes {
+                r.push_str(&format!("- crash: {} ({}) {}× in 24 h, last {}\n", c.name, c.exe, c.count, c.signal));
+            }
+            for u in &f.failed_units {
+                r.push_str(&format!(
+                    "- failed unit: {} ({}){}\n",
+                    u.unit,
+                    u.description,
+                    if u.user { " [user]" } else { "" }
+                ));
+            }
+            Ok(r)
+        }
+        "pulse_end_app" | "pulse_restart_app" => {
+            let app = s("app").ok_or("app is required")?;
+            let (m, f) = pulse_frame(false);
+            let a = pulse_find(&f, app)?;
+            if name == "pulse_end_app" {
+                crate::pulse::actions::end_app(a, args.get("force").and_then(|v| v.as_bool()).unwrap_or(false))?;
+                Ok(format!("ended {}", a.name))
+            } else {
+                let file = a.desktop_id.as_deref().and_then(|d| m.desktop_path(d)).cloned();
+                crate::pulse::actions::restart_app(a, file.as_deref(), &crate::pulse::actions::load_config())?;
+                Ok(format!("restarted {}", a.name))
+            }
         }
         _ => Err(format!("unknown tool {name}")),
     }

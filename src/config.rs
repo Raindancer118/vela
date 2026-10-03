@@ -22,6 +22,54 @@ pub struct Config {
     pub updates: Updates,
     /// New vela releases (Settings → System).
     pub self_update: SelfUpdate,
+    /// Pulse, the task manager (`vela pulse`).
+    pub pulse: Pulse,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Pulse {
+    /// The daemon samples the system in the background, so Pulse opens with
+    /// history and knows what crashed or hung while it was closed.
+    pub record: bool,
+    /// Background sampling interval.
+    pub record_interval_secs: u32,
+    /// How much background history to keep.
+    pub history_minutes: u32,
+    /// Update interval of the open window.
+    pub interval_ms: u32,
+    /// Graphs glide between samples; off = they jump one step per sample.
+    pub smooth_graphs: bool,
+    /// Page the window opens on: overview, processes, performance,
+    /// diagnosis, services, activity.
+    pub start_page: String,
+    /// Seconds shown by the performance graphs (60 or 300).
+    pub range_secs: u32,
+    /// Ask before ending an app (force quitting always asks).
+    pub confirm_end: bool,
+    /// Tint the process table cells by load.
+    pub heat_map: bool,
+    /// List kernel threads in "Apps & processes".
+    pub show_kernel: bool,
+}
+
+pub const PULSE_PAGES: [&str; 6] = ["overview", "processes", "performance", "diagnosis", "services", "activity"];
+
+impl Default for Pulse {
+    fn default() -> Self {
+        Pulse {
+            record: true,
+            record_interval_secs: 3,
+            history_minutes: 60,
+            interval_ms: 1000,
+            smooth_graphs: true,
+            start_page: "overview".into(),
+            range_secs: 60,
+            confirm_end: false,
+            heat_map: true,
+            show_kernel: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -649,6 +697,15 @@ impl Config {
         g.opacity = finite_or(g.opacity, 0.86).clamp(0.0, 1.0);
         g.max_results = g.max_results.clamp(1, 100);
 
+        let p = &mut self.pulse;
+        p.record_interval_secs = p.record_interval_secs.clamp(1, 60);
+        p.history_minutes = p.history_minutes.clamp(5, 24 * 60);
+        p.interval_ms = p.interval_ms.clamp(250, 10_000);
+        if !PULSE_PAGES.contains(&p.start_page.as_str()) {
+            p.start_page = "overview".into();
+        }
+        p.range_secs = if p.range_secs >= 180 { 300 } else { 60 };
+
         let a = &mut self.appearance;
         a.tile_size = a.tile_size.clamp(56, 240);
         a.icon_size = a.icon_size.clamp(16, 192).min(a.tile_size);
@@ -887,6 +944,19 @@ mod tests {
         assert_eq!(cfg.general.main_monitor, General::default().main_monitor);
         assert_eq!(cfg.panel, Panel::default());
         assert_eq!(cfg.idle, Idle::default());
+        assert_eq!(cfg.pulse, Pulse::default());
+    }
+
+    #[test]
+    fn pulse_settings_are_sanitized() {
+        let cfg = Config::from_toml("[pulse]\nstart_page = \"nowhere\"\nrange_secs = 200\ninterval_ms = 5\nhistory_minutes = 0\n").unwrap();
+        assert_eq!(cfg.pulse.start_page, "overview");
+        assert_eq!(cfg.pulse.range_secs, 300);
+        assert_eq!(cfg.pulse.interval_ms, 250);
+        assert_eq!(cfg.pulse.history_minutes, 5);
+        let mut c = Config::default();
+        c.set_value("pulse.smooth_graphs", "false").unwrap();
+        assert!(!c.pulse.smooth_graphs);
     }
 
     #[test]

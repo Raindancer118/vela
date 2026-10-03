@@ -305,6 +305,7 @@ def heading(text, sub, dark, icon=None):
 SECTIONS = [
     ("launcher", "The launcher", "Tap Super"),
     ("center", "The control center", "Quick settings & notifications"),
+    ("pulse", "Pulse, the task manager", "Apps · performance · diagnosis"),
     ("hyprland", "Hyprland, without the config file", "Every option · live"),
     ("claude", "Just say it", "Claude + MCP"),
     ("install", "Get it", "Two commands"),

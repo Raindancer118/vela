@@ -17,6 +17,7 @@
 <p align="center">
   <a href="#the-launcher">Launcher</a> &nbsp;·&nbsp;
   <a href="#the-control-center">Control center</a> &nbsp;·&nbsp;
+  <a href="#pulse">Pulse</a> &nbsp;·&nbsp;
   <a href="#hyprland-without-the-config-file">Hyprland settings</a> &nbsp;·&nbsp;
   <a href="#just-say-it">Claude</a> &nbsp;·&nbsp;
   <a href="#get-it">Install</a> &nbsp;·&nbsp;
@@ -115,6 +116,37 @@ same accent selection, sliders and boxed lists.
 - **Screen-share picker** for xdg-desktop-portal-hyprland: screens as they stand on your desk, windows and a region, all with live previews
 - **Tap or hold** a shortcut (`panel_peek`, e.g. <kbd>Super</kbd>+<kbd>T</kbd>): a tap keeps it open, holding shows it until you let go
 - Speaks your language (German above)
+
+</td>
+</tr>
+</table>
+
+<br>
+
+<a id="pulse"></a>
+<img alt="Pulse, the task manager" src="docs/readme/h-pulse-light.svg#gh-light-mode-only" width="100%">
+<img alt="Pulse, the task manager" src="docs/readme/h-pulse-dark.svg#gh-dark-mode-only" width="100%">
+
+<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>, "Pulse" in the app menu, or `vela-pulse`: a task manager
+in the same look, laid out like the ones you know (Windows 11, Mission Center) and a step further:
+it doesn't just show numbers, it tells you what is wrong and fixes it with one click.
+
+<img alt="Pulse: health, live tiles, top consumers and activity" src="docs/readme/pulse.png" width="100%">
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+- **Apps & processes**: grouped into apps with windows, background apps, commands running in terminal tabs, services and the system (from systemd's cgroups, so an app's 30 processes are one row); unfold into processes, or all processes as a list or tree; cells tinted by load; end, force quit, restart, pause, efficiency mode, signals, priority
+- **Performance**: CPU (per core), memory with what it's made of, every GPU (NVIDIA only asked while awake, so it can sleep), disks, network, battery and every sensor and fan, with 1- or 5-minute graphs that glide or step
+- **Services**: systemd user and system units, start, stop, restart, autostart
+
+</td>
+<td width="50%" valign="top">
+
+- **Diagnosis**: overload, low memory, swapping, programs waiting for the disk, heat and throttling, a power profile that holds you back, full disks, apps that hang (Hyprland's "not responding"), crash loops (core dumps), failed services, runaway CPU, memory leaks, outdated code after an update or a new kernel (on NixOS: a store path the profile no longer uses); each with the fix as a button
+- **Ask Claude**: hands Claude Code a snapshot to dig deeper; the `pulse_*` MCP tools let Claude read and act on it too
+- **Activity**: what started, closed, crashed, hung or ran out of memory, also while the window was closed (the daemon keeps a light record; Settings → Pulse)
 
 </td>
 </tr>
@@ -267,11 +299,11 @@ one. Running it again changes the selection; parts you drop are removed again
 | --- | --- |
 | `full` | everything (default) |
 | `minimal` | the launcher |
-| `launcher` | launcher, Claude Code, Hyprland settings, updates |
-| `panel` | control center, idle, screen-share picker, updates (no launcher) |
+| `launcher` | launcher, Claude Code, Hyprland settings, updates, Pulse |
+| `panel` | control center, idle, screen-share picker, updates, Pulse (no launcher) |
 
 Components: `launcher`, `claude`, `hyprland`, `panel`, `idle`,
-`share-picker`, `updates` (`./install.sh --list` describes them).
+`share-picker`, `updates`, `pulse` (`./install.sh --list` describes them).
 
 ```sh
 ./install.sh --profile panel -y                          # no questions
@@ -304,10 +336,10 @@ a terminal.
 
 | File | Location |
 | --- | --- |
-| `vela`, `vela-daemon`, `vela-share-picker` | `~/.local/bin/` |
+| `vela`, `vela-daemon`, `vela-share-picker`, `vela-pulse` | `~/.local/bin/` |
 | systemd user unit | `~/.config/systemd/user/vela.service` |
 | Hyprland module | `~/.config/hypr/vela.lua` |
-| control center (QML) | `~/.local/share/vela/shell` |
+| control center and Pulse (QML) | `~/.local/share/vela/shell` |
 | component selection | `~/.local/share/vela/components.toml` |
 | desktop entry, icons | `~/.local/share/applications`, `~/.local/share/icons` |
 | MCP server | registered with Claude Code, if installed |
@@ -484,6 +516,17 @@ flowchart LR
   …/vela-share-picker` in `~/.config/hypr/xdph.conf` (if no other picker is
   set) and restarts the portal. It runs `shell/share-picker.qml` as its own
   Quickshell instance and answers xdph on stdout; regions are drawn with slurp.
+- **Pulse**: `vela pulse` runs `shell/pulse.qml` as its own Quickshell instance
+  (a second call brings it to the front). Its backend `vela pulse serve` reads
+  /proc and sysfs once per interval and writes one JSON frame per line; the
+  window sends commands back on its stdin. Processes become apps by their
+  systemd cgroup (`app-….scope`, services), the rest by process tree below
+  Hyprland; windows come from Hyprland, "not responding" from the dialogs
+  Hyprland opens. Pressure (PSI), throttle counters, core dumps, failed units
+  and mapped libraries that were replaced on disk feed the diagnosis. GPU load
+  per process comes from DRM fdinfo; nvidia-smi only runs while the GPU is
+  awake. The daemon's light background record lives in
+  `$XDG_RUNTIME_DIR/vela-pulse-backlog.json`.
 
 </details>
 

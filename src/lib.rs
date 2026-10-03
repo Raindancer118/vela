@@ -21,6 +21,7 @@ pub mod launcher_layout;
 pub mod mcp;
 pub mod nixos;
 pub mod paths;
+pub mod pulse;
 pub mod search;
 pub mod search_terms;
 pub mod selfupdate;

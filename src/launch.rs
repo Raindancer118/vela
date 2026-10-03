@@ -110,6 +110,15 @@ fn desktop_spec(path: &Path, entry: &crate::apps::desktop_entry::DesktopEntry, e
     })
 }
 
+/// Spec for a desktop file on disk (Pulse relaunches apps with it).
+pub fn desktop_file_spec(path: &Path, term: &Terminal) -> Result<SpawnSpec, LaunchError> {
+    use crate::apps::desktop_entry;
+    let text = std::fs::read_to_string(path).map_err(|e| LaunchError::Spawn(format!("{}: {e}", path.display())))?;
+    let de = desktop_entry::parse(&text, &desktop_entry::locale_candidates(&desktop_entry::current_locale()))
+        .map_err(|e| LaunchError::InvalidExec(e.to_string()))?;
+    desktop_spec(path, &de, de.exec.as_deref(), term)
+}
+
 /// org.freedesktop.Application.Activate via gdbus for Exec-less entries.
 fn dbus_activate_argv(path: &Path) -> Result<Vec<String>, LaunchError> {
     let bus_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_owned();

@@ -11,7 +11,7 @@ use std::time::Duration;
 
 /// Pages of the settings window (`vela settings <page>`).
 /// `general` is the launcher page (kept for compatibility).
-pub const SETTINGS_PAGES: [&str; 22] = [
+pub const SETTINGS_PAGES: [&str; 23] = [
     "home",
     "general",
     "apps",
@@ -32,6 +32,7 @@ pub const SETTINGS_PAGES: [&str; 22] = [
     "hypr-behaviour",
     "hypr-all",
     "appearance",
+    "pulse",
     "updates",
     "system",
 ];

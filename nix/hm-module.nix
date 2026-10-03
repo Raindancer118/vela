@@ -26,6 +26,7 @@ let
     idle = true;
     share_picker = false;
     updates = false;
+    pulse = true;
   };
   components = defaultComponents // cfg.components;
 in
@@ -60,7 +61,8 @@ in
       description = ''
         Parts of vela to use (see `vela components`): launcher, claude,
         hyprland, panel, idle, share_picker (sets vela's picker in
-        ~/.config/hypr/xdph.conf) and updates (pacman/Flatpak, off by default).
+        ~/.config/hypr/xdph.conf), updates (pacman/Flatpak, off by default) and
+        pulse (the task manager, Ctrl+Shift+Esc).
         Unset ones keep their default; all but share_picker and updates are on.
         With nixos.stateDir set this is only the default: Settings → System →
         Features saves its choice as components.toml there, and vela keeps

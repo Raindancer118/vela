@@ -44,8 +44,10 @@ rustPlatform.buildRustPackage {
     done
     sed "s|^Exec=vela|Exec=$out/bin/vela|" data/vela.desktop \
       | install -Dm644 /dev/stdin "$out/share/applications/vela.desktop"
+    sed "s|^Exec=vela-pulse|Exec=$out/bin/vela-pulse|" data/vela-pulse.desktop \
+      | install -Dm644 /dev/stdin "$out/share/applications/vela-pulse.desktop"
     install -Dm644 contrib/hyprland/vela.lua "$out/share/vela/vela.lua"
-    (cd shell && find . -type f \( -name '*.qml' -o -name '*.svg' \) ! -name 'test-*' \
+    (cd shell && find . -type f \( -name '*.qml' -o -name '*.js' -o -name '*.svg' \) ! -name 'test-*' \
       -exec install -Dm644 {} "$out/share/vela/shell/{}" \;)
   '';
 

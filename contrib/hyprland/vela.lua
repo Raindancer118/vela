@@ -75,6 +75,9 @@ local defaults = {
     -- components.toml that wins over the one in the data directory when it
     -- exists; the Home Manager module points it into your repository.
     components_file = nil,
+    -- Shortcut for Pulse, the task manager; false = none. A shortcut on the
+    -- same keys in Settings → Shortcuts replaces it.
+    pulse = "CTRL + SHIFT + Escape",
 }
 
 function M.setup(opts)
@@ -88,6 +91,7 @@ function M.setup(opts)
     o.idle = o.idle and has.idle
     o.settings = o.settings and has.hyprland
     if not has.panel then o.panel_peek = nil end
+    if not has.pulse then o.pulse = false end
     local bin = o.binary or find_binary()
     local command = o.command or (bin .. " toggle")
     -- For vela's generated settings (Settings → Hyprland → Shortcuts): the
@@ -95,6 +99,8 @@ function M.setup(opts)
     -- `vela_panel_keys` is the control center shortcut. They are loaded
     -- before the control center shortcut is bound.
     vela_launcher_command = command
+    -- Settings → Shortcuts → "Open Pulse" runs this.
+    vela_pulse_command = bin .. " pulse"
     vela_super_tap = nil
     vela_panel_keys = nil
 
@@ -191,6 +197,22 @@ function M.setup(opts)
             hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP XDG_SESSION_TYPE DISPLAY"
                 .. " && systemctl --user restart vela.service 2>/dev/null || " .. bin .. " daemon")
         end)
+    end
+
+    if o.pulse then
+        -- Bound before vela's generated settings, so their unbind of the
+        -- same keys wins.
+        pcall(hl.bind, o.pulse, function() hl.exec_cmd(bin .. " pulse") end, { description = "vela: Pulse task manager" })
+    end
+    if has.pulse then
+        -- A normal window, but it opens floating at its own size.
+        pcall(hl.window_rule, {
+            name = "vela-pulse",
+            match = { title = "^Pulse [—–] " },
+            float = true,
+            size = "1280 820",
+            center = true,
+        })
     end
 
     if o.settings then

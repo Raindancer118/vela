@@ -23,7 +23,10 @@ local function run(manifest, opts)
             if event == "hyprland.start" then fn() end
         end,
         exec_cmd = function(cmd) table.insert(seen.exec, cmd) end,
-        bind = function(keys) table.insert(seen.binds, keys) end,
+        bind = function(keys, _, o)
+            if o and o.description and o.description:match("Pulse") then seen.pulse = keys else table.insert(seen.binds, keys) end
+        end,
+        window_rule = function(r) seen.rules[r.name] = true end,
         unbind = function() end,
         dsp = { exec_cmd = function(cmd) return { exec = cmd } end },
         layer_rule = function(r) seen.rules[r.name] = true end,
@@ -64,6 +67,18 @@ check("full: Super tap", s.tap)
 check("full: shell", s.shell)
 check("full: idle", s.idle)
 check("full: peek bind", #s.binds == 1)
+
+check("full: Pulse shortcut", s.pulse == "CTRL + SHIFT + Escape")
+check("full: Pulse window rule", s.rules["vela-pulse"])
+
+-- Without Pulse: no shortcut, no rule; and the option can switch it off.
+s = run('profile = "custom"\npulse = false\n', nil)
+check("no pulse: no shortcut", s.pulse == nil)
+check("no pulse: no rule", not s.rules["vela-pulse"])
+s = run(nil, { pulse = false })
+check("pulse = false: no shortcut", s.pulse == nil)
+s = run(nil, { pulse = "SUPER + Escape" })
+check("pulse: own keys", s.pulse == "SUPER + Escape")
 
 -- Panel profile: no launcher tap, but shell and idle.
 s = run('profile = "panel"\nlauncher = false\nclaude = false\nhyprland = false\npanel = true\nidle = true\nshare_picker = true\nupdates = true\n',

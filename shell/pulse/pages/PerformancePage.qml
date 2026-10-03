@@ -1,0 +1,873 @@
+import QtQuick
+import QtQuick.Layouts
+import qs
+import qs.components
+import qs.pulse
+import "../Fmt.js" as Fmt
+
+// Mission Center / Windows style: every device with a live mini graph on
+// the left, the chosen one in depth on the right.
+Item {
+    id: page
+
+    readonly property var f: Pulse.frame
+    readonly property var loc: Qt.locale()
+    readonly property int pts: Pulse.range
+    property bool perCore: false
+
+    readonly property var devices: {
+        const f = page.f;
+        if (!f)
+            return [];
+        const d = [
+            {
+                id: "cpu",
+                icon: "pulse_cpu",
+                name: I18n.tr("Processor"),
+                sub: Fmt.percent(f.cpu.usage, loc, 0) + "  " + Fmt.mhz(f.cpu.avgMhz, loc),
+                series: "cpu",
+                max: 100,
+                color: Theme.pulse.cpu
+            },
+            {
+                id: "memory",
+                icon: "pulse_memory",
+                name: I18n.tr("Memory"),
+                sub: Fmt.bytes(f.memory.used, loc) + " / " + Fmt.bytes(f.memory.total, loc),
+                series: "mem",
+                max: 100,
+                color: Theme.pulse.memory
+            }
+        ];
+        for (const g of f.gpus)
+            d.push({
+                id: "gpu:" + g.card,
+                icon: "pulse_gpu",
+                name: g.name,
+                sub: g.asleep ? I18n.tr("Asleep") : Fmt.percent(g.busy ?? 0, loc, 0) + (g.temp ? "  " + Fmt.celsius(g.temp, loc) : ""),
+                series: "gpu." + g.card,
+                max: 100,
+                color: Theme.pulse.gpu
+            });
+        for (const k of f.disks)
+            d.push({
+                id: "disk:" + k.name,
+                icon: "storage",
+                name: I18n.tr("Disk %1", k.name),
+                sub: Fmt.percent(k.busy, loc, 0) + "  " + Fmt.rate(k.readBps + k.writeBps, loc),
+                series: "disk.busy." + k.name,
+                max: 100,
+                color: Theme.pulse.disk
+            });
+        for (const n of f.net)
+            if (n.kind !== "virtual" && (n.up || n.rxTotal > 0))
+                d.push({
+                    id: "net:" + n.iface,
+                    icon: n.kind === "wifi" ? "wifi" : n.kind === "vpn" ? "vpn" : "ethernet",
+                    name: n.kind === "wifi" ? I18n.tr("Wi-Fi") : n.kind === "vpn" ? I18n.tr("VPN") : I18n.tr("Ethernet"),
+                    sub: n.iface + "  ↓ " + Fmt.bits(n.rxBps, loc),
+                    series: "net.rx." + n.iface,
+                    max: 0,
+                    color: Theme.pulse.net
+                });
+        if (f.power.batteries.length > 0)
+            d.push({
+                id: "power",
+                icon: "battery_full",
+                name: I18n.tr("Battery"),
+                sub: Fmt.percent(f.power.batteries[0].percent, loc, 0) + (f.power.batteries[0].watts > 0.3 ? "  " + Fmt.watts(f.power.batteries[0].watts, loc) : ""),
+                series: "power.watts",
+                max: 0,
+                color: Theme.pulse.power
+            });
+        if (f.sensors.length > 0)
+            d.push({
+                id: "sensors",
+                icon: "pulse_thermo",
+                name: I18n.tr("Sensors"),
+                sub: f.cpu.temp ? Fmt.celsius(f.cpu.temp, loc) : f.sensors.length + "",
+                series: "cpu.temp",
+                max: 0,
+                color: Theme.pulse.sensor
+            });
+        return d;
+    }
+    readonly property var dev: devices.find(d => d.id === PulseUi.device) ?? devices[0] ?? null
+    readonly property string kind: (dev?.id ?? "").split(":")[0]
+    readonly property string arg: (dev?.id ?? "").split(":").slice(1).join(":")
+    readonly property var gpu: kind === "gpu" ? f?.gpus.find(g => g.card === arg) ?? null : null
+    readonly property var disk: kind === "disk" ? f?.disks.find(x => x.name === arg) ?? null : null
+    readonly property var net: kind === "net" ? f?.net.find(x => x.iface === arg) ?? null : null
+    readonly property var bat: f?.power.batteries[0] ?? null
+
+    component Stat: ColumnLayout {
+        property string label
+        property string value
+        property color tint: Theme.colors.text
+
+        spacing: 0
+
+        StyledText {
+            text: parent.label
+            color: Theme.colors.textMuted
+            font.pixelSize: Theme.font.small
+        }
+
+        StyledText {
+            Layout.fillWidth: true
+            text: parent.value
+            color: parent.tint
+            font.pixelSize: Theme.font.title
+            font.weight: Theme.font.weightMedium
+            font.features: { "tnum": 1 }
+        }
+    }
+
+    component BigGraph: ColumnLayout {
+        property alias values: g.values
+        property alias values2: g.values2
+        property alias color: g.color
+        property alias color2: g.color2
+        property alias max: g.max
+        property alias minMax: g.minMax
+        property alias format: g.format
+        property alias label1: g.label1
+        property alias label2: g.label2
+        property string title
+        property string rightText
+
+        spacing: Theme.spacing.xs
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            StyledText {
+                Layout.fillWidth: true
+                text: parent.parent.title
+                color: Theme.colors.textMuted
+                font.pixelSize: Theme.font.small
+            }
+
+            StyledText {
+                text: parent.parent.rightText
+                color: Theme.colors.textMuted
+                font.pixelSize: Theme.font.small
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            radius: Theme.radius.small
+            color: Theme.withAlpha(g.color, 0.04)
+            border.width: 1
+            border.color: Theme.withAlpha(g.color, 0.28)
+
+            Graph {
+                id: g
+
+                anchors.fill: parent
+                anchors.margins: 1
+                points: page.pts
+            }
+        }
+    }
+
+    RowLayout {
+        anchors.fill: parent
+        spacing: 0
+
+        // Device list
+        ListView {
+            id: devList
+
+            Layout.preferredWidth: 280
+            Layout.fillHeight: true
+            Layout.margins: Theme.spacing.md
+            model: page.devices
+            spacing: 4
+            clip: true
+            currentIndex: page.devices.findIndex(d => d.id === (page.dev?.id ?? ""))
+            highlightFollowsCurrentItem: true
+            highlightMoveDuration: Theme.anim.normal
+            highlight: Rectangle {
+                radius: Theme.radius.small
+                color: Theme.colors.selected
+                border.width: 1
+                border.color: Theme.colors.selectedRing
+            }
+
+            delegate: Item {
+                id: devItem
+
+                required property var modelData
+                required property int index
+
+                width: ListView.view.width
+                height: 66
+
+                Clickable {
+                    radius: Theme.radius.small
+                    onClicked: PulseUi.device = devItem.modelData.id
+                }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacing.sm
+                    spacing: Theme.spacing.sm
+
+                    Rectangle {
+                        Layout.preferredWidth: 78
+                        Layout.fillHeight: true
+                        radius: 6
+                        color: Theme.withAlpha(devItem.modelData.color, 0.06)
+                        border.width: 1
+                        border.color: Theme.withAlpha(devItem.modelData.color, 0.35)
+                        clip: true
+
+                        Graph {
+                            anchors.fill: parent
+                            anchors.margins: 1
+                            values: Pulse.series(devItem.modelData.series, 62)
+                            max: devItem.modelData.max
+                            points: 60
+                            grid: false
+                            hoverable: false
+                            lineWidth: 1.5
+                            color: devItem.modelData.color
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 1
+
+                        RowLayout {
+                            spacing: Theme.spacing.xs
+
+                            MaterialIcon {
+                                icon: devItem.modelData.icon
+                                size: Theme.icon.small
+                                color: devItem.modelData.color
+                            }
+
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: devItem.modelData.name
+                                font.weight: Theme.font.weightMedium
+                            }
+                        }
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: devItem.modelData.sub
+                            color: Theme.colors.textMuted
+                            font.pixelSize: Theme.font.small
+                            font.features: { "tnum": 1 }
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            Layout.fillHeight: true
+            width: 1
+            color: Theme.colors.divider
+        }
+
+        // Details
+        Item {
+            id: detail
+
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            // Crossfade when switching devices.
+            property string shownId: page.dev?.id ?? ""
+            onShownIdChanged: fade.restart()
+
+            SequentialAnimation {
+                id: fade
+
+                Anim {
+                    target: detailCol
+                    property: "opacity"
+                    from: 0.35
+                    to: 1
+                    duration: Theme.anim.normal
+                }
+            }
+
+            ColumnLayout {
+                id: detailCol
+
+                anchors.fill: parent
+                anchors.margins: Theme.spacing.xl
+                spacing: Theme.spacing.lg
+
+                // Title row
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing.md
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+
+                        StyledText {
+                            text: page.dev?.name ?? ""
+                            font.pixelSize: Theme.font.large + 4
+                            font.weight: Theme.font.weightSemiBold
+                        }
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            color: Theme.colors.textMuted
+                            text: {
+                                switch (page.kind) {
+                                case "cpu":
+                                    return page.f?.cpu.model ?? "";
+                                case "memory":
+                                    return I18n.tr("%1 installed", Fmt.bytes(page.f?.memory.total ?? 0, page.loc));
+                                case "gpu":
+                                    return (page.gpu?.vendor ?? "") + " · " + (page.gpu?.driver ?? "") + " · " + (page.gpu?.pdev ?? "");
+                                case "disk":
+                                    return (page.disk?.model || page.disk?.name || "") + " · " + Fmt.bytes(page.disk?.size ?? 0, page.loc);
+                                case "net":
+                                    return page.net?.iface ?? "";
+                                case "power":
+                                    return page.f?.power.onAc ? I18n.tr("Plugged in") : I18n.tr("On battery");
+                                }
+                                return "";
+                            }
+                        }
+                    }
+
+                    PillButton {
+                        visible: page.kind === "cpu"
+                        icon: "grid"
+                        text: page.perCore ? I18n.tr("Overall") : I18n.tr("Per core")
+                        onClicked: page.perCore = !page.perCore
+                    }
+
+                    // History range.
+                    Rectangle {
+                        implicitHeight: 30
+                        implicitWidth: 150
+                        radius: 15
+                        color: Theme.withAlpha(Theme.colors.text, 0.05)
+
+                        Rectangle {
+                            x: Pulse.range === 60 ? 3 : parent.width / 2
+                            y: 3
+                            width: parent.width / 2 - 3
+                            height: parent.height - 6
+                            radius: height / 2
+                            color: Theme.colors.selected
+                            border.width: 1
+                            border.color: Theme.colors.selectedRing
+                            Behavior on x {
+                                SpringAnim {}
+                            }
+                        }
+
+                        Row {
+                            anchors.fill: parent
+
+                            Repeater {
+                                model: [60, 300]
+
+                                Item {
+                                    required property int modelData
+
+                                    width: parent.width / 2
+                                    height: parent.height
+
+                                    Clickable {
+                                        radius: height / 2
+                                        onClicked: Pulse.setRange(parent.modelData)
+                                    }
+
+                                    StyledText {
+                                        anchors.centerIn: parent
+                                        text: parent.modelData === 60 ? I18n.tr("1 min") : I18n.tr("5 min")
+                                        font.pixelSize: Theme.font.small
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Graphs
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 220
+
+                    // CPU overall
+                    BigGraph {
+                        anchors.fill: parent
+                        visible: page.kind === "cpu" && !page.perCore
+                        title: I18n.tr("Usage over %1", Pulse.range === 60 ? I18n.tr("60 seconds") : I18n.tr("5 minutes"))
+                        rightText: "100 %"
+                        values: Pulse.series("cpu", page.pts + 2)
+                        values2: Pulse.series("cpu.iowait", page.pts + 2)
+                        label2: I18n.tr("I/O wait")
+                        color: Theme.pulse.cpu
+                        color2: Theme.pulse.disk
+                        max: 100
+                        format: v => Fmt.percent(v, page.loc)
+                    }
+
+                    // CPU per core
+                    GridLayout {
+                        anchors.fill: parent
+                        visible: page.kind === "cpu" && page.perCore
+                        readonly property int n: page.f?.cpu.cores.length ?? 1
+                        columns: Math.ceil(Math.sqrt(n * 2))
+                        columnSpacing: Theme.spacing.xs
+                        rowSpacing: Theme.spacing.xs
+
+                        Repeater {
+                            model: page.kind === "cpu" && page.perCore ? (page.f?.cpu.cores.length ?? 0) : 0
+
+                            Rectangle {
+                                required property int index
+
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                radius: 6
+                                color: Theme.withAlpha(Theme.pulse.cpu, 0.04)
+                                border.width: 1
+                                border.color: Theme.withAlpha(Theme.pulse.cpu, 0.28)
+
+                                Graph {
+                                    anchors.fill: parent
+                                    anchors.margins: 1
+                                    values: Pulse.series("core." + parent.index, Math.min(page.pts, 120) + 2)
+                                    points: Math.min(page.pts, 120)
+                                    max: 100
+                                    grid: false
+                                    lineWidth: 1.5
+                                    color: Theme.pulse.cpu
+                                    format: v => Fmt.percent(v, page.loc)
+                                }
+
+                                StyledText {
+                                    x: 6
+                                    y: 4
+                                    text: I18n.tr("CPU %1", parent.index) + "  " + Fmt.mhz(page.f?.cpu.mhz[parent.index] ?? 0, page.loc)
+                                    color: Theme.colors.textMuted
+                                    font.pixelSize: Theme.font.small - 1
+                                }
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        visible: page.kind === "memory"
+                        spacing: Theme.spacing.md
+
+                        BigGraph {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.preferredHeight: 3
+                            title: I18n.tr("Memory in use")
+                            rightText: Fmt.bytes(page.f?.memory.total ?? 0, page.loc)
+                            values: Pulse.series("mem", page.pts + 2)
+                            color: Theme.pulse.memory
+                            max: 100
+                            format: v => Fmt.percent(v, page.loc)
+                        }
+
+                        BigGraph {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.preferredHeight: 1
+                            visible: (page.f?.memory.swapTotal ?? 0) > 0
+                            title: I18n.tr("Swap")
+                            rightText: Fmt.bytes(page.f?.memory.swapTotal ?? 0, page.loc)
+                            values: Pulse.series("swap", page.pts + 2)
+                            color: Theme.withAlpha(Theme.pulse.memory, 0.7)
+                            max: 100
+                            format: v => Fmt.percent(v, page.loc)
+                        }
+
+                        // Composition: in use, cache, free.
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing.xs
+                            readonly property var m: page.f?.memory ?? null
+
+                            Meter {
+                                Layout.fillWidth: true
+                                implicitHeight: 14
+                                max: parent.m?.total ?? 1
+                                segments: parent.m ? [
+                                    {
+                                        value: parent.m.used,
+                                        color: Theme.pulse.memory
+                                    },
+                                    {
+                                        value: parent.m.cache,
+                                        color: Theme.withAlpha(Theme.pulse.memory, 0.4)
+                                    }
+                                ] : []
+                            }
+
+                            RowLayout {
+                                spacing: Theme.spacing.lg
+
+                                Repeater {
+                                    model: [
+                                        [I18n.tr("In use"), Theme.pulse.memory],
+                                        [I18n.tr("Cache (frees itself)"), Theme.withAlpha(Theme.pulse.memory, 0.4)],
+                                        [I18n.tr("Free"), Theme.withAlpha(Theme.colors.text, 0.12)]
+                                    ]
+
+                                    RowLayout {
+                                        required property var modelData
+
+                                        spacing: Theme.spacing.xs
+
+                                        Rectangle {
+                                            implicitWidth: 10
+                                            implicitHeight: 10
+                                            radius: 3
+                                            color: parent.modelData[1]
+                                        }
+
+                                        StyledText {
+                                            text: parent.modelData[0]
+                                            color: Theme.colors.textMuted
+                                            font.pixelSize: Theme.font.small
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        visible: page.kind === "gpu"
+                        spacing: Theme.spacing.md
+
+                        BigGraph {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.preferredHeight: 3
+                            title: page.gpu?.asleep ? I18n.tr("Asleep — saves power") : I18n.tr("Usage")
+                            rightText: "100 %"
+                            values: Pulse.series("gpu." + page.arg, page.pts + 2)
+                            color: Theme.pulse.gpu
+                            max: 100
+                            format: v => Fmt.percent(v, page.loc)
+                        }
+
+                        BigGraph {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.preferredHeight: 1
+                            visible: (page.gpu?.vramTotal ?? 0) > 0
+                            title: I18n.tr("Video memory")
+                            rightText: Fmt.bytes(page.gpu?.vramTotal ?? 0, page.loc)
+                            values: Pulse.series("vram." + page.arg, page.pts + 2)
+                            color: Theme.withAlpha(Theme.pulse.gpu, 0.7)
+                            max: 100
+                            format: v => Fmt.percent(v, page.loc)
+                        }
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        visible: page.kind === "disk"
+                        spacing: Theme.spacing.md
+
+                        BigGraph {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.preferredHeight: 2
+                            title: I18n.tr("Busy time")
+                            rightText: "100 %"
+                            values: Pulse.series("disk.busy." + page.arg, page.pts + 2)
+                            color: Theme.pulse.disk
+                            max: 100
+                            format: v => Fmt.percent(v, page.loc)
+                        }
+
+                        BigGraph {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.preferredHeight: 2
+                            title: I18n.tr("Transfer rate")
+                            values: Pulse.series("disk.r." + page.arg, page.pts + 2)
+                            values2: Pulse.series("disk.w." + page.arg, page.pts + 2)
+                            label1: I18n.tr("Read")
+                            label2: I18n.tr("Write")
+                            color: Theme.pulse.disk
+                            color2: Theme.pulse.diskWrite
+                            minMax: 1024 * 1024
+                            format: v => Fmt.rate(v, page.loc)
+                        }
+                    }
+
+                    BigGraph {
+                        anchors.fill: parent
+                        visible: page.kind === "net"
+                        title: I18n.tr("Throughput")
+                        values: Pulse.series("net.rx." + page.arg, page.pts + 2)
+                        values2: Pulse.series("net.tx." + page.arg, page.pts + 2)
+                        label1: I18n.tr("Down")
+                        label2: I18n.tr("Up")
+                        color: Theme.pulse.net
+                        color2: Theme.pulse.netUp
+                        minMax: 128 * 1024
+                        format: v => Fmt.bits(v, page.loc)
+                    }
+
+                    BigGraph {
+                        anchors.fill: parent
+                        visible: page.kind === "power"
+                        title: I18n.tr("Power draw from the battery")
+                        values: Pulse.series("power.watts", page.pts + 2)
+                        color: Theme.pulse.power
+                        minMax: 10
+                        format: v => Fmt.watts(v, page.loc)
+                    }
+
+                    // Sensors: every temperature, then fans.
+                    Flickable {
+                        anchors.fill: parent
+                        visible: page.kind === "sensors"
+                        contentHeight: sensorGrid.implicitHeight
+                        clip: true
+
+                        GridLayout {
+                            id: sensorGrid
+
+                            width: parent.width
+                            columns: width > 700 ? 2 : 1
+                            columnSpacing: Theme.spacing.xl
+                            rowSpacing: Theme.spacing.md
+
+                            Repeater {
+                                model: page.f?.sensors ?? []
+
+                                ColumnLayout {
+                                    required property var modelData
+
+                                    Layout.fillWidth: true
+                                    spacing: 3
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            text: parent.parent.modelData.label + "  ·  " + parent.parent.modelData.chip
+                                        }
+
+                                        Counter {
+                                            value: parent.parent.modelData.celsius
+                                            format: v => Fmt.celsius(v, page.loc)
+                                            font.weight: Theme.font.weightMedium
+                                            color: parent.parent.modelData.celsius >= (parent.parent.modelData.crit ?? 100) - 10 ? Theme.pulse.crit : Theme.colors.text
+                                        }
+                                    }
+
+                                    Meter {
+                                        Layout.fillWidth: true
+                                        max: parent.modelData.crit ?? 100
+                                        value: parent.modelData.celsius
+                                        color: parent.modelData.celsius >= (parent.modelData.crit ?? 100) - 10 ? Theme.pulse.crit : Theme.pulse.sensor
+                                    }
+                                }
+                            }
+
+                            Repeater {
+                                model: page.f?.fans ?? []
+
+                                RowLayout {
+                                    required property var modelData
+
+                                    Layout.fillWidth: true
+
+                                    MaterialIcon {
+                                        icon: "pulse_fan"
+                                        color: Theme.pulse.sensor
+                                    }
+
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: parent.modelData.label + "  ·  " + parent.modelData.chip
+                                    }
+
+                                    Counter {
+                                        value: parent.modelData.rpm
+                                        format: v => I18n.tr("%1 rpm", Math.round(v))
+                                        font.weight: Theme.font.weightMedium
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Numbers
+                GridLayout {
+                    Layout.fillWidth: true
+                    visible: page.kind !== "sensors"
+                    columns: Math.max(3, Math.floor(width / 170))
+                    columnSpacing: Theme.spacing.xl
+                    rowSpacing: Theme.spacing.md
+
+                    Repeater {
+                        model: {
+                            const f = page.f;
+                            if (!f)
+                                return [];
+                            const L = page.loc;
+                            const rows = [];
+                            const add = (l, v, tint) => rows.push({
+                                    l: l,
+                                    v: v,
+                                    tint: tint
+                                });
+                            switch (page.kind) {
+                            case "cpu":
+                                {
+                                    const c = f.cpu;
+                                    add(I18n.tr("Usage"), Fmt.percent(c.usage, L));
+                                    add(I18n.tr("Speed"), Fmt.mhz(c.avgMhz, L));
+                                    if (c.maxMhz)
+                                        add(I18n.tr("Max speed"), Fmt.mhz(c.maxMhz, L));
+                                    if (c.temp !== null && c.temp !== undefined)
+                                        add(I18n.tr("Temperature"), Fmt.celsius(c.temp, L), c.temp >= (c.tempCrit ?? 100) - 8 ? Theme.pulse.crit : undefined);
+                                    add(I18n.tr("Processes"), String(c.processes));
+                                    add(I18n.tr("Threads"), String(c.threads));
+                                    add(I18n.tr("Load (1/5/15 min)"), c.load.map(v => Fmt.num(v, 2, L)).join(" "));
+                                    add(I18n.tr("Waiting for CPU"), Fmt.percent(c.pressure, L), c.pressure >= 20 ? Theme.pulse.warn : undefined);
+                                    add(I18n.tr("Context switches"), I18n.tr("%1/s", Fmt.num(c.ctxtPerSec, 0, L)));
+                                    add(I18n.tr("Logical processors"), String(c.logical));
+                                    if (c.governor)
+                                        add(I18n.tr("Governor"), c.governor + (c.epp ? " · " + c.epp : ""));
+                                    if (c.throttleTotal)
+                                        add(I18n.tr("Throttled since boot"), I18n.tr("%1 times", Fmt.num(c.throttleTotal, 0, L)), c.throttled > 0 ? Theme.pulse.warn : undefined);
+                                    add(I18n.tr("Up time"), Fmt.clock(c.uptime));
+                                    if (c.cache)
+                                        add(I18n.tr("Cache"), c.cache);
+                                    break;
+                                }
+                            case "memory":
+                                {
+                                    const m = f.memory;
+                                    add(I18n.tr("In use"), Fmt.bytes(m.used, L));
+                                    add(I18n.tr("Available"), Fmt.bytes(m.available, L));
+                                    add(I18n.tr("Cache"), Fmt.bytes(m.cache, L));
+                                    add(I18n.tr("Free"), Fmt.bytes(m.free, L));
+                                    add(I18n.tr("Shared"), Fmt.bytes(m.shmem, L));
+                                    add(I18n.tr("Waiting to be written"), Fmt.bytes(m.dirty, L));
+                                    if (m.swapTotal > 0)
+                                        add(I18n.tr("Swap"), Fmt.bytes(m.swapUsed, L) + " / " + Fmt.bytes(m.swapTotal, L));
+                                    if (m.zswapped > 0)
+                                        add(I18n.tr("Compressed (zswap)"), Fmt.bytes(m.zswapped, L) + " → " + Fmt.bytes(m.zswap, L));
+                                    add(I18n.tr("Swap in / out"), Fmt.rate(m.swapInBps, L) + " / " + Fmt.rate(m.swapOutBps, L), m.swapInBps + m.swapOutBps > 1048576 ? Theme.pulse.warn : undefined);
+                                    add(I18n.tr("Page faults"), I18n.tr("%1/s", Fmt.num(m.majorFaultsPerSec, 0, L)));
+                                    add(I18n.tr("Waiting for memory"), Fmt.percent(m.pressure, L), m.pressure >= 10 ? Theme.pulse.warn : undefined);
+                                    add(I18n.tr("Out-of-memory kills"), String(m.oomKills), m.oomKills > 0 ? Theme.pulse.warn : undefined);
+                                    break;
+                                }
+                            case "gpu":
+                                {
+                                    const g = page.gpu;
+                                    if (!g)
+                                        break;
+                                    add(I18n.tr("State"), g.asleep ? I18n.tr("Asleep") : I18n.tr("Awake"), g.asleep ? Theme.pulse.ok : undefined);
+                                    add(I18n.tr("Usage"), Fmt.percent(g.busy ?? 0, L));
+                                    if (g.vramTotal)
+                                        add(I18n.tr("Video memory"), Fmt.bytes(g.vramUsed, L) + " / " + Fmt.bytes(g.vramTotal, L));
+                                    if (g.mhz)
+                                        add(I18n.tr("Speed"), Fmt.mhz(g.mhz, L) + (g.maxMhz ? " / " + Fmt.mhz(g.maxMhz, L) : ""));
+                                    if (g.temp)
+                                        add(I18n.tr("Temperature"), Fmt.celsius(g.temp, L));
+                                    if (g.watts)
+                                        add(I18n.tr("Power"), Fmt.watts(g.watts, L));
+                                    if (g.encoder !== null && g.encoder !== undefined)
+                                        add(I18n.tr("Video encoder"), Fmt.percent(g.encoder, L));
+                                    if (g.decoder !== null && g.decoder !== undefined)
+                                        add(I18n.tr("Video decoder"), Fmt.percent(g.decoder, L));
+                                    add(I18n.tr("Driver"), g.driver);
+                                    const users = Pulse.apps.filter(a => a.gpus.indexOf(g.card) >= 0 && a.kind !== "kernel").map(a => a.name);
+                                    add(I18n.tr("Used by"), users.length > 0 ? Words.names(users) : I18n.tr("nothing"));
+                                    break;
+                                }
+                            case "disk":
+                                {
+                                    const d = page.disk;
+                                    if (!d)
+                                        break;
+                                    add(I18n.tr("Read"), Fmt.rate(d.readBps, L));
+                                    add(I18n.tr("Write"), Fmt.rate(d.writeBps, L));
+                                    add(I18n.tr("Busy"), Fmt.percent(d.busy, L));
+                                    add(I18n.tr("Type"), d.removable ? I18n.tr("Removable") : d.rotational ? I18n.tr("Hard disk") : I18n.tr("SSD"));
+                                    add(I18n.tr("Capacity"), Fmt.bytes(d.size, L));
+                                    add(I18n.tr("Waiting for I/O"), Fmt.percent(f.io.pressureFull, L), f.io.pressureFull >= 10 ? Theme.pulse.warn : undefined);
+                                    for (const m of d.mounts)
+                                        add(m.path + " (" + m.fstype + ")", I18n.tr("%1 free of %2", Fmt.bytes(m.total - m.used, L), Fmt.bytes(m.total, L)), m.used / m.total > 0.9 ? Theme.pulse.crit : undefined);
+                                    break;
+                                }
+                            case "net":
+                                {
+                                    const n = page.net;
+                                    if (!n)
+                                        break;
+                                    add(I18n.tr("Down"), Fmt.bits(n.rxBps, L));
+                                    add(I18n.tr("Up"), Fmt.bits(n.txBps, L));
+                                    add(I18n.tr("Received"), Fmt.bytes(n.rxTotal, L));
+                                    add(I18n.tr("Sent"), Fmt.bytes(n.txTotal, L));
+                                    add(I18n.tr("State"), n.up ? I18n.tr("Connected") : I18n.tr("Disconnected"));
+                                    if (n.speedMbps)
+                                        add(I18n.tr("Link speed"), I18n.tr("%1 Mbit/s", n.speedMbps));
+                                    break;
+                                }
+                            case "power":
+                                {
+                                    const b = page.bat;
+                                    if (!b)
+                                        break;
+                                    add(I18n.tr("Charge"), Fmt.percent(b.percent, L, 0));
+                                    add(I18n.tr("State"), b.status === "charging" ? I18n.tr("Charging") : b.status === "discharging" ? I18n.tr("Discharging") : b.status === "full" ? I18n.tr("Full") : I18n.tr("Not charging"));
+                                    add(I18n.tr("Power"), Fmt.watts(b.watts, L));
+                                    if (b.secondsLeft)
+                                        add(b.status === "charging" ? I18n.tr("Full in") : I18n.tr("Time left"), I18n.duration(b.secondsLeft));
+                                    add(I18n.tr("Energy"), Fmt.num(b.energyWh, 1, L) + " / " + Fmt.num(b.fullWh, 1, L) + " Wh");
+                                    if (b.designWh > 0)
+                                        add(I18n.tr("Health"), Fmt.percent(Math.min(100, b.fullWh / b.designWh * 100), L, 0), b.fullWh / b.designWh < 0.7 ? Theme.pulse.warn : undefined);
+                                    if (b.cycles)
+                                        add(I18n.tr("Charge cycles"), String(b.cycles));
+                                    if (f.powerProfile)
+                                        add(I18n.tr("Power profile"), Words.profile(f.powerProfile));
+                                    break;
+                                }
+                            }
+                            return rows;
+                        }
+
+                        Stat {
+                            required property var modelData
+
+                            Layout.fillWidth: true
+                            label: modelData.l
+                            value: modelData.v
+                            tint: modelData.tint ?? Theme.colors.text
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

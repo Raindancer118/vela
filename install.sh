@@ -92,14 +92,18 @@ done
 for c in ${WITH//,/ } ${WITHOUT//,/ }; do is_component "$c" || die "unknown component '$c' (${COMPONENTS[*]})"; done
 
 # ------------------------------------------------------------ selection
-declare -A ON=() BEFORE=()
+declare -A ON=() BEFORE=() NEW=()
 OLD_PROFILE=""
 if [[ -f "$MANIFEST" ]]; then
     OLD_PROFILE="$(sed -n 's/^profile *= *"\(.*\)"/\1/p' "$MANIFEST")"
     for c in "${COMPONENTS[@]}"; do
         v="$(sed -n "s/^$(key_of "$c") *= *\(true\|false\).*/\1/p" "$MANIFEST")"
-        # Added in a later version: as in the chosen profile.
-        [[ -z "$v" ]] && { in_profile "$OLD_PROFILE" "$c" && v=true || v=false; }
+        # Added in a later version: selected as in the chosen profile, but
+        # not installed yet (so it counts as new below).
+        if [[ -z "$v" ]]; then
+            in_profile "$OLD_PROFILE" "$c" && NEW[$c]=1
+            continue
+        fi
         [[ "$v" == true ]] && BEFORE[$c]=1
     done
 elif [[ -x "$BINDIR/vela" ]]; then
@@ -117,7 +121,7 @@ SELECTED_PROFILE=""
 if [[ -n "$PROFILE" ]]; then
     use_profile "$PROFILE"
 elif [[ -f "$MANIFEST" ]]; then
-    for c in "${!BEFORE[@]}"; do ON[$c]=1; done
+    for c in "${!BEFORE[@]}" "${!NEW[@]}"; do ON[$c]=1; done
     SELECTED_PROFILE="$OLD_PROFILE"
 else
     use_profile full
@@ -205,7 +209,7 @@ if command -v pacman >/dev/null; then
     optional=(xdg-utils)
     has launcher && optional+=(plocate)
     { has launcher || has claude; } && optional+=(kitty)
-    { has panel || has share-picker; } && optional+=(quickshell)
+    { has panel || has share-picker || has pulse; } && optional+=(quickshell)
     has idle && optional+=(hypridle)
     has share-picker && optional+=(slurp xdg-desktop-portal-hyprland)
     for p in "${optional[@]}"; do
@@ -236,7 +240,7 @@ elif ((BUILD)); then
     say "building (release)"
     cargo build --release --locked
 fi
-for b in vela vela-daemon vela-share-picker; do
+for b in vela vela-daemon vela-share-picker vela-pulse; do
     [[ -x "$BUILT/$b" ]] || die "$BUILT/$b is missing (build first or drop --no-build)"
 done
 
@@ -256,8 +260,8 @@ install -Dm644 contrib/hyprland/vela.lua "$HYPRDIR/vela.lua"
 stop() { pkill -f "^$BINDIR/vela $1\$" 2>/dev/null || true; }
 
 # ------------------------------------------------------------ control center files
-# The panel and the share picker both run from the shell directory.
-if has panel || has share-picker; then
+# The panel, the share picker and Pulse all run from the shell directory.
+if has panel || has share-picker || has pulse; then
     # Overwrite in place (cp keeps the files) so a running shell notices the
     # change and reloads itself; drop files that no longer exist.
     mkdir -p "$DATADIR/vela/shell"
@@ -268,7 +272,7 @@ if has panel || has share-picker; then
     pgrep -f "qs -p $DATADIR/vela/shell" >/dev/null 2>&1 && sleep 1
     { cat shell/shell.qml; printf '// installed %s\n' "$(date +%s)"; } >"$DATADIR/vela/shell/shell.qml"
     (cd "$DATADIR/vela/shell" && find . -type f \( -name '*.qml' -o -name '*.js' -o -name '*.svg' \) | while read -r f; do [[ -f "$OLDPWD/shell/$f" ]] || rm -f "$f"; done)
-    command -v qs >/dev/null || warn "Quickshell (qs) not found — the control center and the share picker need it"
+    command -v qs >/dev/null || warn "Quickshell (qs) not found — the control center, the share picker and Pulse need it"
 else
     if removed panel; then
         stop shell
@@ -278,6 +282,26 @@ else
 fi
 if has panel && ! had panel; then
     say "control center: starts with Hyprland (now: setsid $BINDIR/vela shell)"
+fi
+
+# Panel dropped but the shell files stay (share picker or Pulse).
+if removed panel && { has share-picker || has pulse; }; then
+    stop shell
+    say "control center removed"
+fi
+
+# ------------------------------------------------------------ Pulse
+# The task manager: its own program (menu entry, vela-pulse), Ctrl+Shift+Esc.
+if has pulse; then
+    install -Dm755 "$BUILT/vela-pulse" "$BINDIR/vela-pulse"
+    sed "s|^Exec=vela-pulse|Exec=$BINDIR/vela-pulse|" data/vela-pulse.desktop | install -Dm644 /dev/stdin "$DATADIR/applications/vela-pulse.desktop"
+    had pulse || say "Pulse: Ctrl+Shift+Esc, \"Pulse\" in the app menu, or: vela-pulse"
+else
+    rm -f "$BINDIR/vela-pulse" "$DATADIR/applications/vela-pulse.desktop"
+    if removed pulse; then
+        pkill -f "qs -p $DATADIR/vela/shell/pulse.qml" 2>/dev/null || true
+        say "Pulse removed"
+    fi
 fi
 
 # ------------------------------------------------------------ idle
@@ -369,7 +393,7 @@ if [[ -f "$HYPRDIR/hyprland.lua" ]]; then
     fi
     # vela.lua reads the selection when the config loads.
     lua_changed=0
-    for c in launcher panel idle hyprland; do
+    for c in launcher panel idle hyprland pulse; do
         [[ "$(has "$c" && echo 1)" == "$(had "$c" && echo 1)" ]] || lua_changed=1
     done
     if ((lua_changed)) && [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] && grep -qF 'hypr/vela.lua' "$HYPRDIR/hyprland.lua"; then

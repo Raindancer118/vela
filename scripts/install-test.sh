@@ -57,6 +57,9 @@ installed --profile minimal -y
 check "minimal: vela" test -x "$BIN/vela"
 check "minimal: daemon" test -x "$BIN/vela-daemon"
 check "minimal: no share picker" test ! -e "$BIN/vela-share-picker"
+check "minimal: no pulse" test ! -e "$BIN/vela-pulse"
+check "minimal: no pulse menu entry" test ! -e "$DATA/applications/vela-pulse.desktop"
+check "minimal: pulse off" key pulse false
 check "minimal: no shell" test ! -e "$DATA/vela/shell"
 check "minimal: vela.lua" test -f "$HOME/.config/hypr/vela.lua"
 check "minimal: unit" test -f "$HOME/.config/systemd/user/vela.service"
@@ -75,6 +78,13 @@ installed --profile full -y
 check "full: share picker" test -x "$BIN/vela-share-picker"
 check "full: shell" test -f "$DATA/vela/shell/shell.qml"
 check "full: share picker qml" test -f "$DATA/vela/shell/share-picker.qml"
+check "full: share picker js" test -f "$DATA/vela/shell/sharepicker/logic.js"
+check "full: pulse" test -x "$BIN/vela-pulse"
+check "full: pulse qml" test -f "$DATA/vela/shell/pulse.qml"
+check "full: pulse js" test -f "$DATA/vela/shell/pulse/Fmt.js"
+check "full: pulse menu entry" grep -qx "Exec=$BIN/vela-pulse" "$DATA/applications/vela-pulse.desktop"
+check "full: pulse icon" test -f "$DATA/icons/hicolor/scalable/apps/vela-pulse.svg"
+check "full: pulse on" key pulse true
 check "full: no test files" sh -c "! ls '$DATA/vela/shell' | grep -q '^test-'"
 check "full: xdph.conf" grep -q "custom_picker_binary = $BIN/vela-share-picker" "$HOME/.config/hypr/xdph.conf"
 check "full: MCP registered" test -e "$HOME/.mcp-registered"
@@ -84,6 +94,15 @@ check "full: vela reads it" sh -c "'$BIN/vela' components | grep -q 'profile: fu
 # A rerun without options keeps the selection.
 installed -y
 check "rerun: still full" key profile '"full"'
+
+# A component added in a newer version: on as in the profile, and new.
+sed -i '/^pulse = /d' "$DATA/vela/components.toml"
+rm -f "$BIN/vela-pulse"
+installed -y
+check "new component: pulse on" key pulse true
+check "new component: installed" test -x "$BIN/vela-pulse"
+check "new component: announced" grep -q "Pulse: Ctrl+Shift+Esc" "$tmp/out.log"
+check "new component: still full" key profile '"full"'
 
 # panel, adjusted: custom selection; the share picker and launcher go away.
 installed --profile panel --with claude --without share-picker
@@ -96,10 +115,15 @@ check "panel: xdph block removed" test ! -e "$HOME/.config/hypr/xdph.conf"
 check "panel: shell kept" test -f "$DATA/vela/shell/shell.qml"
 check "panel: MCP still registered" test -e "$HOME/.mcp-registered"
 
-# Dropping Claude unregisters the MCP server; dropping the panel the shell.
+# Dropping Claude unregisters the MCP server; Pulse alone keeps the shell
+# files, dropping it too removes them.
 installed --without claude,panel -y
 check "drop: MCP removed" test ! -e "$HOME/.mcp-registered"
+check "drop: pulse keeps the shell" test -f "$DATA/vela/shell/pulse.qml"
+installed --without pulse -y
 check "drop: shell removed" test ! -e "$DATA/vela/shell"
+check "drop: pulse removed" test ! -e "$BIN/vela-pulse"
+check "drop: pulse menu entry removed" test ! -e "$DATA/applications/vela-pulse.desktop"
 check "drop: idle kept" key idle true
 
 # The menu: 5 = custom, toggle 1 (launcher) and 4 (panel) on from the last selection.
@@ -121,6 +145,7 @@ check "selection unchanged" key profile '"minimal"'
 mkdir -p "$XDG_CONFIG_HOME/vela" && echo '# mine' >"$XDG_CONFIG_HOME/vela/config.toml"
 ./uninstall.sh >>"$tmp/out.log" 2>&1
 check "uninstall: vela gone" test ! -e "$BIN/vela"
+check "uninstall: pulse gone" test ! -e "$BIN/vela-pulse"
 check "uninstall: selection gone" test ! -e "$DATA/vela/components.toml"
 check "uninstall: config kept" test -f "$XDG_CONFIG_HOME/vela/config.toml"
 check "uninstall: hyprland.lua kept" test -f "$HOME/.config/hypr/hyprland.lua"
@@ -133,7 +158,7 @@ cat >"$tmp/nixfake/nix" <<EOF
 echo "nix \$*" >>"$log"
 while [ \$# -gt 0 ]; do [ "\$1" = --out-link ] && link="\$2"; shift; done
 mkdir -p "$tmp/store/bin"
-for b in vela vela-daemon vela-share-picker; do printf '#!/bin/sh\necho nix-%s\n' "\$b" >"$tmp/store/bin/\$b"; chmod +x "$tmp/store/bin/\$b"; done
+for b in vela vela-daemon vela-share-picker vela-pulse; do printf '#!/bin/sh\necho nix-%s\n' "\$b" >"$tmp/store/bin/\$b"; chmod +x "$tmp/store/bin/\$b"; done
 ln -sfn "$tmp/store" "\$link"
 EOF
 chmod +x "$tmp/nixfake/nix"

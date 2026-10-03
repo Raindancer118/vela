@@ -68,7 +68,7 @@ out="$(timeout 20 qs -p shell/test-power.qml 2>&1 | grep -E "PASS|FAIL" || true)
 echo "$out"
 [[ "$out" == *PASS* ]] || fail "power mode"
 
-for t in highlight details claude usage updates dwell sharepicker media; do
+for t in highlight details claude usage updates dwell sharepicker media pulse; do
     echo ":: $t"
     out="$(timeout 20 qs -p shell/test-$t.qml 2>&1 | grep -E "PASS|FAIL" || true)"
     echo "$out"
@@ -81,6 +81,21 @@ out="$(VELA_SHELL_DIR="$PWD/shell" VELA_SHARE_PREVIEW=screen VELA_SHARE_PREVIEW_
     timeout 20 "$picker" --allow-token 2>"$tmp/picker.log" || true)"
 echo "$out"
 [[ "$out" =~ ^\[SELECTION\]r/screen:[^[:space:]]+$ ]] || { cat "$tmp/picker.log"; fail "share picker"; }
+
+# The window itself only headless (weston): locally it would pop up.
+if [[ -n "$weston_pid" ]]; then
+    echo ":: Pulse window through vela-pulse"
+    VELA_SHELL_DIR="$PWD/shell" "$(dirname "$BIN")/vela-pulse" >"$tmp/pulse.log" 2>&1 || { cat "$tmp/pulse.log"; fail "vela-pulse did not start"; }
+    for _ in $(seq 100); do pgrep -f "qs -p $PWD/shell/pulse.qml" >/dev/null && break; sleep 0.1; done
+    sleep 4
+    qslog="$(ls -t "$XDG_RUNTIME_DIR"/quickshell/by-id/*/log.qslog 2>/dev/null | head -1 || true)"
+    "$(dirname "$BIN")/vela-pulse" >>"$tmp/pulse.log" 2>&1 || fail "second vela-pulse (raise) failed"
+    [[ "$(pgrep -fc "qs -p $PWD/shell/pulse.qml")" == 1 ]] || fail "vela-pulse started a second window"
+    pkill -f "qs -p $PWD/shell/pulse.qml" || true
+    if [[ -n "$qslog" ]] && qs log "$qslog" 2>/dev/null | grep -E "ERROR.*(scene|qml)|Failed to load|TypeError|ReferenceError|is not defined|Cannot assign"; then
+        fail "errors in the Pulse log"
+    fi
+fi
 
 echo ":: locales"
 for l in de_DE en_US fr_FR C; do

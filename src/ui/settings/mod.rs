@@ -9,6 +9,7 @@ mod hypr_monitors;
 mod hypr_pages;
 mod hypr_rows;
 mod pages;
+mod pulse_page;
 mod search_page;
 mod updates_page;
 mod vela_group;
@@ -24,7 +25,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 /// Sidebar entries: (section, page id, title, icon). Ids are `SETTINGS_PAGES`.
-const ENTRIES: [(&str, &str, &str, &str); 22] = [
+const ENTRIES: [(&str, &str, &str, &str); 23] = [
     ("", "home", "Search", "system-search-symbolic"),
     ("Launcher", "general", "Launcher", "system-search-symbolic"),
     ("Launcher", "apps", "Applications", "view-grid-symbolic"),
@@ -45,6 +46,7 @@ const ENTRIES: [(&str, &str, &str, &str); 22] = [
     ("Hyprland", "hypr-behaviour", "Behaviour", "vela-behaviour-symbolic"),
     ("Hyprland", "hypr-all", "All options", "vela-all-options-symbolic"),
     ("Everywhere", "appearance", "Appearance", "applications-graphics-symbolic"),
+    ("Everywhere", "pulse", "Pulse", "vela-pulse-symbolic"),
     ("Everywhere", "updates", "Updates", "vela-updates-symbolic"),
     ("Everywhere", "system", "System", "preferences-system-symbolic"),
 ];
@@ -60,6 +62,7 @@ fn page_visible(id: &str, installed: &Installed) -> bool {
         // Night light belongs to the panel, the rest to idle.
         "power" => &[Component::Panel, Component::Idle],
         "updates" => &[Component::Updates],
+        "pulse" => &[Component::Pulse],
         _ if id.starts_with("hypr-") => &[Component::Hyprland],
         _ => return true,
     };
@@ -134,6 +137,7 @@ impl SettingsWindow {
                 }
                 "appearance" => pages::appearance(&binder).upcast(),
                 "updates" => updates_page::build(daemon, &binder).upcast(),
+                "pulse" => pulse_page::build(&binder).upcast(),
                 _ => pages::system(daemon, &binder).upcast(),
             };
             home.add_page(id, title, &page);

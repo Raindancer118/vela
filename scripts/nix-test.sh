@@ -10,7 +10,7 @@ nix() { command nix --extra-experimental-features 'nix-command flakes' "$@"; }
 
 nix flake check --no-build "path:$repo"
 out="$(nix build --no-link --print-out-paths "path:$repo#default")"
-for f in bin/vela bin/vela-daemon bin/vela-share-picker share/vela/vela.lua share/vela/shell/Config.qml share/applications/vela.desktop; do
+for f in bin/vela bin/vela-daemon bin/vela-share-picker bin/vela-pulse share/vela/vela.lua share/vela/shell/Config.qml share/vela/shell/pulse.qml share/vela/shell/pulse/Fmt.js share/vela/shell/sharepicker/logic.js share/applications/vela.desktop share/applications/vela-pulse.desktop; do
     [[ -e "$out/$f" ]] || { echo "FAIL: package lacks $f"; exit 1; }
 done
 "$out/bin/vela" --version

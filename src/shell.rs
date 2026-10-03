@@ -150,6 +150,17 @@ pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) ->
             "claudeUsageHidden": pn.claude_usage_hidden,
             "updatesTile": pn.updates_tile && installed.has(Component::Updates),
         },
+        "pulse": {
+            "smoothGraphs": cfg.pulse.smooth_graphs,
+            "startPage": cfg.pulse.start_page,
+            "rangeSecs": cfg.pulse.range_secs,
+            "confirmEnd": cfg.pulse.confirm_end,
+            "heatMap": cfg.pulse.heat_map,
+            "showKernel": cfg.pulse.show_kernel,
+            "intervalMs": cfg.pulse.interval_ms,
+            "record": cfg.pulse.record,
+            "claude": installed.has(Component::Claude),
+        },
     })
     .to_string()
 }
@@ -268,6 +279,9 @@ mod tests {
         let j: Value = serde_json::from_str(&shell_json_for(&Config::default(), &Installed::all())).unwrap();
         assert_eq!(j["panel"]["claudeUsage"], true);
         assert_eq!(j["panel"]["updatesTile"], true);
+        assert_eq!(j["pulse"]["smoothGraphs"], true);
+        assert_eq!(j["pulse"]["startPage"], "overview");
+        assert_eq!(j["pulse"]["rangeSecs"], 60);
     }
 
     #[test]

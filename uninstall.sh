@@ -15,8 +15,10 @@ say() { printf '\033[1;34m::\033[0m %s\n' "$*"; }
 "$PREFIX/bin/vela" quit 2>/dev/null || true
 systemctl --user stop vela.service 2>/dev/null || true
 
-rm -f "$PREFIX/bin/vela" "$PREFIX/bin/vela-daemon" "$PREFIX/bin/vela-share-picker" \
-    "$DATADIR/applications/vela.desktop" \
+pkill -f "qs -p $DATADIR/vela/shell/pulse.qml" 2>/dev/null || true
+rm -f "$PREFIX/bin/vela" "$PREFIX/bin/vela-daemon" "$PREFIX/bin/vela-share-picker" "$PREFIX/bin/vela-pulse" \
+    "$DATADIR/applications/vela.desktop" "$DATADIR/applications/vela-pulse.desktop" \
+    "$DATADIR/icons/hicolor/scalable/apps/vela-pulse.svg" \
     "$DATADIR/icons/hicolor/scalable/apps/vela.svg" \
     "$DATADIR/icons/hicolor/scalable/apps/vela-claude-symbolic.svg" \
     "$DATADIR/icons/hicolor/scalable/apps/vela-drag-handle-symbolic.svg" \

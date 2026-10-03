@@ -31,7 +31,7 @@ enum Cmd {
     /// Hide the launcher.
     Hide,
     /// Open the settings window, optionally on a page
-    /// (general, apps, search, claude, panel, notifications, power, appearance, updates, system).
+    /// (general, apps, search, claude, panel, notifications, power, appearance, pulse, updates, system).
     Settings {
         #[arg(value_parser = clap::builder::PossibleValuesParser::new(ipc::SETTINGS_PAGES))]
         page: Option<String>,
@@ -80,6 +80,13 @@ enum Cmd {
     /// update state whenever it changes (used by the control center).
     Updates {
         #[arg(default_value = "list", value_parser = ["check", "list", "watch"])]
+        action: String,
+    },
+    /// Pulse, the task manager: opens its window (default), or `serve`
+    /// (the window's backend, JSON lines), `snapshot` (one frame as JSON),
+    /// `doctor` (what's wrong, in words).
+    Pulse {
+        #[arg(default_value = "open", value_parser = ["open", "serve", "snapshot", "doctor"])]
         action: String,
     },
     /// Print which parts of vela are installed (chosen in install.sh).
@@ -145,6 +152,7 @@ fn main() -> ExitCode {
                 }
             };
         }
+        Cmd::Pulse { action } => return pulse(&action),
         Cmd::Components => {
             print_components();
             return ExitCode::SUCCESS;
@@ -392,6 +400,80 @@ fn shell_config(watch: bool) -> ExitCode {
             life.reexec_if_updated(|| {});
         }
         std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
+fn pulse(action: &str) -> ExitCode {
+    match action {
+        "serve" => {
+            let _life = Lifecycle::start(true);
+            match vela::pulse::serve::run() {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("vela: {e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        "snapshot" | "doctor" => {
+            let mut m = vela::pulse::engine::Monitor::new();
+            m.tick(false);
+            std::thread::sleep(Duration::from_millis(700));
+            let f = m.tick(action == "snapshot");
+            if action == "snapshot" {
+                println!("{}", serde_json::to_string(&f).unwrap_or_default());
+            } else {
+                print!("{}", vela::pulse::doctor::report(&f.sample, &f.apps, &f.findings, f.score));
+            }
+            ExitCode::SUCCESS
+        }
+        _ => open_pulse(),
+    }
+}
+
+/// Shows the running Pulse window or starts one (its own Quickshell instance).
+fn open_pulse() -> ExitCode {
+    let exe = std::env::current_exe().ok();
+    let Some(dir) = shell::find_shell_dir(std::env::var_os("VELA_SHELL_DIR").as_deref(), &shell::shell_dir_candidates(exe.as_deref())) else {
+        eprintln!("vela: Pulse files not found (set VELA_SHELL_DIR or reinstall vela)");
+        return ExitCode::FAILURE;
+    };
+    let Some(qs) = paths::find_executable("qs").or_else(|| paths::find_executable("quickshell")) else {
+        eprintln!("vela: Quickshell (qs) is not installed");
+        return ExitCode::FAILURE;
+    };
+    let entry = dir.join("pulse.qml");
+    let shown = std::process::Command::new(&qs)
+        .arg("-p")
+        .arg(&entry)
+        .args(["ipc", "call", "pulse", "show"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    if shown {
+        return ExitCode::SUCCESS;
+    }
+    let mut cmd = std::process::Command::new(qs);
+    cmd.arg("-p").arg(&entry).arg("-d");
+    if let Some(exe) = exe {
+        cmd.env("VELA_BIN", exe);
+    }
+    match cmd
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+    {
+        Ok(s) if s.success() => ExitCode::SUCCESS,
+        Ok(s) => {
+            eprintln!("vela: Pulse exited with {s}");
+            ExitCode::FAILURE
+        }
+        Err(e) => {
+            eprintln!("vela: cannot start Quickshell: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 

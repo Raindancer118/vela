@@ -22,10 +22,11 @@ pub enum Component {
     Idle,
     SharePicker,
     Updates,
+    Pulse,
 }
 
 impl Component {
-    pub const ALL: [Component; 7] = [
+    pub const ALL: [Component; 8] = [
         Component::Launcher,
         Component::Claude,
         Component::Hyprland,
@@ -33,6 +34,7 @@ impl Component {
         Component::Idle,
         Component::SharePicker,
         Component::Updates,
+        Component::Pulse,
     ];
 
     /// Id in the catalog and in install.sh (`--with share-picker`).
@@ -45,6 +47,7 @@ impl Component {
             Component::Idle => "idle",
             Component::SharePicker => "share-picker",
             Component::Updates => "updates",
+            Component::Pulse => "pulse",
         }
     }
 
