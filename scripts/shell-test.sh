@@ -121,11 +121,28 @@ done
 
 echo ":: start-up of the full shell"
 # Own session bus: the notification daemon must not fight the desktop's.
-dbus-run-session -- bash -c '"$0" shell >"$1/shell.log" 2>&1 & pid=$!
+# Without service dirs: otherwise Qt's portal lookup activates a second
+# xdg-desktop-portal stack on it, whose xdph segfaults when the bus goes away.
+cat >"$tmp/bus.conf" <<XML
+<busconfig>
+  <type>session</type>
+  <listen>unix:dir=$tmp</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+XML
+dbus-run-session --config-file="$tmp/bus.conf" -- bash -c '"$0" shell >"$1/shell.log" 2>&1 & pid=$!
     for _ in $(seq 100); do grep -q "Configuration Loaded" "$1/shell.log" 2>/dev/null && break; sleep 0.1; done
     sleep 1
     "$0" panel toggle >>"$1/shell.log" 2>&1 && "$0" panel close >>"$1/shell.log" 2>&1; ok=$?
+    dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.ListNames >"$1/names.log" 2>&1
     kill $pid; exit $ok' "$BIN" "$tmp" || { cat "$tmp/shell.log"; fail "ipc to the shell failed"; }
+grep -q '"org.freedesktop.DBus"' "$tmp/names.log" || { cat "$tmp/names.log"; fail "could not list the test bus' names"; }
+grep -q "org.freedesktop.portal" "$tmp/names.log" && fail "the test bus started its own xdg-desktop-portal (it crashes when the bus goes away)"
 grep -q "Configuration Loaded" "$tmp/shell.log" || { cat "$tmp/shell.log"; fail "shell did not load"; }
 # QML/load errors only: missing system services (PipeWire, NetworkManager in CI)
 # are reported by their backends and are not the shell's fault.
