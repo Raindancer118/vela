@@ -82,6 +82,11 @@ check "full: share picker js" test -f "$DATA/vela/shell/sharepicker/logic.js"
 check "full: pulse" test -x "$BIN/vela-pulse"
 check "full: pulse qml" test -f "$DATA/vela/shell/pulse.qml"
 check "full: pulse js" test -f "$DATA/vela/shell/pulse/Fmt.js"
+# Entry files are written last with a fresh stamp, so a running instance
+# reloads once more after a copy it may have caught half done.
+for e in shell.qml pulse.qml share-picker.qml; do
+    check "full: $e written last" grep -q '^// installed [0-9]*$' "$DATA/vela/shell/$e"
+done
 check "full: pulse menu entry" grep -qx "Exec=$BIN/vela-pulse" "$DATA/applications/vela-pulse.desktop"
 check "full: pulse icon" test -f "$DATA/icons/hicolor/scalable/apps/vela-pulse.svg"
 check "full: pulse on" key pulse true

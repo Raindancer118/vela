@@ -265,12 +265,16 @@ if has panel || has share-picker || has pulse; then
     # Overwrite in place (cp keeps the files) so a running shell notices the
     # change and reloads itself; drop files that no longer exist.
     mkdir -p "$DATADIR/vela/shell"
-    (cd shell && find . -type f \( -name '*.qml' -o -name '*.js' -o -name '*.svg' \) ! -name 'test-*' ! -path ./shell.qml -exec sh -c 'mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2"' _ "$DATADIR/vela/shell" {} \;)
-    # shell.qml last, after a pause and always different: the running shell may
-    # have reloaded mid-copy (old and new files mixed); this separate change makes
-    # it reload once more with every file in place.
+    entries=(shell.qml pulse.qml share-picker.qml)
+    (cd shell && find . -type f \( -name '*.qml' -o -name '*.js' -o -name '*.svg' \) ! -name 'test-*' ! -path ./shell.qml ! -path ./pulse.qml ! -path ./share-picker.qml -exec sh -c 'mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2"' _ "$DATADIR/vela/shell" {} \;)
+    # The entry files last, after a pause and always different: a running shell,
+    # Pulse or share picker may have reloaded mid-copy (old and new files mixed,
+    # or a file read while empty — Pulse then lost its window for good); this
+    # separate change makes each reload once more with every file in place.
     pgrep -f "qs -p $DATADIR/vela/shell" >/dev/null 2>&1 && sleep 1
-    { cat shell/shell.qml; printf '// installed %s\n' "$(date +%s)"; } >"$DATADIR/vela/shell/shell.qml"
+    for e in "${entries[@]}"; do
+        { cat "shell/$e"; printf '// installed %s\n' "$(date +%s)"; } >"$DATADIR/vela/shell/$e"
+    done
     (cd "$DATADIR/vela/shell" && find . -type f \( -name '*.qml' -o -name '*.js' -o -name '*.svg' \) | while read -r f; do [[ -f "$OLDPWD/shell/$f" ]] || rm -f "$f"; done)
     command -v qs >/dev/null || warn "Quickshell (qs) not found — the control center, the share picker and Pulse need it"
 else
