@@ -221,7 +221,7 @@ function M.setup(opts)
             name = "vela-quickshare",
             match = { title = "^Quick Share$" },
             float = true,
-            size = "460 680",
+            size = "460 820",
             center = true,
         })
     end

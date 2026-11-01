@@ -118,6 +118,7 @@ ColumnLayout {
 
     StyledText {
         Layout.fillWidth: true
+        visible: !(root.roomy && root.running)
         horizontalAlignment: Text.AlignHCenter
         text: I18n.tr("On the phone, choose Quick Share and then “%1”", QuickShare.name || root.systemName)
         color: Theme.colors.textMuted

@@ -94,8 +94,21 @@ ColumnLayout {
     Component {
         id: receiveTab
 
-        QuickShareReceive {
-            roomy: root.inWindow
+        // In the window it scrolls, should a small screen cut it off.
+        Flickable {
+            objectName: "receive"
+            implicitHeight: root.inWindow ? 0 : receive.implicitHeight
+            contentHeight: receive.implicitHeight
+            clip: root.inWindow
+            interactive: root.inWindow && contentHeight > height
+            boundsBehavior: Flickable.StopAtBounds
+
+            QuickShareReceive {
+                id: receive
+
+                width: parent.width
+                roomy: root.inWindow
+            }
         }
     }
 }

@@ -14,7 +14,7 @@ FloatingWindow {
 
     title: "Quick Share"
     implicitWidth: 460
-    implicitHeight: 680
+    implicitHeight: 820
     minimumSize: Qt.size(380, 520)
     color: Theme.colors.panel
     // Closed by the compositor (its X, Super+Q): forget it.
