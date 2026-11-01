@@ -117,7 +117,8 @@ ColumnLayout {
     StyledText {
         Layout.fillWidth: true
         Layout.topMargin: Theme.spacing.md
-        text: I18n.tr("Phone and PC must be on the same Wi-Fi.")
+        objectName: "networkHint"
+        text: QuickShare.hotspot ? I18n.tr("No shared Wi-Fi needed: the phone switches to an access point of this PC.") : I18n.tr("Phone and PC must be on the same Wi-Fi.")
         color: Theme.colors.textMuted
         font.pixelSize: Theme.font.small
         wrapMode: Text.WordWrap

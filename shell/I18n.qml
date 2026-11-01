@@ -190,6 +190,7 @@ Singleton {
                 "On the phone, choose Quick Share and then “%1”": "Wähle auf dem Handy Quick Share und dann „%1“",
                 "Leave empty for the system name.": "Leer lassen für den Systemnamen.",
                 "Phone and PC must be on the same Wi-Fi.": "Handy und PC müssen im selben WLAN sein.",
+                "No shared Wi-Fi needed: the phone switches to an access point of this PC.": "Kein gemeinsames WLAN nötig: Das Handy wechselt auf einen Zugangspunkt dieses PCs.",
                 "Phone doesn't find this PC? Turn off “Share with Apple devices” in Quick Share on the phone.": "Findet das Handy den PC nicht? Schalte am Handy in Quick Share „Mit Apple-Geräten teilen“ aus.",
                 "Android phone": "Android-Handy",
                 "Tablet": "Tablet",

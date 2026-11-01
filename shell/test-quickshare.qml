@@ -24,7 +24,7 @@ ShellRoot {
         "On the phone, Quick Share must be set to “Everyone”.", "Bluetooth is off – phones may not be found.",
         // Receive
         "Visible to nearby devices", "On the phone, choose Quick Share and then “%1”", "Name", "Leave empty for the system name.",
-        "Phone and PC must be on the same Wi-Fi.", "Phone doesn't find this PC? Turn off “Share with Apple devices” in Quick Share on the phone.",
+        "Phone and PC must be on the same Wi-Fi.", "No shared Wi-Fi needed: the phone switches to an access point of this PC.", "Phone doesn't find this PC? Turn off “Share with Apple devices” in Quick Share on the phone.",
         // Devices without a name
         "Android phone", "Tablet", "Laptop", "Nearby device",
         // Incoming offer
@@ -244,6 +244,20 @@ ShellRoot {
             check(QuickShare.bleReceive === on, "hello sets bleReceive " + on);
             check(hint?.visible === true, "hint shown " + hint?.visible + " with bleReceive " + on);
         }
+        // The network hint follows whether an access point can be opened.
+        const net = page ? findChild(page, "networkHint") : null;
+        for (const on of [true, false]) {
+            QuickShare.apply(JSON.stringify({
+                type: "hello",
+                name: QuickShare.name,
+                port: 47392,
+                ble: false,
+                bleReceive: false,
+                hotspot: on
+            }));
+            const want = on ? "No shared Wi-Fi needed: the phone switches to an access point of this PC." : "Phone and PC must be on the same Wi-Fi.";
+            check(net?.text === I18n.tr(want), "network hint with hotspot " + on + ": " + net?.text);
+        }
         // A backend that is gone leaves no Bluetooth state behind.
         QuickShare.apply(JSON.stringify({
             type: "hello",
@@ -253,7 +267,7 @@ ShellRoot {
             bleReceive: true
         }));
         QuickShare.reset();
-        check(!QuickShare.ble && !QuickShare.bleReceive, "reset clears ble " + QuickShare.ble + " and bleReceive " + QuickShare.bleReceive);
+        check(!QuickShare.ble && !QuickShare.bleReceive && !QuickShare.hotspot, "reset clears ble " + QuickShare.ble + ", bleReceive " + QuickShare.bleReceive + " and hotspot " + QuickShare.hotspot);
         QuickShare.connected = wasConnected;
         page?.destroy();
     }

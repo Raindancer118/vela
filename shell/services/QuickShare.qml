@@ -19,6 +19,8 @@ Singleton {
     property bool ble: false
     // Phones that search over Bluetooth only find this PC.
     property bool bleReceive: false
+    // A transfer can go on over an access point of this PC (helper installed).
+    property bool hotspot: false
     // Visible name; the backend's answer wins over the configured one.
     property string name: Config.quickShareName
     // [{ id, name (null: announced without a name), kind }]
@@ -314,6 +316,7 @@ Singleton {
         connected = false;
         ble = false;
         bleReceive = false;
+        hotspot = false;
         devices = [];
         transfers = ({});
         sendQueue = [];
@@ -342,6 +345,7 @@ Singleton {
             name = m.name;
             ble = !!m.ble;
             bleReceive = !!m.bleReceive;
+            hotspot = !!m.hotspot;
             const first = !connected;
             connected = true;
             if (first && discovering)
