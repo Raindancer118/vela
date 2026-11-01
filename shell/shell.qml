@@ -9,6 +9,7 @@ import qs.services
 import qs.panel
 import qs.notifications
 import qs.osd
+import qs.quickshare
 
 ShellRoot {
     // Singletons are created lazily; these must run from the start
@@ -38,6 +39,13 @@ ShellRoot {
     Backdrop {}
 
     NotificationPopups {}
+
+    // Asks about every incoming Quick Share offer, panel open or not.
+    LazyLoader {
+        active: Config.quickShareAvailable
+
+        IncomingWindow {}
+    }
 
     WorkspaceOsd {}
 
@@ -92,6 +100,32 @@ ShellRoot {
 
         function clearAll(): void {
             Notifications.clearAll();
+        }
+    }
+
+    // vela quickshare send <files…>: qs -p <dir> ipc call quickshare send '["/abs/path", …]'
+    IpcHandler {
+        target: "quickshare"
+
+        function send(json: string): void {
+            if (!Config.quickShareAvailable) {
+                console.warn("quickshare: the Quick Share component is not installed, ignoring send");
+                return;
+            }
+            let paths = [];
+            try {
+                paths = JSON.parse(json);
+            } catch (e) {
+                console.warn("quickshare: send: bad argument:", e);
+                return;
+            }
+            if (!Array.isArray(paths) || paths.length === 0)
+                return;
+            QuickShare.setEnabled(true);
+            QuickShare.addFiles(paths.filter(p => typeof p === "string"));
+            ShellState.quickShareTab = "send";
+            ShellState.openPanel();
+            ShellState.openDetail("quickshare");
         }
     }
 }

@@ -89,6 +89,14 @@ enum Cmd {
         #[arg(default_value = "open", value_parser = ["open", "serve", "snapshot", "doctor"])]
         action: String,
     },
+    /// Quick Share with phones nearby: `serve` is the control center's
+    /// backend (JSON lines on stdin/stdout, logs on stderr).
+    Quickshare {
+        #[arg(value_parser = ["serve", "send"])]
+        action: String,
+        /// Files to send (`send`).
+        files: Vec<std::path::PathBuf>,
+    },
     /// Print which parts of vela are installed (chosen in install.sh).
     Components,
     /// Print the control center settings as JSON (used by the shell).
@@ -154,6 +162,7 @@ fn main() -> ExitCode {
             };
         }
         Cmd::Pulse { action } => return pulse(&action),
+        Cmd::Quickshare { action, files } => return quickshare(&action, &files),
         Cmd::Components => {
             print_components();
             return ExitCode::SUCCESS;
@@ -429,6 +438,34 @@ fn pulse(action: &str) -> ExitCode {
             ExitCode::SUCCESS
         }
         _ => open_pulse(),
+    }
+}
+
+fn quickshare(action: &str, files: &[std::path::PathBuf]) -> ExitCode {
+    match action {
+        "serve" => {
+            let _life = Lifecycle::start(true);
+            match vela::quickshare::serve::run() {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("vela: {e:#}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        // The running control center takes the files (its IPC handler opens the
+        // Send tab); `qs ipc` fails when no shell runs.
+        _ if !vela::components::has(vela::components::Component::Quickshare) => {
+            eprintln!("vela: quickshare send: the Quick Share component is not installed");
+            ExitCode::FAILURE
+        }
+        _ => match vela::quickshare::files::send_json(files) {
+            Ok(json) => run_qs(&["ipc", "call", "quickshare", "send", &json]),
+            Err(e) => {
+                eprintln!("vela: quickshare send: {e}");
+                ExitCode::FAILURE
+            }
+        },
     }
 }
 

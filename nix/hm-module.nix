@@ -27,6 +27,7 @@ let
     share_picker = false;
     updates = false;
     pulse = true;
+    quickshare = true;
   };
   components = defaultComponents // cfg.components;
 in
@@ -62,8 +63,12 @@ in
         Parts of vela to use (see `vela components`): launcher, claude,
         hyprland, panel, idle, share_picker (sets vela's picker in
         ~/.config/hypr/xdph.conf), updates (pacman/Flatpak, off by default) and
-        pulse (the task manager, Ctrl+Shift+Esc).
+        pulse (the task manager, Ctrl+Shift+Esc) and quickshare (send and
+        receive files with Android and Samsung phones nearby; needs panel).
         Unset ones keep their default; all but share_picker and updates are on.
+        Quick Share needs open ports, which the module does not touch; on NixOS:
+        `networking.firewall.allowedTCPPorts = [ 47392 ];` and
+        `networking.firewall.allowedUDPPorts = [ 5353 ];`.
         With nixos.stateDir set this is only the default: Settings → System →
         Features saves its choice as components.toml there, and vela keeps
         xdph.conf itself.
@@ -108,6 +113,9 @@ in
         message = "programs.vela.components: unknown ${lib.concatStringsSep ", " (lib.subtractLists (lib.attrNames defaultComponents) (lib.attrNames cfg.components))} (known: ${lib.concatStringsSep ", " (lib.attrNames defaultComponents)})";
       }
     ];
+
+    warnings = lib.optional (components.quickshare && !components.panel)
+      "programs.vela.components: quickshare needs the panel component (the control center); it does nothing without it";
 
     # The fonts below are only found with fontconfig on.
     fonts.fontconfig.enable = lib.mkDefault true;
