@@ -34,6 +34,18 @@ ColumnLayout {
     // What came in lately, newest first.
     readonly property var recent: Object.keys(QuickShare.transfers).map(Number).sort((a, b) => b - a).map(id => QuickShare.transfers[id]).filter(t => t.direction === "in" && t.state === "done" && (t.saved ?? []).length > 0).slice(0, 3)
 
+    // The check in the hero once the transfer it showed ends well.
+    property int shownId: -1
+    onRunningChanged: {
+        if (running) {
+            shownId = running.id;
+        } else if (shownId >= 0) {
+            if (QuickShare.transfers[shownId]?.state === "done")
+                hero.showDone();
+            shownId = -1;
+        }
+    }
+
     function baseName(path: string): string {
         return path.split("/").pop();
     }
@@ -58,6 +70,8 @@ ColumnLayout {
     }
 
     QuickShareHero {
+        id: hero
+
         objectName: "hero"
         visible: root.roomy
         Layout.fillWidth: true

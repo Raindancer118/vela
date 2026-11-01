@@ -8,7 +8,7 @@ import qs.components
 // sending out waves, with phones and tablets circling on an orbit. During
 // a transfer it turns into the two devices with a dotted line between them
 // whose dots run the way the files go, and the progress below; when it is
-// done, a check pops in and a flash goes out.
+// done, a check draws itself in the PC's circle.
 Item {
     id: root
 
@@ -37,16 +37,13 @@ Item {
         running: root.animate
     }
 
-    // Shown for a moment after a transfer ended well.
+    // A check, drawn stroke by stroke, for a moment after a transfer ended well.
     property bool done: false
-    onReceivingChanged: if (!receiving && lastProgress > 0.99) {
+    function showDone(): void {
         done = true;
+        draw.restart();
         doneTimer.restart();
-        flash.restart();
     }
-    property real lastProgress: 0
-    onProgressChanged: if (progress >= 0)
-        lastProgress = progress
     Timer {
         id: doneTimer
 
@@ -174,38 +171,6 @@ Item {
         }
     }
 
-    // Flash when a transfer is done.
-    Rectangle {
-        id: flashRing
-
-        anchors.centerIn: parent
-        width: root.core
-        height: width
-        radius: width / 2
-        color: Theme.withAlpha(Theme.colors.primary, 0.25)
-        opacity: 0
-        ParallelAnimation {
-            id: flash
-
-            NumberAnimation {
-                target: flashRing
-                property: "scale"
-                from: 1
-                to: 2.6
-                duration: 900
-                easing.type: Easing.OutCubic
-            }
-            NumberAnimation {
-                target: flashRing
-                property: "opacity"
-                from: 0.9
-                to: 0
-                duration: 900
-                easing.type: Easing.OutCubic
-            }
-        }
-    }
-
     // The PC; on the right while a transfer runs.
     Item {
         id: coreItem
@@ -240,9 +205,65 @@ Item {
 
         MaterialIcon {
             anchors.centerIn: parent
-            icon: root.done ? "check" : "laptop"
+            icon: "laptop"
             size: root.core * 0.42
             color: Theme.colors.primary
+            opacity: root.done ? 0 : 1
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: Theme.anim.normal
+                }
+            }
+        }
+
+        // The check: a dash as long as the whole path, pushed in from its
+        // start, so it looks drawn.
+        Shape {
+            id: check
+
+            readonly property real w: coreItem.width
+            readonly property var pts: [Qt.point(0.31 * w, 0.52 * w), Qt.point(0.44 * w, 0.65 * w), Qt.point(0.70 * w, 0.37 * w)]
+            readonly property real len: Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) + Math.hypot(pts[2].x - pts[1].x, pts[2].y - pts[1].y)
+            readonly property real stroke: Math.max(4, w * 0.065)
+            // 0..1, how much of the check is drawn.
+            property real drawn: 0
+
+            anchors.fill: parent
+            visible: root.done
+            preferredRendererType: Shape.CurveRenderer
+
+            ShapePath {
+                strokeWidth: check.stroke
+                strokeColor: Theme.colors.primary
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap
+                joinStyle: ShapePath.RoundJoin
+                strokeStyle: ShapePath.DashLine
+                // In units of the stroke width.
+                dashPattern: [check.len / check.stroke, check.len / check.stroke + 1]
+                dashOffset: (1 - check.drawn) * check.len / check.stroke
+                startX: check.pts[0].x
+                startY: check.pts[0].y
+                PathLine {
+                    x: check.pts[1].x
+                    y: check.pts[1].y
+                }
+                PathLine {
+                    x: check.pts[2].x
+                    y: check.pts[2].y
+                }
+            }
+
+            NumberAnimation {
+                id: draw
+
+                target: check
+                property: "drawn"
+                from: 0
+                to: 1
+                duration: 550
+                easing.type: Easing.InOutCubic
+            }
         }
 
         StyledText {
