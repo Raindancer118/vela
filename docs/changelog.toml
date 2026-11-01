@@ -6,6 +6,15 @@
 title = "The logbook"
 lede = "Every tag we pushed, newest on top. vela started as a Spotlight clone on a Wednesday evening and was a whole desktop shell by Saturday afternoon."
 
+["0.47.1"]
+area = ["quickshare", "docs"]
+title = "Receive tab tells the truth about Wi-Fi"
+notes = [
+  "With the access point helper installed, the Receive tab no longer says the phone has to be on the same Wi-Fi.",
+  "The pulse around the PC icon is calmer.",
+  "The changelog page only shows days on which something was released.",
+]
+
 ["0.47.0"]
 area = ["quickshare", "panel", "install", "nixos"]
 title = "Quick Share with Android and Samsung phones"

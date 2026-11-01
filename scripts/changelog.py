@@ -185,13 +185,6 @@ def build():
       <ol class="releases">{items}
       </ol>
     </section>""")
-        # Days in between without a tag get a quiet mark on the rail.
-        if i + 1 < len(day_list):
-            gap = (day - day_list[i + 1]).days - 1
-            for g in range(gap):
-                quiet = day - dt.timedelta(days=g + 1)
-                sections.append(f"""
-    <div class="quiet"><span class="weekday">{quiet:%A}</span> <span class="date">{quiet.day} {quiet:%b}</span><p>Nothing tagged. A night off.</p></div>""")
 
     first, last = all_tags[0], all_tags[-1]
     span_days = (last["when"].date() - first["when"].date()).days + 1
@@ -368,11 +361,6 @@ nav.days a:hover, nav.days a:focus-visible { color: var(--sail); }
 .meta { margin: .8rem 0 0; font-size: .76rem; letter-spacing: .02em; color: var(--ink-3); font-feature-settings: "tnum"; }
 code { font: .88em/1 ui-monospace, "JetBrains Mono", monospace; padding: .12em .38em; border-radius: .3em; background: color-mix(in oklab, var(--sail) 14%, transparent); color: var(--ink); }
 
-.quiet { display: grid; grid-template-columns: var(--col-day) var(--col-rail) 1fr; align-items: baseline; padding: 0 0 4.5rem; color: var(--ink-3); }
-.quiet .weekday { grid-column: 1; grid-row: 1; justify-self: end; padding-right: 1.5rem; color: var(--ink-3); }
-.quiet .date { grid-column: 1; grid-row: 2; justify-self: end; padding-right: 1.5rem; font-size: 1.9rem; color: var(--ink-3); }
-.quiet p { grid-column: 3; grid-row: 2; margin: 0; font: italic 400 1.35rem var(--serif); }
-
 footer { margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--rail); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; font-size: .8rem; color: var(--ink-3); }
 footer a { color: var(--ink-2); }
 
@@ -410,9 +398,6 @@ footer a { color: var(--ink-2); }
   .day-head p span { display: inline; }
   .day-head p span + span::before { content: "· "; }
   .releases { grid-column: 1 / 3; }
-  .quiet { grid-template-columns: var(--col-rail) 1fr; }
-  .quiet .weekday, .quiet .date { grid-column: 2; grid-row: auto; justify-self: start; }
-  .quiet p { grid-column: 2; grid-row: auto; }
   .release.big h3 { font-size: 2.5rem; }
 }
 </style>

@@ -145,11 +145,6 @@ nav.days a:hover, nav.days a:focus-visible { color: var(--sail); }
 .meta { margin: .8rem 0 0; font-size: .76rem; letter-spacing: .02em; color: var(--ink-3); font-feature-settings: "tnum"; }
 code { font: .88em/1 ui-monospace, "JetBrains Mono", monospace; padding: .12em .38em; border-radius: .3em; background: color-mix(in oklab, var(--sail) 14%, transparent); color: var(--ink); }
 
-.quiet { display: grid; grid-template-columns: var(--col-day) var(--col-rail) 1fr; align-items: baseline; padding: 0 0 4.5rem; color: var(--ink-3); }
-.quiet .weekday { grid-column: 1; grid-row: 1; justify-self: end; padding-right: 1.5rem; color: var(--ink-3); }
-.quiet .date { grid-column: 1; grid-row: 2; justify-self: end; padding-right: 1.5rem; font-size: 1.9rem; color: var(--ink-3); }
-.quiet p { grid-column: 3; grid-row: 2; margin: 0; font: italic 400 1.35rem var(--serif); }
-
 footer { margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--rail); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; font-size: .8rem; color: var(--ink-3); }
 footer a { color: var(--ink-2); }
 
@@ -187,9 +182,6 @@ footer a { color: var(--ink-2); }
   .day-head p span { display: inline; }
   .day-head p span + span::before { content: "· "; }
   .releases { grid-column: 1 / 3; }
-  .quiet { grid-template-columns: var(--col-rail) 1fr; }
-  .quiet .weekday, .quiet .date { grid-column: 2; grid-row: auto; justify-self: start; }
-  .quiet p { grid-column: 2; grid-row: auto; }
   .release.big h3 { font-size: 2.5rem; }
 }
 </style>
@@ -204,10 +196,10 @@ footer a { color: var(--ink-2); }
       <p class="lede">Every tag we pushed, newest on top. vela started as a Spotlight clone on a Wednesday evening and was a whole desktop shell by Saturday afternoon.</p>
     </div>
     <dl class="figures">
-      <div><dt>Tags</dt><dd>47</dd></div>
+      <div><dt>Tags</dt><dd>48</dd></div>
       <div><dt>Days</dt><dd>33</dd></div>
-      <div><dt>Commits</dt><dd>121</dd></div>
-      <div><dt>Lines written</dt><dd>49 809</dd></div>
+      <div><dt>Commits</dt><dd>153</dd></div>
+      <div><dt>Lines written</dt><dd>74 775</dd></div>
     </dl>
     <svg class="constellation" viewBox="0 0 340 200" aria-hidden="true">
       <path d="M12 113 L165 6 L212 41 L332 89 L262 180 L183 183 L111 179 Z"/>
@@ -223,10 +215,23 @@ footer a { color: var(--ink-2); }
     <section class="day" id="d2026-11-01" aria-labelledby="d2026-11-01-h">
       <div class="day-head">
         <h2 id="d2026-11-01-h"><span class="weekday">Sunday</span><span class="date">1 Nov</span></h2>
-        <p><span>1 release</span> <span>+47 lines</span></p>
+        <p><span>2 releases</span> <span>+25 068 lines</span></p>
       </div>
       <ol class="releases">
-      <li class="release patch" id="v0.46.8" style="--m:0.393">
+      <li class="release big" id="v0.47.0" style="--m:1.000">
+        <span class="star" aria-hidden="true"></span>
+        <article>
+          <header>
+            <h3><a href="#v0.47.0">0.47.0</a></h3>
+            <time datetime="2026-11-01T15:48:43+01:00">15:48</time>
+            <ul class="areas" aria-label="Areas"><li style="--c:#5fd0b4">Quick Share</li><li style="--c:#b4a0f5">Control center</li><li style="--c:#a9b1d6">Install</li><li style="--c:#7ebae4">NixOS</li></ul>
+          </header>
+          <p class="title">Quick Share with Android and Samsung phones</p>
+          <ul class="notes"><li>Send files to phones nearby and receive files, text and links from them, from a tile in the control center, <code>vela quickshare send</code> or Dolphin's right-click menu. A window asks about every offer; nothing is accepted automatically. Off by default: while it is off, nothing runs and no port is open. Contributed by Luna Haiplick.</li><li>Phones that look for PCs over Bluetooth only find this one too. Their transfers start over Bluetooth and move to Wi-Fi.</li><li>Without a shared network, vela can open a Wi-Fi access point of its own for the transfer (<code>./install.sh --hotspot</code>, NixOS: <code>programs.vela.hotspot.enable</code>). The phone joins it by itself; the PC stays on its own Wi-Fi.</li></ul>
+          <p class="meta">+25 021 lines · 106 files · 32 commits</p>
+        </article>
+      </li>
+      <li class="release patch" id="v0.46.8" style="--m:0.380">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -241,41 +246,13 @@ footer a { color: var(--ink-2); }
       </li>
       </ol>
     </section>
-    <div class="quiet"><span class="weekday">Saturday</span> <span class="date">31 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Friday</span> <span class="date">30 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Thursday</span> <span class="date">29 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Wednesday</span> <span class="date">28 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Tuesday</span> <span class="date">27 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Monday</span> <span class="date">26 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Sunday</span> <span class="date">25 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Saturday</span> <span class="date">24 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Friday</span> <span class="date">23 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Thursday</span> <span class="date">22 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Wednesday</span> <span class="date">21 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Tuesday</span> <span class="date">20 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Monday</span> <span class="date">19 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Sunday</span> <span class="date">18 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Saturday</span> <span class="date">17 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Friday</span> <span class="date">16 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Thursday</span> <span class="date">15 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Wednesday</span> <span class="date">14 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Tuesday</span> <span class="date">13 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Monday</span> <span class="date">12 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Sunday</span> <span class="date">11 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Saturday</span> <span class="date">10 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Friday</span> <span class="date">9 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Thursday</span> <span class="date">8 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Wednesday</span> <span class="date">7 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Tuesday</span> <span class="date">6 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Monday</span> <span class="date">5 Oct</span><p>Nothing tagged. A night off.</p></div>
-    <div class="quiet"><span class="weekday">Sunday</span> <span class="date">4 Oct</span><p>Nothing tagged. A night off.</p></div>
     <section class="day" id="d2026-10-03" aria-labelledby="d2026-10-03-h">
       <div class="day-head">
         <h2 id="d2026-10-03-h"><span class="weekday">Saturday</span><span class="date">3 Oct</span></h2>
         <p><span>9 releases</span> <span>+20 556 lines</span></p>
       </div>
       <ol class="releases">
-      <li class="release patch" id="v0.46.7" style="--m:0.760">
+      <li class="release patch" id="v0.46.7" style="--m:0.735">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -288,7 +265,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+1 715 lines · 14 files · 2 commits</p>
         </article>
       </li>
-      <li class="release patch" id="v0.46.6" style="--m:0.530">
+      <li class="release patch" id="v0.46.6" style="--m:0.513">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -301,7 +278,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+180 lines · 6 files · 1 commit</p>
         </article>
       </li>
-      <li class="release patch" id="v0.46.5" style="--m:0.384">
+      <li class="release patch" id="v0.46.5" style="--m:0.371">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -314,7 +291,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+43 lines · 4 files · 1 commit</p>
         </article>
       </li>
-      <li class="release patch" id="v0.46.4" style="--m:0.509">
+      <li class="release patch" id="v0.46.4" style="--m:0.493">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -327,7 +304,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+147 lines · 5 files · 2 commits</p>
         </article>
       </li>
-      <li class="release patch" id="v0.46.3" style="--m:0.397">
+      <li class="release patch" id="v0.46.3" style="--m:0.384">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -340,7 +317,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+49 lines · 6 files · 1 commit</p>
         </article>
       </li>
-      <li class="release patch" id="v0.46.2" style="--m:0.283">
+      <li class="release patch" id="v0.46.2" style="--m:0.274">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -353,7 +330,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+16 lines · 4 files · 1 commit</p>
         </article>
       </li>
-      <li class="release patch" id="v0.46.1" style="--m:0.441">
+      <li class="release patch" id="v0.46.1" style="--m:0.426">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -366,7 +343,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+75 lines · 3 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.46.0" style="--m:0.584">
+      <li class="release" id="v0.46.0" style="--m:0.565">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -379,7 +356,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+307 lines · 19 files · 4 commits</p>
         </article>
       </li>
-      <li class="release big" id="v0.45.0" style="--m:1.000">
+      <li class="release big" id="v0.45.0" style="--m:0.968">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -394,14 +371,13 @@ footer a { color: var(--ink-2); }
       </li>
       </ol>
     </section>
-    <div class="quiet"><span class="weekday">Friday</span> <span class="date">2 Oct</span><p>Nothing tagged. A night off.</p></div>
     <section class="day" id="d2026-10-01" aria-labelledby="d2026-10-01-h">
       <div class="day-head">
         <h2 id="d2026-10-01-h"><span class="weekday">Thursday</span><span class="date">1 Oct</span></h2>
         <p><span>33 releases</span> <span>+24 065 lines</span></p>
       </div>
       <ol class="releases">
-      <li class="release" id="v0.44.0" style="--m:0.627">
+      <li class="release" id="v0.44.0" style="--m:0.606">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -414,7 +390,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+464 lines · 14 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.43.0" style="--m:0.641">
+      <li class="release" id="v0.43.0" style="--m:0.621">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -427,7 +403,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+536 lines · 10 files · 1 commit</p>
         </article>
       </li>
-      <li class="release patch" id="v0.42.1" style="--m:0.363">
+      <li class="release patch" id="v0.42.1" style="--m:0.351">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -440,7 +416,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+35 lines · 3 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.42.0" style="--m:0.634">
+      <li class="release" id="v0.42.0" style="--m:0.613">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -453,7 +429,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+498 lines · 11 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.41.0" style="--m:0.546">
+      <li class="release" id="v0.41.0" style="--m:0.528">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -466,7 +442,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+210 lines · 14 files · 1 commit</p>
         </article>
       </li>
-      <li class="release big" id="v0.40.0" style="--m:0.715">
+      <li class="release big" id="v0.40.0" style="--m:0.692">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -479,7 +455,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+1 109 lines · 15 files · 1 commit</p>
         </article>
       </li>
-      <li class="release big" id="v0.39.0" style="--m:0.753">
+      <li class="release big" id="v0.39.0" style="--m:0.729">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -492,7 +468,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+1 604 lines · 37 files · 15 commits</p>
         </article>
       </li>
-      <li class="release" id="v0.38.0" style="--m:0.429">
+      <li class="release" id="v0.38.0" style="--m:0.415">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -505,7 +481,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+67 lines · 29 files · 2 commits</p>
         </article>
       </li>
-      <li class="release big" id="v0.37.0" style="--m:0.710">
+      <li class="release big" id="v0.37.0" style="--m:0.687">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -518,7 +494,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+1 051 lines · 23 files · 13 commits</p>
         </article>
       </li>
-      <li class="release" id="v0.36.0" style="--m:0.546">
+      <li class="release" id="v0.36.0" style="--m:0.528">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -531,7 +507,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+211 lines · 15 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.35.0" style="--m:0.634">
+      <li class="release" id="v0.35.0" style="--m:0.613">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -544,7 +520,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+499 lines · 7 files · 1 commit</p>
         </article>
       </li>
-      <li class="release patch" id="v0.34.1" style="--m:0.254">
+      <li class="release patch" id="v0.34.1" style="--m:0.245">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -557,7 +533,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+12 lines · 5 files · 1 commit</p>
         </article>
       </li>
-      <li class="release big" id="v0.34.0" style="--m:0.714">
+      <li class="release big" id="v0.34.0" style="--m:0.691">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -570,7 +546,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+1 092 lines · 25 files · 1 commit</p>
         </article>
       </li>
-      <li class="release patch" id="v0.33.1" style="--m:0.235">
+      <li class="release patch" id="v0.33.1" style="--m:0.227">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -583,7 +559,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+10 lines · 5 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.33.0" style="--m:0.617">
+      <li class="release" id="v0.33.0" style="--m:0.597">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -596,7 +572,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+423 lines · 15 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.32.0" style="--m:0.393">
+      <li class="release" id="v0.32.0" style="--m:0.380">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -609,7 +585,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+47 lines · 9 files · 1 commit</p>
         </article>
       </li>
-      <li class="release big" id="v0.31.0" style="--m:0.784">
+      <li class="release big" id="v0.31.0" style="--m:0.759">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -622,7 +598,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+2 172 lines · 29 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.30.0" style="--m:0.486">
+      <li class="release" id="v0.30.0" style="--m:0.470">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -635,7 +611,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+117 lines · 16 files · 1 commit</p>
         </article>
       </li>
-      <li class="release big" id="v0.29.0" style="--m:0.755">
+      <li class="release big" id="v0.29.0" style="--m:0.731">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -648,7 +624,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+1 633 lines · 26 files · 1 commit</p>
         </article>
       </li>
-      <li class="release patch" id="v0.28.2" style="--m:0.457">
+      <li class="release patch" id="v0.28.2" style="--m:0.442">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -661,7 +637,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+88 lines · 11 files · 1 commit</p>
         </article>
       </li>
-      <li class="release patch" id="v0.28.1" style="--m:0.164">
+      <li class="release patch" id="v0.28.1" style="--m:0.159">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -674,7 +650,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+5 lines · 3 files · 1 commit</p>
         </article>
       </li>
-      <li class="release big" id="v0.28.0" style="--m:0.787">
+      <li class="release big" id="v0.28.0" style="--m:0.762">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -687,7 +663,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+2 237 lines · 114 files · 4 commits</p>
         </article>
       </li>
-      <li class="release big" id="v0.27.0" style="--m:0.778">
+      <li class="release big" id="v0.27.0" style="--m:0.753">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -700,7 +676,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+2 056 lines · 18 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.26.0" style="--m:0.597">
+      <li class="release" id="v0.26.0" style="--m:0.577">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -713,7 +689,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+346 lines · 9 files · 2 commits</p>
         </article>
       </li>
-      <li class="release big" id="v0.25.0" style="--m:0.726">
+      <li class="release big" id="v0.25.0" style="--m:0.703">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -726,7 +702,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+1 234 lines · 22 files · 1 commit</p>
         </article>
       </li>
-      <li class="release big" id="v0.24.0" style="--m:0.722">
+      <li class="release big" id="v0.24.0" style="--m:0.699">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -739,7 +715,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+1 182 lines · 14 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.23.0" style="--m:0.562">
+      <li class="release" id="v0.23.0" style="--m:0.544">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -752,7 +728,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+247 lines · 9 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.22.0" style="--m:0.700">
+      <li class="release" id="v0.22.0" style="--m:0.677">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -765,7 +741,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+954 lines · 16 files · 1 commit</p>
         </article>
       </li>
-      <li class="release big" id="v0.21.0" style="--m:0.777">
+      <li class="release big" id="v0.21.0" style="--m:0.752">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -778,7 +754,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+2 029 lines · 19 files · 3 commits</p>
         </article>
       </li>
-      <li class="release big" id="v0.20.0" style="--m:0.758">
+      <li class="release big" id="v0.20.0" style="--m:0.733">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -791,7 +767,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+1 679 lines · 34 files · 14 commits</p>
         </article>
       </li>
-      <li class="release patch" id="v0.8.1" style="--m:0.403">
+      <li class="release patch" id="v0.8.1" style="--m:0.390">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -804,7 +780,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+52 lines · 9 files · 3 commits</p>
         </article>
       </li>
-      <li class="release" id="v0.7.0" style="--m:0.476">
+      <li class="release" id="v0.7.0" style="--m:0.460">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -817,7 +793,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+106 lines · 6 files · 2 commits</p>
         </article>
       </li>
-      <li class="release" id="v0.6.0" style="--m:0.418">
+      <li class="release" id="v0.6.0" style="--m:0.404">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -838,7 +814,7 @@ footer a { color: var(--ink-2); }
         <p><span>4 releases</span> <span>+7 292 lines</span></p>
       </div>
       <ol class="releases">
-      <li class="release big" id="v0.5.0" style="--m:0.899">
+      <li class="release big" id="v0.5.0" style="--m:0.870">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -851,7 +827,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+6 705 lines · 88 files · 15 commits</p>
         </article>
       </li>
-      <li class="release" id="v0.4.0" style="--m:0.494">
+      <li class="release" id="v0.4.0" style="--m:0.478">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -864,7 +840,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+127 lines · 12 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.3.0" style="--m:0.517">
+      <li class="release" id="v0.3.0" style="--m:0.501">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -877,7 +853,7 @@ footer a { color: var(--ink-2); }
           <p class="meta">+159 lines · 10 files · 1 commit</p>
         </article>
       </li>
-      <li class="release" id="v0.2.0" style="--m:0.582">
+      <li class="release" id="v0.2.0" style="--m:0.564">
         <span class="star" aria-hidden="true"></span>
         <article>
           <header>
@@ -895,7 +871,7 @@ footer a { color: var(--ink-2); }
   </main>
 
   <footer>
-    <span>0.2.0 → 0.46.8, as of 1 November 2026. Star size follows the lines a release added.</span>
+    <span>0.2.0 → 0.47.0, as of 1 November 2026. Star size follows the lines a release added.</span>
     <span>Built from the git tags by <code>scripts/changelog.py</code> · <a href="https://github.com/Raindancer118/vela/releases">Releases on GitHub</a></span>
   </footer>
 </div>
