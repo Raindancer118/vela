@@ -6,6 +6,14 @@
 title = "The logbook"
 lede = "Every tag we pushed, newest on top. vela started as a Spotlight clone on a Wednesday evening and was a whole desktop shell by Saturday afternoon."
 
+["0.49.0"]
+area = ["quickshare"]
+title = "Your own devices"
+notes = [
+  "Mark a phone or tablet as yours with the house button, in the Send list or under “Recently received”. Your devices come first when sending, and the Receive tab lists them.",
+  "Optionally, transfers from your devices are accepted without asking, into the last folder. Off by default: Quick Share has no proof of who a device is without Google's certificates, and a name can be copied.",
+]
+
 ["0.48.0"]
 area = ["quickshare", "launcher", "docs"]
 title = "Quick Share in a window of its own"

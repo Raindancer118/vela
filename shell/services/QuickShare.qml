@@ -231,6 +231,33 @@ Singleton {
 
     // Renames this computer for phones: store it in the config, then have the
     // backend read it again.
+    // The user's own phones and tablets, by name (no proof without Google's
+    // certificates: a name can be copied, so auto-accept is opt-in).
+    property var ownDevices: Config.quickShareOwnDevices
+    property bool autoAcceptOwn: Config.quickShareAutoAcceptOwn
+
+    function isOwn(name: var): bool {
+        const n = (name ?? "").trim();
+        return n !== "" && ownDevices.includes(n);
+    }
+
+    function setOwn(name: string, own: bool): void {
+        const n = name.trim();
+        if (n === "")
+            return;
+        const list = own ? ownDevices.filter(d => d !== n).concat([n]) : ownDevices.filter(d => d !== n);
+        Quickshell.execDetached([Quickshell.env("VELA_BIN") || "vela", "set", "quickshare.own_devices", "--", JSON.stringify(list)]);
+    }
+
+    function setAutoAcceptOwn(on: bool): void {
+        Quickshell.execDetached([Quickshell.env("VELA_BIN") || "vela", "set", "quickshare.auto_accept_own", String(on)]);
+    }
+
+    // Devices with own ones first (the order otherwise stays).
+    function sortedDevices(): var {
+        return devices.filter(d => isOwn(d.name)).concat(devices.filter(d => !isOwn(d.name)));
+    }
+
     function setName(name: string): void {
         if (nameProc.running)
             return;

@@ -167,7 +167,7 @@ Item {
 
                     Repeater {
                         model: ScriptModel {
-                            values: QuickShare.devices
+                            values: QuickShare.sortedDevices()
                         }
 
                         ListRow {
@@ -181,7 +181,16 @@ Item {
                             clickable: false
                             icon: QuickShare.deviceIcon(modelData.kind)
                             title: QuickShare.deviceName(modelData.name, modelData.kind)
-                            subtitle: root.status(transfer)
+                            subtitle: QuickShare.isOwn(modelData.name) && !device.transfer ? I18n.tr("Your device") : root.status(transfer)
+
+                            // Mark as one's own (named devices only).
+                            IconButton {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: !!device.modelData.name
+                                icon: "home"
+                                active: QuickShare.isOwn(device.modelData.name)
+                                onClicked: QuickShare.setOwn(device.modelData.name, !active)
+                            }
 
                             PillButton {
                                 anchors.verticalCenter: parent.verticalCenter

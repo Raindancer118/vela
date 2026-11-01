@@ -36,15 +36,25 @@ pub struct Quickshare {
     /// TCP port phones connect to (open it in the firewall, with UDP 5353
     /// for mDNS).
     pub port: u16,
+    /// Names of the user's own phones and tablets: listed first and, with
+    /// `auto_accept_own`, received without asking. Quick Share has no proof
+    /// of who a device is without Google's certificates; a name can be copied.
+    pub own_devices: Vec<String>,
+    pub auto_accept_own: bool,
 }
 
 pub const QUICKSHARE_PORT: u16 = 47392;
+/// Own devices kept at most; names longer than this many characters are cut.
+pub const MAX_OWN_DEVICES: usize = 20;
+const MAX_OWN_NAME: usize = 64;
 
 impl Default for Quickshare {
     fn default() -> Self {
         Quickshare {
             name: String::new(),
             port: QUICKSHARE_PORT,
+            own_devices: Vec::new(),
+            auto_accept_own: false,
         }
     }
 }
@@ -768,6 +778,17 @@ impl Config {
         g.opacity = finite_or(g.opacity, 0.86).clamp(0.0, 1.0);
         g.max_results = g.max_results.clamp(1, 100);
 
+        let q = &mut self.quickshare;
+        let mut own: Vec<String> = q
+            .own_devices
+            .iter()
+            .map(|n| n.trim().chars().take(MAX_OWN_NAME).collect::<String>())
+            .filter(|n| !n.is_empty())
+            .collect();
+        dedup_keep_order(&mut own);
+        own.truncate(MAX_OWN_DEVICES);
+        q.own_devices = own;
+
         let p = &mut self.pulse;
         p.record_interval_secs = p.record_interval_secs.clamp(1, 60);
         p.history_minutes = p.history_minutes.clamp(5, 24 * 60);
@@ -1004,6 +1025,30 @@ pub fn save(path: &Path, cfg: &Config) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn own_quickshare_devices_are_kept_tidy() {
+        let mut cfg = super::Config::default();
+        assert!(cfg.quickshare.own_devices.is_empty() && !cfg.quickshare.auto_accept_own);
+        cfg.set_value("quickshare.own_devices", r#"["  S24 FE von Tom ", "", "S24 FE von Tom", "Tab"]"#)
+            .unwrap();
+        assert_eq!(cfg.quickshare.own_devices, ["S24 FE von Tom", "Tab"]);
+        cfg.set_value("quickshare.auto_accept_own", "true").unwrap();
+        assert!(cfg.quickshare.auto_accept_own);
+        let many: Vec<String> = (0..50).map(|i| format!("Phone {i}")).collect();
+        cfg.set_value("quickshare.own_devices", &serde_json::to_string(&many).unwrap()).unwrap();
+        assert_eq!(cfg.quickshare.own_devices.len(), super::MAX_OWN_DEVICES);
+        let back = super::Config::from_toml(&cfg.to_toml()).unwrap();
+        assert_eq!(back.quickshare.own_devices, cfg.quickshare.own_devices);
+        assert!(
+            super::Config::from_toml("[quickshare]\nname = \"x\"\n")
+                .unwrap()
+                .quickshare
+                .own_devices
+                .is_empty(),
+            "older configs load"
+        );
+    }
+
     #[test]
     fn load_from_falls_back_to_the_defaults() {
         let d = tempfile::tempdir().unwrap();

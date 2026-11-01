@@ -43,6 +43,8 @@ Singleton {
     readonly property bool quickshareTile: vp.quickshareTile ?? false
     readonly property bool quickShareAvailable: VelaConfig.quickshare.available ?? false
     readonly property string quickShareName: VelaConfig.quickshare.name ?? ""
+    readonly property var quickShareOwnDevices: VelaConfig.quickshare.ownDevices ?? []
+    readonly property bool quickShareAutoAcceptOwn: VelaConfig.quickshare.autoAcceptOwn ?? false
     readonly property bool compactNotifications: vp.compactNotifications
 
     // Compact notifications unfold after the pointer rests this long (ms).

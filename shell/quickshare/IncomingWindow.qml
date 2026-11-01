@@ -255,6 +255,27 @@ PanelWindow {
             rejected = stillThere;
     }
 
+    // Offers from own devices go straight in when the user wants that.
+    onWaitingOffersChanged: {
+        if (!QuickShare.autoAcceptOwn)
+            return;
+        for (const o of waitingOffers) {
+            if (!QuickShare.isOwn(o.device) || o.id in accepted)
+                continue;
+            const dir = o.files.length === 0 ? "" : Persist.quickShareDir ?? "";
+            accepted = Object.assign({}, accepted, {
+                [o.id]: {
+                    offer: o,
+                    dir: dir,
+                    background: false,
+                    dismissed: false,
+                    cancelled: false
+                }
+            });
+            QuickShare.accept(o.id, dir);
+        }
+    }
+
     function accept(): void {
         if (liveMode !== "offer" || busy || !armed)
             return;
