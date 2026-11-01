@@ -196,3 +196,9 @@ name = ""
 # (NixOS: networking.firewall.allowedTCPPorts = [ 47392 ] and
 # networking.firewall.allowedUDPPorts = [ 5353 ]).
 port = 47392
+# Your own phones and tablets, by the name they show: listed first when
+# sending. Set them in the Quick Share view.
+own_devices = []
+# Receive from own devices without asking. Devices are told apart by name
+# only, which anyone nearby could copy, so this is off by default.
+auto_accept_own = false

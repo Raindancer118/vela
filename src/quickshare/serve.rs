@@ -1563,7 +1563,11 @@ mod tests {
         let (ntx, notices) = mpsc::channel();
         let mut opts = Options {
             mdns: false,
-            load: Box::new(move || config::Quickshare { name: "test-pc".into(), port }),
+            load: Box::new(move || config::Quickshare {
+                name: "test-pc".into(),
+                port,
+                ..Default::default()
+            }),
             probe_ble: Arc::new(|| false),
             receive_ble: Arc::new(|_, _, _| Err(anyhow::anyhow!("no Bluetooth in tests"))),
             upgrade_ip: Box::new(|| Some(Ipv4Addr::LOCALHOST)),
@@ -1942,6 +1946,7 @@ mod tests {
             o.load = Box::new(move || config::Quickshare {
                 name: n.lock().unwrap().clone(),
                 port: 0,
+                ..Default::default()
             });
             o.receive_ble = Arc::new(move |id, info, _| {
                 s.lock().unwrap().push((id, info.name.clone().unwrap()));

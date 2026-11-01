@@ -154,6 +154,8 @@ pub fn shell_json_for(cfg: &Config, installed: &crate::components::Installed) ->
         "quickshare": {
             "available": installed.has(Component::Quickshare),
             "name": cfg.quickshare.effective_name(),
+            "ownDevices": cfg.quickshare.own_devices,
+            "autoAcceptOwn": cfg.quickshare.auto_accept_own,
         },
         "pulse": {
             "smoothGraphs": cfg.pulse.smooth_graphs,
@@ -311,6 +313,13 @@ mod tests {
         assert_eq!(j["panel"]["quickshareTile"], true);
         assert_eq!(j["quickshare"]["available"], true);
         assert_eq!(j["quickshare"]["name"], "Desk");
+        assert_eq!(j["quickshare"]["ownDevices"], serde_json::json!([]));
+        assert_eq!(j["quickshare"]["autoAcceptOwn"], false);
+        cfg.quickshare.own_devices = vec!["S24".into()];
+        cfg.quickshare.auto_accept_own = true;
+        let j: Value = serde_json::from_str(&shell_json_for(&cfg, &Installed::all())).unwrap();
+        assert_eq!(j["quickshare"]["ownDevices"], serde_json::json!(["S24"]));
+        assert_eq!(j["quickshare"]["autoAcceptOwn"], true);
         cfg.panel.quickshare_tile = false;
         let j: Value = serde_json::from_str(&shell_json_for(&cfg, &Installed::all())).unwrap();
         assert_eq!(j["panel"]["quickshareTile"], false);

@@ -251,12 +251,80 @@ ColumnLayout {
                 }
 
                 IconButton {
+                    icon: "home"
+                    active: QuickShare.isOwn(parent.parent.modelData.device)
+                    onClicked: QuickShare.setOwn(parent.parent.modelData.device, !active)
+                }
+
+                IconButton {
                     icon: "folder"
                     tonal: false
                     onClicked: Quickshell.execDetached(["xdg-open", parent.parent.modelData.dir])
                 }
             }
         }
+    }
+
+    SectionHeader {
+        objectName: "ownDevices"
+        visible: QuickShare.ownDevices.length > 0
+        topPadding: Theme.spacing.md
+        text: I18n.tr("Your devices")
+    }
+
+    Repeater {
+        model: QuickShare.ownDevices
+
+        RowLayout {
+            required property string modelData
+
+            Layout.fillWidth: true
+            spacing: Theme.spacing.sm
+
+            MaterialIcon {
+                icon: "home"
+                size: 18
+                color: Theme.colors.primary
+            }
+
+            StyledText {
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+                text: parent.modelData
+            }
+
+            IconButton {
+                icon: "close"
+                onClicked: QuickShare.setOwn(parent.modelData, false)
+            }
+        }
+    }
+
+    RowLayout {
+        visible: QuickShare.ownDevices.length > 0
+        Layout.fillWidth: true
+        spacing: Theme.spacing.sm
+
+        StyledText {
+            Layout.fillWidth: true
+            text: I18n.tr("Accept from your devices without asking")
+            wrapMode: Text.WordWrap
+        }
+
+        Switch {
+            objectName: "autoAcceptOwn"
+            checked: QuickShare.autoAcceptOwn
+            onToggled: QuickShare.setAutoAcceptOwn(!QuickShare.autoAcceptOwn)
+        }
+    }
+
+    StyledText {
+        visible: QuickShare.ownDevices.length > 0
+        Layout.fillWidth: true
+        text: I18n.tr("Devices are told apart by their name, which someone nearby could copy.")
+        color: Theme.colors.textMuted
+        font.pixelSize: Theme.font.small
+        wrapMode: Text.WordWrap
     }
 
     SectionHeader {

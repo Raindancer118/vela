@@ -24,7 +24,7 @@ ShellRoot {
         "On the phone, Quick Share must be set to “Everyone”.", "Bluetooth is off – phones may not be found.",
         // Receive
         "Visible to nearby devices", "On the phone, choose Quick Share and then “%1”", "Name", "Leave empty for the system name.",
-        "Phone and PC must be on the same Wi-Fi.", "No shared Wi-Fi needed: the phone switches to an access point of this PC.", "This PC", "Receiving from %1", "Sending to %1", "Access point", "Recently received", "Wi-Fi", "Bluetooth", "Phone doesn't find this PC? Turn off “Share with Apple devices” in Quick Share on the phone.",
+        "Phone and PC must be on the same Wi-Fi.", "No shared Wi-Fi needed: the phone switches to an access point of this PC.", "This PC", "Your device", "Your devices", "Accept from your devices without asking", "Devices are told apart by their name, which someone nearby could copy.", "Receiving from %1", "Sending to %1", "Access point", "Recently received", "Wi-Fi", "Bluetooth", "Phone doesn't find this PC? Turn off “Share with Apple devices” in Quick Share on the phone.",
         // Devices without a name
         "Android phone", "Tablet", "Laptop", "Nearby device",
         // Incoming offer
@@ -621,6 +621,48 @@ ShellRoot {
         win.destroy();
     }
 
+    // Own devices: listed first, and offers from them go straight in when
+    // the user wants that (only then).
+    function ownDevices(): void {
+        const devicesBefore = QuickShare.devices;
+        QuickShare.ownDevices = ["Tom S24"];
+        QuickShare.devices = [
+            {
+                id: "a",
+                name: "Other",
+                kind: "phone"
+            },
+            {
+                id: "b",
+                name: "Tom S24",
+                kind: "phone"
+            },
+            {
+                id: "c",
+                name: null,
+                kind: "phone"
+            }
+        ];
+        check(QuickShare.sortedDevices().map(d => d.id).join() === "b,a,c", "own devices first: " + QuickShare.sortedDevices().map(d => d.id).join());
+        check(QuickShare.isOwn(" Tom S24 ") && !QuickShare.isOwn(null) && !QuickShare.isOwn("Other"), "isOwn");
+        const ownWin = create("quickshare/IncomingWindow", {});
+        QuickShare.autoAcceptOwn = false;
+        offer(77, "Tom S24", "phone", [{ name: "a.jpg", size: 10, mime: "image/jpeg" }], null);
+        check(!(77 in ownWin.accepted), "without the switch an own device still asks");
+        QuickShare.dropIncoming(77);
+        QuickShare.autoAcceptOwn = true;
+        offer(78, "Somebody", "phone", [{ name: "b.jpg", size: 10, mime: "image/jpeg" }], null);
+        check(!(78 in ownWin.accepted), "others still ask");
+        offer(79, "Tom S24", "phone", [{ name: "c.jpg", size: 10, mime: "image/jpeg" }], null);
+        check(79 in ownWin.accepted && ownWin.accepted[79].dir === Persist.quickShareDir, "an own device goes straight in, into the last folder");
+        for (const id of [78, 79])
+            QuickShare.dropIncoming(id);
+        QuickShare.autoAcceptOwn = false;
+        QuickShare.ownDevices = [];
+        QuickShare.devices = devicesBefore;
+        ownWin?.destroy();
+    }
+
     function translations(): void {
         const missing = strings.filter(s => !(s in I18n.translations.de));
         check(missing.length === 0, "no German for " + JSON.stringify(missing));
@@ -657,6 +699,7 @@ ShellRoot {
         interval: 1000
         onTriggered: {
             root.step(root.incomingWindowArmed);
+            root.step(root.ownDevices);
             root.step(root.translations);
             root.finish();
         }

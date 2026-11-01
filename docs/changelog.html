@@ -196,10 +196,10 @@ footer a { color: var(--ink-2); }
       <p class="lede">Every tag we pushed, newest on top. vela started as a Spotlight clone on a Wednesday evening and was a whole desktop shell by Saturday afternoon.</p>
     </div>
     <dl class="figures">
-      <div><dt>Tags</dt><dd>48</dd></div>
+      <div><dt>Tags</dt><dd>49</dd></div>
       <div><dt>Days</dt><dd>33</dd></div>
-      <div><dt>Commits</dt><dd>153</dd></div>
-      <div><dt>Lines written</dt><dd>74 775</dd></div>
+      <div><dt>Commits</dt><dd>162</dd></div>
+      <div><dt>Lines written</dt><dd>75 514</dd></div>
     </dl>
     <svg class="constellation" viewBox="0 0 340 200" aria-hidden="true">
       <path d="M12 113 L165 6 L212 41 L332 89 L262 180 L183 183 L111 179 Z"/>
@@ -215,9 +215,22 @@ footer a { color: var(--ink-2); }
     <section class="day" id="d2026-11-01" aria-labelledby="d2026-11-01-h">
       <div class="day-head">
         <h2 id="d2026-11-01-h"><span class="weekday">Sunday</span><span class="date">1 Nov</span></h2>
-        <p><span>2 releases</span> <span>+25 068 lines</span></p>
+        <p><span>3 releases</span> <span>+25 928 lines</span></p>
       </div>
       <ol class="releases">
+      <li class="release" id="v0.48.0" style="--m:0.667">
+        <span class="star" aria-hidden="true"></span>
+        <article>
+          <header>
+            <h3><a href="#v0.48.0">0.48.0</a></h3>
+            <time datetime="2026-11-01T16:39:07+01:00">16:39</time>
+            <ul class="areas" aria-label="Areas"><li style="--c:#5fd0b4">Quick Share</li><li style="--c:#7aa2f7">Launcher</li><li style="--c:#8a93b8">Docs</li></ul>
+          </header>
+          <p class="title">Quick Share in a window of its own</p>
+          <ul class="notes"><li>“Quick Share” in the launcher (or <code>vela quickshare open</code>) opens it in a window of its own; the new button next to the switch pops the control center's view out into it. While the window is open, the tile and <code>vela quickshare send</code> bring it to the front.</li><li>The window's Receive tab has a picture of its own: this PC sending out waves while it waits; during a transfer the phone and the PC with dots running between them and the progress below, and a check that draws itself when it is done. It also shows what can reach this PC right now and what came in lately, with the folder one click away.</li><li>With the access point helper installed, the Receive tab no longer says the phone has to be on the same Wi-Fi.</li><li>The pulse around the PC icon is calmer.</li><li>The changelog page only shows days on which something was released.</li></ul>
+          <p class="meta">+860 lines · 23 files · 9 commits</p>
+        </article>
+      </li>
       <li class="release big" id="v0.47.0" style="--m:1.000">
         <span class="star" aria-hidden="true"></span>
         <article>
@@ -871,7 +884,7 @@ footer a { color: var(--ink-2); }
   </main>
 
   <footer>
-    <span>0.2.0 → 0.47.0, as of 1 November 2026. Star size follows the lines a release added.</span>
+    <span>0.2.0 → 0.48.0, as of 1 November 2026. Star size follows the lines a release added.</span>
     <span>Built from the git tags by <code>scripts/changelog.py</code> · <a href="https://github.com/Raindancer118/vela/releases">Releases on GitHub</a></span>
   </footer>
 </div>
