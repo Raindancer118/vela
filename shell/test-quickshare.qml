@@ -226,6 +226,40 @@ ShellRoot {
         check(off !== null && off.page === null, "Quick Share off shows no tab");
     }
 
+    // The Quick Share window: popping out closes the panel's view, the
+    // panel's tile then only raises the window, and the window's view looks
+    // for devices like the panel's.
+    function ownWindow(): void {
+        ShellState.panelOpen = true;
+        ShellState.detail = "quickshare";
+        let raised = 0;
+        const counter = (() => raised++);
+        ShellState.raiseQuickShare.connect(counter);
+        ShellState.openQuickShareWindow();
+        check(ShellState.quickShareWindow, "the window opens");
+        check(!ShellState.panelOpen && ShellState.detail === "", "popping out closes the panel's view");
+        ShellState.openDetail("quickshare");
+        check(ShellState.detail === "" && !ShellState.panelOpen, "the tile does not open the view a second time");
+        check(raised === 1, "the tile raises the window: " + raised);
+        const view = create("details/QuickShareDetail", {
+            usable: true,
+            inWindow: true
+        });
+        check(findChild(view, "popOut")?.visible === false, "no pop-out button in the window");
+        ShellState.quickShareTab = "send";
+        check(QuickShare.discovering, "the window's send tab looks for devices");
+        ShellState.quickShareWindow = false;
+        check(!QuickShare.discovering, "closing the window stops looking");
+        ShellState.quickShareTab = "receive";
+        ShellState.raiseQuickShare.disconnect(counter);
+        view?.destroy();
+        const panelView = create("details/QuickShareDetail", {
+            usable: true
+        });
+        check(findChild(panelView, "popOut")?.visible === true, "the panel's view has the pop-out button");
+        panelView?.destroy();
+    }
+
     // The hint about "Share with Apple devices" is shown whatever
     // `bleReceive` from `hello` says; the property still follows `hello`.
     function receiveHint(): void {
@@ -608,6 +642,7 @@ ShellRoot {
         interval: 100
         onTriggered: {
             root.step(root.afterDestroy);
+            root.step(root.ownWindow);
             root.step(root.receiveHint);
             root.step(root.folderBrowser);
             root.step(root.incomingWindow);

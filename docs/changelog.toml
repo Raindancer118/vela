@@ -6,10 +6,11 @@
 title = "The logbook"
 lede = "Every tag we pushed, newest on top. vela started as a Spotlight clone on a Wednesday evening and was a whole desktop shell by Saturday afternoon."
 
-["0.47.1"]
-area = ["quickshare", "docs"]
-title = "Receive tab tells the truth about Wi-Fi"
+["0.48.0"]
+area = ["quickshare", "launcher", "docs"]
+title = "Quick Share in a window of its own"
 notes = [
+  "“Quick Share” in the launcher (or `vela quickshare open`) opens it in a window of its own; the new button next to the switch pops the control center's view out into it. While the window is open, the tile and `vela quickshare send` bring it to the front.",
   "With the access point helper installed, the Receive tab no longer says the phone has to be on the same Wi-Fi.",
   "The pulse around the PC icon is calmer.",
   "The changelog page only shows days on which something was released.",

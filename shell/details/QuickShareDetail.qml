@@ -9,9 +9,12 @@ ColumnLayout {
     id: root
 
     property bool usable: QuickShare.enabled
+    // In the Quick Share window instead of the panel.
+    property bool inWindow: false
     readonly property alias page: tab.item
+    readonly property bool onScreen: inWindow ? ShellState.quickShareWindow : ShellState.panelOpen && ShellState.detail === "quickshare"
     // Devices are looked for only while the send tab is on screen.
-    readonly property bool wantsDevices: usable && ShellState.panelOpen && ShellState.detail === "quickshare" && ShellState.quickShareTab === "send"
+    readonly property bool wantsDevices: usable && onScreen && ShellState.quickShareTab === "send"
 
     onWantsDevicesChanged: QuickShare.discover(wantsDevices)
     Component.onCompleted: {
@@ -30,7 +33,18 @@ ColumnLayout {
         title: I18n.tr("Quick Share")
         showSwitch: true
         checked: QuickShare.enabled
+        closesDetail: !root.inWindow
         onToggled: QuickShare.toggle()
+        onCloseClicked: if (root.inWindow)
+            ShellState.quickShareWindow = false
+
+        IconButton {
+            objectName: "popOut"
+            visible: !root.inWindow
+            icon: "open_in_new"
+            tonal: false
+            onClicked: ShellState.openQuickShareWindow()
+        }
     }
 
     SegmentedButtons {

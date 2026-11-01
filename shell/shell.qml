@@ -47,6 +47,13 @@ ShellRoot {
         IncomingWindow {}
     }
 
+    // Quick Share in a window of its own, while it is open.
+    LazyLoader {
+        active: Config.quickShareAvailable && ShellState.quickShareWindow
+
+        QuickShareWindow {}
+    }
+
     WorkspaceOsd {}
 
     // Hyprland: bind = SUPER, N, global, quickshell:panelToggle
@@ -124,8 +131,21 @@ ShellRoot {
             QuickShare.setEnabled(true);
             QuickShare.addFiles(paths.filter(p => typeof p === "string"));
             ShellState.quickShareTab = "send";
+            if (ShellState.quickShareWindow) {
+                ShellState.openQuickShareWindow();
+                return;
+            }
             ShellState.openPanel();
             ShellState.openDetail("quickshare");
+        }
+
+        // vela quickshare open: the Quick Share window.
+        function window(): void {
+            if (!Config.quickShareAvailable) {
+                console.warn("quickshare: the Quick Share component is not installed");
+                return;
+            }
+            ShellState.openQuickShareWindow();
         }
     }
 }
