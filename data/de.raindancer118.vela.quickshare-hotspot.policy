@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>vela</vendor>
+  <vendor_url>https://github.com/Raindancer118/vela</vendor_url>
+  <action id="de.raindancer118.vela.quickshare-hotspot">
+    <description>Open a Wi-Fi access point for a Quick Share transfer</description>
+    <description xml:lang="de">Einen WLAN-Zugangspunkt für eine Quick-Share-Übertragung öffnen</description>
+    <message>Quick Share wants to open a Wi-Fi access point for the phone</message>
+    <message xml:lang="de">Quick Share möchte einen WLAN-Zugangspunkt für das Handy öffnen</message>
+    <icon_name>network-wireless</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/vela/vela-hotspot-helper</annotate>
+  </action>
+</policyconfig>

@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, TryRecvError};
+use std::time::Duration;
 
 use anyhow::{Context, bail};
 
@@ -37,6 +38,31 @@ thread_local! {
     static VIA_LINK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// How long an incoming TCP connection may take from connecting until its
+/// offer is shown. The socket timeout restarts with every byte, so without
+/// this a host sending a byte now and then would keep a connection forever.
+#[cfg(not(test))]
+pub const SETUP_DEADLINE: Duration = Duration::from_secs(20);
+#[cfg(test)]
+pub const SETUP_DEADLINE: Duration = Duration::from_secs(2);
+
+/// Shuts `stream` down once [`SETUP_DEADLINE`] has passed, unless dropped before.
+struct SetupDeadline(#[allow(dead_code)] mpsc::Sender<()>);
+
+impl SetupDeadline {
+    fn arm(stream: &TcpStream) -> io::Result<SetupDeadline> {
+        let socket = stream.try_clone()?;
+        let (disarm, armed) = mpsc::channel::<()>();
+        std::thread::Builder::new().name("quickshare-setup".into()).spawn(move || {
+            if armed.recv_timeout(SETUP_DEADLINE) == Err(mpsc::RecvTimeoutError::Timeout) {
+                log::info!("quickshare: connection still not set up after {SETUP_DEADLINE:?}, closing it");
+                let _ = socket.shutdown(std::net::Shutdown::Both);
+            }
+        })?;
+        Ok(SetupDeadline(disarm))
+    }
+}
+
 /// Runs one incoming connection. Announces the offer as `Incoming` and then
 /// waits for a [`Decision`] on `decisions`; every announced offer ends with
 /// exactly one `Finished`. Nothing is announced for a connection that ends
@@ -60,14 +86,16 @@ pub fn handle_tcp(
     rendezvous: &bwu::Rendezvous,
 ) -> anyhow::Result<()> {
     prepare(&stream)?;
+    let deadline = SetupDeadline::arm(&stream)?;
     let first = read_plain(&stream)?;
     if let Some(ids) = bwu::client_introduction(&first) {
+        drop(deadline);
         if !rendezvous.hand_over(&ids, stream)? {
             log::info!("quickshare: {ids:?} wants to go on over Wi-Fi, but no transfer of it is waiting for that");
         }
         return Ok(());
     }
-    session(stream, &first, id, events, decisions, cancel, None)
+    session(stream, &first, id, events, decisions, cancel, None, Some(deadline))
 }
 
 /// [`handle`] over any link (Bluetooth: a [`WeaveLink`](super::weave::WeaveLink)).
@@ -82,10 +110,12 @@ pub fn handle_link(
     upgrade: Option<bwu::Offer>,
 ) -> anyhow::Result<()> {
     let first = read_plain(&mut link)?;
-    session(link, &first, id, events, decisions, cancel, upgrade)
+    session(link, &first, id, events, decisions, cancel, upgrade, None)
 }
 
-/// Everything after the ConnectionRequest `request`.
+/// Everything after the ConnectionRequest `request`; `deadline` is dropped
+/// once the offer is shown.
+#[allow(clippy::too_many_arguments)]
 fn session(
     mut link: impl Link,
     request: &V1Frame,
@@ -94,24 +124,19 @@ fn session(
     decisions: mpsc::Receiver<Decision>,
     cancel: Arc<AtomicBool>,
     upgrade: Option<bwu::Offer>,
+    deadline: Option<SetupDeadline>,
 ) -> anyhow::Result<()> {
     let Peer {
         device,
         kind,
         endpoint,
-        wifi_lan,
+        mediums,
     } = sender_of(request)?;
     let mut reader = link.reader()?;
     let keys = ukey2::server(&mut reader, &mut link)?;
     check_connection_response(&read_plain(&mut reader)?)?;
     write_plain(&mut link, connection_response())?;
     drop(reader);
-    let upgrade = upgrade.filter(|_| {
-        if !wifi_lan {
-            log::info!("quickshare: {device} cannot go on over Wi-Fi LAN");
-        }
-        wifi_lan
-    });
 
     let mut conn = Conn::new(Box::new(link), &keys)?;
     conn.send_sharing(&paired_key_encryption())?;
@@ -136,6 +161,7 @@ fn session(
         }
     };
 
+    drop(deadline);
     let _ = events.send(Event::Incoming(Offer {
         id,
         device,
@@ -146,7 +172,7 @@ fn session(
         total: plan.total,
     }));
     let mut saved = Vec::new();
-    let upgrade = upgrade.as_ref().map(|offer| (offer, endpoint.as_str()));
+    let upgrade = upgrade.as_ref().map(|offer| (offer, endpoint.as_str(), mediums));
     let result = receive(&mut conn, &plan, id, &events, &decisions, &cancel, &mut saved, upgrade);
     let outcome = match &result {
         Ok(outcome) => outcome.clone(),
@@ -166,8 +192,8 @@ struct Peer {
     device: String,
     kind: DeviceKind,
     endpoint: String,
-    /// Wi-Fi LAN is among the mediums it can move to (or it names none).
-    wifi_lan: bool,
+    /// What it can move to (no list at all counts as Wi-Fi LAN).
+    mediums: bwu::Mediums,
 }
 
 fn sender_of(request: &V1Frame) -> anyhow::Result<Peer> {
@@ -185,7 +211,10 @@ fn sender_of(request: &V1Frame) -> anyhow::Result<Peer> {
         device,
         kind,
         endpoint: request.endpoint_id().to_owned(),
-        wifi_lan: request.mediums.is_empty() || request.mediums().any(|m| m == Medium::WifiLan),
+        mediums: bwu::Mediums {
+            wifi_lan: request.mediums.is_empty() || request.mediums().any(|m| m == Medium::WifiLan),
+            wifi_hotspot: request.mediums().any(|m| m == Medium::WifiHotspot),
+        },
     })
 }
 
@@ -296,7 +325,7 @@ fn receive(
     decisions: &mpsc::Receiver<Decision>,
     cancel: &AtomicBool,
     saved: &mut Vec<PathBuf>,
-    upgrade: Option<(&bwu::Offer, &str)>,
+    upgrade: Option<(&bwu::Offer, &str, bwu::Mediums)>,
 ) -> anyhow::Result<Outcome> {
     let dir = match decide(conn, decisions, cancel)? {
         Step::Next(dir) => dir,
@@ -315,7 +344,7 @@ fn receive(
     conn.send_sharing(&response(Status::Accept))?;
     // Text alone is done before an upgrade could be.
     let mut upgrade = match upgrade {
-        Some((offer, endpoint)) if !plan.files.is_empty() => bwu::Upgrade::start(conn, offer, endpoint)?,
+        Some((offer, endpoint, mediums)) if !plan.files.is_empty() => bwu::Upgrade::start(conn, offer, endpoint, mediums)?,
         _ => None,
     };
     transfer(
@@ -354,11 +383,29 @@ fn decide(conn: &mut Conn, decisions: &mpsc::Receiver<Decision>, cancel: &Atomic
     }
 }
 
-/// A file being received.
+/// A file being received. Its partial file is only created with the first
+/// chunk, so an offer of many files never holds more than a few open.
 struct Receiving {
-    partial: Partial,
+    slot: Slot,
     size: u64,
     written: u64,
+}
+
+enum Slot {
+    Planned { dir: PathBuf, offered: String, path: PathBuf },
+    Open(Partial),
+}
+
+impl Slot {
+    fn partial(&mut self) -> io::Result<&mut Partial> {
+        if let Slot::Planned { dir, offered, path } = self {
+            *self = Slot::Open(Partial::create(dir, offered, std::mem::take(path))?);
+        }
+        match self {
+            Slot::Open(p) => Ok(p),
+            Slot::Planned { .. } => unreachable!(),
+        }
+    }
 }
 
 impl Receiving {
@@ -371,16 +418,19 @@ impl Receiving {
         if end > self.size {
             bail!("file is larger than the announced {} bytes", self.size);
         }
-        self.partial.file().write_all(body).context("writing a received file")?;
+        let partial = self.slot.partial().context("creating a received file")?;
+        partial.file().write_all(body).context("writing a received file")?;
         self.written = end;
         Ok(())
     }
 
-    fn commit(self) -> anyhow::Result<PathBuf> {
+    fn commit(mut self) -> anyhow::Result<PathBuf> {
         if self.written != self.size {
             bail!("file ended after {} of the announced {} bytes", self.written, self.size);
         }
-        self.partial.commit().context("saving a received file")
+        self.slot.partial().context("creating a received file")?;
+        let Slot::Open(partial) = self.slot else { unreachable!() };
+        partial.commit().context("saving a received file")
     }
 }
 
@@ -393,8 +443,9 @@ fn free_space(dir: &Path) -> io::Result<u64> {
     files::free_space(dir)
 }
 
-/// Checks the space in `dir` and creates a partial file for every announced
-/// file, so a missing or read-only folder shows before anything is accepted.
+/// Checks the space in `dir` and plans a name for every announced file. The
+/// first file's partial is created right away, so a missing or read-only
+/// folder shows before anything is accepted.
 /// On failure, the Response status for the sender and the outcome here.
 fn open_files(dir: &Path, plan: &Plan) -> Result<HashMap<i64, Receiving>, (Status, Outcome)> {
     let mut out = HashMap::new();
@@ -406,14 +457,21 @@ fn open_files(dir: &Path, plan: &Plan) -> Result<HashMap<i64, Receiving>, (Statu
         return Err((Status::NotEnoughSpace, Outcome::NotEnoughSpace));
     }
     let mut taken = HashSet::new();
-    for f in &plan.files {
+    for (n, f) in plan.files.iter().enumerate() {
         let path = files::unique_path(dir, &f.offer.name, &taken);
         taken.insert(path.clone());
-        let partial = Partial::create(dir, path).map_err(unusable)?;
+        let mut slot = Slot::Planned {
+            dir: dir.to_path_buf(),
+            offered: f.offer.name.clone(),
+            path,
+        };
+        if n == 0 {
+            slot.partial().map_err(unusable)?;
+        }
         out.insert(
             f.payload_id,
             Receiving {
-                partial,
+                slot,
                 size: f.offer.size,
                 written: 0,
             },
@@ -850,6 +908,43 @@ mod tests {
         let many = |n: usize| files_intro((0..n as i64).map(|i| numbered_file(i + 1, "a.txt")).collect());
         assert_eq!(Plan::new(many(MAX_FILES)).map(|p| p.files.len()), Some(MAX_FILES));
         assert!(Plan::new(many(MAX_FILES + 1)).is_none());
+    }
+
+    #[test]
+    fn a_big_offer_opens_files_one_at_a_time() {
+        let dest = tempfile::tempdir().unwrap();
+        let plan = Plan::new(files_intro((0..MAX_FILES as i64).map(|i| numbered_file(i + 1, "a.txt")).collect())).unwrap();
+        let mut files = open_files(dest.path(), &plan).ok().unwrap();
+        assert!(entries(dest.path()).len() <= 1, "{:?}", entries(dest.path()).len());
+        for i in 1..=3 {
+            let mut f = files.remove(&i).unwrap();
+            f.write(0, b"x").unwrap();
+            f.commit().unwrap();
+        }
+        assert_eq!(entries(dest.path()), ["a (1).txt", "a (2).txt", "a.txt"]);
+        drop(files);
+        assert_eq!(entries(dest.path()).len(), 3);
+    }
+
+    #[test]
+    fn an_empty_file_is_saved_without_a_chunk_written() {
+        let dest = tempfile::tempdir().unwrap();
+        let mut meta = numbered_file(1, "empty.txt");
+        meta.size = Some(0);
+        let plan = Plan::new(files_intro(vec![meta])).unwrap();
+        let mut files = open_files(dest.path(), &plan).ok().unwrap();
+        files.remove(&1).unwrap().commit().unwrap();
+        assert_eq!(entries(dest.path()), ["empty.txt"]);
+    }
+
+    #[test]
+    fn a_read_only_folder_is_refused_before_accepting() {
+        let missing = tempfile::tempdir().unwrap().path().join("gone");
+        let plan = Plan::new(files_intro(vec![numbered_file(1, "a.txt")])).unwrap();
+        FREE_SPACE.set(Some(u64::MAX));
+        let r = open_files(&missing, &plan);
+        FREE_SPACE.set(None);
+        assert!(matches!(r, Err((Status::Reject, Outcome::Failed(_)))));
     }
 
     #[test]

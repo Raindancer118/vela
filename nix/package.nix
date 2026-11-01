@@ -52,6 +52,10 @@ rustPlatform.buildRustPackage {
     # Dolphin ignores service menus that are not executable.
     sed "s|^Exec=vela|Exec=$out/bin/vela|" data/vela-quickshare-servicemenu.desktop \
       | install -Dm755 /dev/stdin "$out/share/kio/servicemenus/vela-quickshare.desktop"
+    # pkexec runs the helper by its path in the system profile (nixosModules.default).
+    sed "s|/usr/lib/vela/vela-hotspot-helper|/run/current-system/sw/bin/vela-hotspot-helper|" \
+      data/de.raindancer118.vela.quickshare-hotspot.policy \
+      | install -Dm644 /dev/stdin "$out/share/polkit-1/actions/de.raindancer118.vela.quickshare-hotspot.policy"
     install -Dm644 contrib/hyprland/vela.lua "$out/share/vela/vela.lua"
     (cd shell && find . -type f \( -name '*.qml' -o -name '*.js' -o -name '*.svg' \) ! -name 'test-*' \
       -exec install -Dm644 {} "$out/share/vela/shell/{}" \;)

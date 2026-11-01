@@ -493,14 +493,6 @@ pub fn reboot() -> Result<(), String> {
     systemctl(false, &["reboot"])
 }
 
-/// vela's config without creating the file (Pulse only reads it).
-pub fn load_config() -> Config {
-    std::fs::read_to_string(crate::paths::config_file())
-        .ok()
-        .and_then(|t| Config::from_toml(&t).ok())
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

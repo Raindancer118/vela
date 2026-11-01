@@ -86,6 +86,15 @@ Singleton {
         }, root.mergePicked);
     }
 
+    function addUris(uris: var): void {
+        if (uris.length === 0)
+            return;
+        request({
+            cmd: "stat",
+            uris: uris
+        }, root.mergePicked);
+    }
+
     function removeFile(path: string): void {
         pendingFiles = pendingFiles.filter(f => f.path !== path);
     }

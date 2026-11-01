@@ -184,7 +184,8 @@ mod tests {
         assert!("n=".len() + v.len() <= 255, "{} bytes", v.len());
         let back = EndpointInfo::decode(&unb64(&v).unwrap()).unwrap();
         let name = back.name.unwrap();
-        assert!(!name.is_empty() && "ä".repeat(200).starts_with(&name));
+        let name = name.trim_end_matches('…');
+        assert!(!name.is_empty() && "ä".repeat(200).starts_with(name));
         let short = EndpointInfo {
             kind: DeviceKind::Laptop,
             name: Some("luna-laptop".into()),

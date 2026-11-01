@@ -254,9 +254,10 @@ Item {
 
         anchors.fill: parent
         onEntered: drag => drag.accepted = drag.hasUrls
+        // The backend decodes the URIs: decodeURIComponent throws on names
+        // that are not UTF-8 and would drop the whole batch.
         onDropped: drop => {
-            const paths = drop.urls.map(u => u.toString()).filter(u => u.startsWith("file://")).map(u => decodeURIComponent(u.slice("file://".length)));
-            QuickShare.addFiles(paths);
+            QuickShare.addUris(drop.urls.map(u => u.toString()));
             drop.acceptProposedAction();
         }
     }

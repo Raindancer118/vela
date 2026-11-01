@@ -18,8 +18,13 @@ pub fn read_frame(r: &mut impl Read) -> io::Result<Vec<u8>> {
             format!("frame of {len} bytes exceeds the {MAX_FRAME} byte limit"),
         ));
     }
-    let mut buf = vec![0u8; len];
-    r.read_exact(&mut buf)?;
+    // Grows with what arrives instead of reserving the announced size up
+    // front: a peer announcing 5 MB and sending nothing costs nothing.
+    let mut buf = Vec::with_capacity(len.min(64 * 1024));
+    r.take(len as u64).read_to_end(&mut buf)?;
+    if buf.len() < len {
+        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "frame cut short"));
+    }
     Ok(buf)
 }
 

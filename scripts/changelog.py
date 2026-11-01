@@ -45,6 +45,7 @@ AREAS = {
     "nixos": ("NixOS", "#7ebae4"),
     "install": ("Install", "#a9b1d6"),
     "share": ("Share picker", "#ef8a9b"),
+    "quickshare": ("Quick Share", "#5fd0b4"),
     "docs": ("Docs", "#8a93b8"),
 }
 

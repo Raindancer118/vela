@@ -200,6 +200,31 @@ phone). A transfer from such a phone starts over Bluetooth and switches to
 Wi-Fi when the phone can reach the PC there; otherwise it continues over
 Bluetooth, which is slow.
 
+**Without a shared network.** With the access point helper installed, a
+transfer that started over Bluetooth goes on over a Wi-Fi access point vela
+opens for it: the phone joins it by itself (WPA2/WPA3, a fresh 32-character
+passphrase per transfer) and it closes when the transfer ends. The PC stays
+on its own Wi-Fi meanwhile; the access point uses the same channel, so it is
+fastest when that network is on 5 GHz (channels 36–48: Wi-Fi 6, 80 MHz) and
+limited to 2.4 GHz otherwise (Intel cards start no access point of their own
+on most 5 GHz channels). Sending to a phone without a shared network is not
+supported yet.
+
+```sh
+# Arch: hostapd and iw, then the helper (root-owned, started through polkit)
+sudo pacman -S --needed hostapd iw && ./install.sh --hotspot
+
+# NixOS (flake)
+imports = [ vela.nixosModules.default ];
+programs.vela.hotspot.enable = true;
+```
+
+The helper (`vela-hotspot-helper`) adds a `vela-ap` interface, tells
+NetworkManager to leave it alone, runs hostapd and a small DHCP server on it
+and lets only the transfer port in (firewalld or iptables, so ufw too). Any
+local user at the PC may start it without a password; it takes no paths or
+commands, only the port.
+
 <br>
 
 <a id="hyprland-without-the-config-file"></a>

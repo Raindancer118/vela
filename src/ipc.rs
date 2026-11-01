@@ -167,8 +167,12 @@ mod tests {
         let sock = dir.path().join("vela.sock");
         assert!(matches!(send(&sock, Command::Ping), Err(SendError::NotRunning)));
 
-        // A leftover socket file without a listener is replaced.
-        drop(UnixListener::bind(&sock).unwrap());
+        // A leftover socket file without a listener is replaced. Made by a
+        // datagram socket: a dropped listener can live on for a moment in a
+        // child that another test forks right then (until its exec), and
+        // would still take the connection that tells a live instance.
+        drop(std::os::unix::net::UnixDatagram::bind(&sock).unwrap());
+        assert!(sock.exists());
         let listener = bind(&sock).unwrap();
         // A second instance is refused while the first one is alive.
         assert!(bind(&sock).is_err());

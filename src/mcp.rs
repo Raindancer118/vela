@@ -767,7 +767,7 @@ pub fn call(name: &str, args: &J) -> Result<String, String> {
                 Ok(format!("ended {}", a.name))
             } else {
                 let file = a.desktop_id.as_deref().and_then(|d| m.desktop_path(d)).cloned();
-                crate::pulse::actions::restart_app(a, file.as_deref(), &crate::pulse::actions::load_config())?;
+                crate::pulse::actions::restart_app(a, file.as_deref(), &crate::config::Config::load())?;
                 Ok(format!("restarted {}", a.name))
             }
         }

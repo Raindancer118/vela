@@ -93,14 +93,44 @@ pub enum Incoming {
 /// Frames read off a link by its reader thread.
 type Frames = mpsc::Receiver<io::Result<Vec<u8>>>;
 
-/// The link a connection is moving to.
+/// Frames read off one of several links, tagged with the link's index.
+type TaggedFrames = mpsc::Receiver<(usize, io::Result<Vec<u8>>)>;
+
+/// The links a connection may be moving to. Anyone who knows the peer's
+/// endpoint id can claim to be it on a new connection, so there may be more
+/// than one; the one whose first frame is sealed with the session keys is
+/// kept, the others are closed.
 struct Switch {
-    link: Box<dyn Link>,
-    incoming: Frames,
+    /// By index; `None` once closed.
+    candidates: Vec<Option<Box<dyn Link>>>,
+    incoming: TaggedFrames,
+    tx: mpsc::SyncSender<(usize, io::Result<Vec<u8>>)>,
     /// SAFE_TO_CLOSE_PRIOR_CHANNEL went out on the old link.
     safe_sent: bool,
     /// When the switch is given up.
     deadline: Instant,
+    /// The old link is closed; waiting for a candidate's first frame.
+    choosing: bool,
+    /// What went out to all candidates while choosing, for one that comes later.
+    sent: Vec<Vec<u8>>,
+}
+
+impl Switch {
+    fn live(&self) -> impl Iterator<Item = (usize, &Box<dyn Link>)> {
+        self.candidates.iter().enumerate().filter_map(|(i, c)| c.as_ref().map(|c| (i, c)))
+    }
+
+    fn drop_candidate(&mut self, i: usize) {
+        if let Some(link) = self.candidates.get_mut(i).and_then(Option::take) {
+            let _ = link.close();
+        }
+    }
+
+    fn close_all(&mut self) {
+        for i in 0..self.candidates.len() {
+            self.drop_candidate(i);
+        }
+    }
 }
 
 /// An encrypted connection. A reader thread reads frames off the link; the
@@ -126,6 +156,38 @@ pub struct Conn {
     queued: Vec<V1Frame>,
     /// [`SWITCH_TIMEOUT`], shorter in tests.
     switch_timeout: Duration,
+}
+
+/// Like [`read_frames`], into a channel shared by several links.
+fn read_frames_tagged(link: &dyn Link, index: usize, tx: mpsc::SyncSender<(usize, io::Result<Vec<u8>>)>) -> io::Result<()> {
+    let mut reader = link.reader()?;
+    thread::Builder::new().name("quickshare-conn".into()).spawn(move || {
+        loop {
+            let frame = read_frame(&mut reader);
+            let failed = frame.is_err();
+            if tx.send((index, frame)).is_err() || failed {
+                break;
+            }
+        }
+    })?;
+    Ok(())
+}
+
+/// The frames of link `index` out of `tagged`, as a channel of their own.
+fn untag(tagged: TaggedFrames, index: usize) -> io::Result<Frames> {
+    let (tx, incoming) = mpsc::sync_channel(READ_AHEAD);
+    thread::Builder::new().name("quickshare-conn".into()).spawn(move || {
+        for (i, frame) in tagged {
+            if i != index {
+                continue;
+            }
+            let failed = frame.is_err();
+            if tx.send(frame).is_err() || failed {
+                break;
+            }
+        }
+    })?;
+    Ok(incoming)
 }
 
 /// Reads frames off `link` on a thread of its own, at most [`READ_AHEAD`]
@@ -191,17 +253,32 @@ impl Conn {
     /// read from the old one. A switch that is not done after
     /// [`SWITCH_TIMEOUT`] is given up: the connection stays on the old link
     /// if the peer still writes there, else it fails.
-    pub fn switch_to(&mut self, link: Box<dyn Link>) -> anyhow::Result<()> {
-        if self.switch.is_some() {
-            bail!("the connection is already moving to another link");
+    ///
+    /// Called again during the switch, `link` is one more candidate: the
+    /// first link whose frames are sealed with our keys is kept.
+    pub fn switch_to(&mut self, mut link: Box<dyn Link>) -> anyhow::Result<()> {
+        if let Some(s) = &mut self.switch {
+            for sealed in &s.sent {
+                if let Err(e) = link.write_all(sealed) {
+                    log::info!("quickshare: another connection over Wi-Fi failed at once: {e}");
+                    return Ok(());
+                }
+            }
+            read_frames_tagged(link.as_ref(), s.candidates.len(), s.tx.clone())?;
+            s.candidates.push(Some(link));
+            return Ok(());
         }
-        let incoming = read_frames(link.as_ref())?;
+        let (tx, incoming) = mpsc::sync_channel(READ_AHEAD);
+        read_frames_tagged(link.as_ref(), 0, tx.clone())?;
         self.write_now(bwu::v1(bwu::event(UpgradeEvent::LastWriteToPriorChannel)))?;
         self.switch = Some(Switch {
-            link,
+            candidates: vec![Some(link)],
             incoming,
+            tx,
             safe_sent: false,
             deadline: Instant::now() + self.switch_timeout,
+            choosing: false,
+            sent: Vec::new(),
         });
         if self.peer_done {
             self.send_safe_to_close()?;
@@ -287,6 +364,14 @@ impl Conn {
                 None => KEEP_ALIVE.saturating_sub(self.last_send.elapsed()),
             };
             let wait = deadline.saturating_duration_since(Instant::now()).min(until_keep_alive);
+            if self.switch.as_ref().is_some_and(|s| s.choosing) {
+                match self.recv_choosing(wait) {
+                    Ok(Some(incoming)) => return Ok(Some(incoming)),
+                    Ok(None) if Instant::now() >= deadline => return Ok(None),
+                    Ok(None) => continue,
+                    Err(e) => return Err(e),
+                }
+            }
             match self.incoming.recv_timeout(wait) {
                 Ok(Ok(frame)) => {
                     if let Some(incoming) = self.handle(&frame)? {
@@ -376,23 +461,81 @@ impl Conn {
         Ok(())
     }
 
-    /// Ends the switch: from now on the new link carries the connection.
+    /// Ends the old link's part of the switch: from now on a new link
+    /// carries the connection. With one candidate that is it; with several,
+    /// what was queued goes to all of them and the first to answer with a
+    /// frame sealed with our keys wins ([`Conn::recv_choosing`]).
     /// `old_alive`: the old link still takes the last frames.
     fn finish_switch(&mut self, old_alive: bool) -> io::Result<()> {
-        let Some(switch) = self.switch.take() else {
+        let Some(switch) = &self.switch else {
             return Ok(());
         };
+        if switch.choosing {
+            return Ok(());
+        }
         if old_alive {
             if !switch.safe_sent {
                 let _ = self.send_safe_to_close();
             }
             let _ = write_plain(&mut self.link, disconnection());
         }
-        let _ = self.link.close();
-        self.link = switch.link;
         // Whatever the peer still sent on the old link is not read.
-        self.incoming = switch.incoming;
+        let _ = self.link.close();
         self.peer_done = false;
+        let switch = self.switch.as_mut().expect("switching");
+        switch.choosing = true;
+        let live: Vec<usize> = switch.live().map(|(i, _)| i).collect();
+        match live.as_slice() {
+            [] => Err(io::Error::new(io::ErrorKind::NotConnected, "the connection over Wi-Fi is gone")),
+            [only] => self.choose(*only),
+            _ => {
+                for v1 in std::mem::take(&mut self.queued) {
+                    self.write_now(v1)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// While choosing: the next frame from any candidate. One sealed with
+    /// our keys makes its link the connection's; any other frame, or an
+    /// ended link, drops that candidate.
+    fn recv_choosing(&mut self, wait: Duration) -> anyhow::Result<Option<Incoming>> {
+        let switch = self.switch.as_mut().expect("choosing");
+        let (i, frame) = match switch.incoming.recv_timeout(wait) {
+            Ok(got) => got,
+            Err(_) => return Ok(None),
+        };
+        if switch.candidates.get(i).is_none_or(Option::is_none) {
+            return Ok(None);
+        }
+        match frame {
+            Ok(frame) if self.secure.authentic(&frame) => {
+                self.choose(i)?;
+                self.handle(&frame)
+            }
+            _ => {
+                log::warn!("quickshare: a connection over Wi-Fi that claimed to be the phone does not have its keys, closing it");
+                switch.drop_candidate(i);
+                if switch.live().next().is_none() {
+                    bail!("no connection over Wi-Fi came from the phone");
+                }
+                Ok(None)
+            }
+        }
+    }
+
+    /// Candidate `index` carries the connection from now on.
+    fn choose(&mut self, index: usize) -> io::Result<()> {
+        let Some(mut switch) = self.switch.take() else {
+            return Ok(());
+        };
+        let link = switch.candidates[index].take().expect("a live candidate");
+        switch.close_all();
+        let Switch { incoming, tx, .. } = switch;
+        drop(tx);
+        self.link = link;
+        self.incoming = untag(incoming, index)?;
         for v1 in std::mem::take(&mut self.queued) {
             self.write_now(v1)?;
         }
@@ -400,14 +543,18 @@ impl Conn {
     }
 
     /// The switch took too long. Unless the peer said it writes no more on
-    /// the old link (its LAST_WRITE), the connection goes on there with what
-    /// was queued; otherwise, or if the old link fails too, it fails.
+    /// the old link (its LAST_WRITE) or the old link is closed already, the
+    /// connection goes on there with what was queued; otherwise, or if the
+    /// old link fails too, it fails.
     fn give_up_switch(&mut self) -> io::Result<()> {
-        let Some(switch) = self.switch.take() else {
+        let Some(mut switch) = self.switch.take() else {
             return Ok(());
         };
-        let _ = switch.link.close();
+        switch.close_all();
         let overdue = |why: String| io::Error::new(io::ErrorKind::TimedOut, format!("the switch to Wi-Fi did not finish in time{why}"));
+        if switch.choosing {
+            return Err(overdue(", and no connection over Wi-Fi came from the phone".into()));
+        }
         if self.peer_done {
             return Err(overdue(", and the phone no longer sends over Bluetooth".into()));
         }
@@ -527,6 +674,9 @@ impl Conn {
     /// Sends `v1`, or keeps it for the new link while switching (a
     /// keep-alive is dropped then).
     fn send(&mut self, v1: V1Frame) -> io::Result<()> {
+        if self.switch.as_ref().is_some_and(|s| s.choosing) {
+            return self.write_now(v1);
+        }
         if self.switching() {
             if v1.r#type() != FrameType::KeepAlive {
                 self.queued.push(v1);
@@ -550,6 +700,22 @@ impl Conn {
         // message back behind the 4-byte prefix.
         let mut buf = Vec::with_capacity(4 + sealed.len());
         write_frame(&mut buf, &sealed)?;
+        if let Some(s) = self.switch.as_mut().filter(|s| s.choosing) {
+            let mut failed = Vec::new();
+            for (i, candidate) in s.candidates.iter_mut().enumerate() {
+                if let Some(link) = candidate
+                    && link.write_all(&buf).and_then(|()| link.flush()).is_err()
+                {
+                    failed.push(i);
+                }
+            }
+            for i in failed {
+                s.drop_candidate(i);
+            }
+            s.sent.push(buf);
+            self.last_send = Instant::now();
+            return Ok(());
+        }
         self.link.write_all(&buf)?;
         self.link.flush()?;
         self.last_send = Instant::now();
@@ -574,8 +740,8 @@ impl Drop for Conn {
     fn drop(&mut self) {
         // Wakes the reader threads; they exit on the resulting read error.
         let _ = self.link.close();
-        if let Some(s) = &self.switch {
-            let _ = s.link.close();
+        if let Some(s) = &mut self.switch {
+            s.close_all();
         }
     }
 }
@@ -1227,6 +1393,58 @@ mod tests {
         let first = recv_raw(&mut s.new, &mut s.chan);
         assert!(is_file_chunk(&first, 7), "{first:?}");
         new_link_carries_frames_in(&mut s);
+    }
+
+    #[test]
+    fn an_impostor_on_the_new_link_loses_to_the_peer() {
+        // Someone on the LAN who knows the phone's endpoint id connects
+        // first; the phone's own connection comes second.
+        let mut s = switching(SWITCH_TIMEOUT);
+        let (ours_real, mut real) = mem_pair();
+        s.conn.switch_to(Box::new(ours_real)).unwrap();
+        s.conn.send_file_chunk(7, 3, 0, b"abc", true).unwrap();
+        send_raw(&mut s.old, &mut s.chan, upgrade(UpgradeEvent::LastWriteToPriorChannel));
+        send_raw(&mut s.old, &mut s.chan, upgrade(UpgradeEvent::SafeToClosePriorChannel));
+        write_frame(&mut s.new, b"not sealed with the session keys").unwrap();
+        for _ in 0..5 {
+            assert_eq!(s.conn.recv(Duration::from_millis(20)).unwrap(), None);
+        }
+        assert_eq!(upgrade_event(recv_raw(&mut s.old, &mut s.chan)), UpgradeEvent::SafeToClosePriorChannel);
+        plain_disconnection_then_closed(&mut s.old);
+        // The queued chunk reached the phone's connection too.
+        assert!(is_file_chunk(&recv_raw(&mut real, &mut s.chan), 7));
+        send_raw(&mut real, &mut s.chan, file_chunk(9));
+        assert!(matches!(next(&mut s.conn).unwrap(), Incoming::FileChunk { payload_id: 9, .. }));
+        assert!(!s.conn.switching());
+        // The impostor is closed (after what it was sent while choosing).
+        let mut impostor = s.new;
+        while read_frame(&mut impostor).is_ok() {}
+        // And the connection goes on over the phone's link.
+        s.conn.send_file_chunk(8, 3, 0, b"def", true).unwrap();
+        assert!(is_file_chunk(&recv_raw(&mut real, &mut s.chan), 8));
+    }
+
+    #[test]
+    fn the_peer_wins_even_when_its_connection_comes_late() {
+        let mut s = switching(SWITCH_TIMEOUT);
+        let (ours_other, mut other) = mem_pair();
+        s.conn.switch_to(Box::new(ours_other)).unwrap();
+        s.conn.send_file_chunk(7, 3, 0, b"abc", true).unwrap();
+        send_raw(&mut s.old, &mut s.chan, upgrade(UpgradeEvent::LastWriteToPriorChannel));
+        send_raw(&mut s.old, &mut s.chan, upgrade(UpgradeEvent::SafeToClosePriorChannel));
+        for _ in 0..3 {
+            assert_eq!(s.conn.recv(Duration::from_millis(20)).unwrap(), None);
+        }
+        // Neither has written yet; a third connection turns up and gets
+        // what was already sent.
+        let (ours_late, mut late) = mem_pair();
+        s.conn.switch_to(Box::new(ours_late)).unwrap();
+        assert_eq!(upgrade_event(recv_raw(&mut s.old, &mut s.chan)), UpgradeEvent::SafeToClosePriorChannel);
+        let mut seen = s.chan;
+        assert!(is_file_chunk(&recv_raw(&mut late, &mut seen), 7));
+        send_raw(&mut late, &mut seen, file_chunk(9));
+        assert!(matches!(next(&mut s.conn).unwrap(), Incoming::FileChunk { payload_id: 9, .. }));
+        while read_frame(&mut other).is_ok() {}
     }
 
     #[test]
