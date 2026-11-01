@@ -204,10 +204,10 @@ footer a { color: var(--ink-2); }
       <p class="lede">Every tag we pushed, newest on top. vela started as a Spotlight clone on a Wednesday evening and was a whole desktop shell by Saturday afternoon.</p>
     </div>
     <dl class="figures">
-      <div><dt>Tags</dt><dd>45</dd></div>
+      <div><dt>Tags</dt><dd>46</dd></div>
       <div><dt>Days</dt><dd>4</dd></div>
-      <div><dt>Commits</dt><dd>117</dd></div>
-      <div><dt>Lines written</dt><dd>48 069</dd></div>
+      <div><dt>Commits</dt><dd>119</dd></div>
+      <div><dt>Lines written</dt><dd>49 772</dd></div>
     </dl>
     <svg class="constellation" viewBox="0 0 340 200" aria-hidden="true">
       <path d="M12 113 L165 6 L212 41 L332 89 L262 180 L183 183 L111 179 Z"/>
@@ -223,9 +223,22 @@ footer a { color: var(--ink-2); }
     <section class="day" id="d2026-10-03" aria-labelledby="d2026-10-03-h">
       <div class="day-head">
         <h2 id="d2026-10-03-h"><span class="weekday">Saturday</span><span class="date">3 Oct</span></h2>
-        <p><span>8 releases</span> <span>+18 841 lines</span></p>
+        <p><span>9 releases</span> <span>+20 556 lines</span></p>
       </div>
       <ol class="releases">
+      <li class="release patch" id="v0.46.7" style="--m:0.760">
+        <span class="star" aria-hidden="true"></span>
+        <article>
+          <header>
+            <h3><a href="#v0.46.7">0.46.7</a></h3>
+            <time datetime="2026-10-03T17:02:44+02:00">17:02</time>
+            <ul class="areas" aria-label="Areas"><li style="--c:#e2b86b">Updates</li><li style="--c:#7ebae4">NixOS</li><li style="--c:#7aa2f7">Launcher</li></ul>
+          </header>
+          <p class="title">Self-update works again</p>
+          <ul class="notes"><li>Since 0.45.0 the release archive lacked vela-pulse, so Settings → System → Update failed before installing anything. The archive now packs every binary the crate builds, and the installer test installs from it like the update does. NixOS was not affected: it builds from source with nix.</li><li>A Nix profile that appears after vela started (your first <code>nix profile install</code>, a new per-user profile) is picked up too, and so are switches that repoint /run/current-system with <code>ln -sfn</code>.</li><li>Release notes on GitHub now come from this changelog.</li></ul>
+          <p class="meta">+1 715 lines · 14 files · 2 commits</p>
+        </article>
+      </li>
       <li class="release patch" id="v0.46.6" style="--m:0.530">
         <span class="star" aria-hidden="true"></span>
         <article>
@@ -833,7 +846,7 @@ footer a { color: var(--ink-2); }
   </main>
 
   <footer>
-    <span>0.2.0 → 0.46.6, as of 3 October 2026. Star size follows the lines a release added.</span>
+    <span>0.2.0 → 0.46.7, as of 3 October 2026. Star size follows the lines a release added.</span>
     <span>Built from the git tags by <code>scripts/changelog.py</code> · <a href="https://github.com/Raindancer118/vela/releases">Releases on GitHub</a></span>
   </footer>
 </div>
