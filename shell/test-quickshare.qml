@@ -24,7 +24,7 @@ ShellRoot {
         "On the phone, Quick Share must be set to “Everyone”.", "Bluetooth is off – phones may not be found.",
         // Receive
         "Visible to nearby devices", "On the phone, choose Quick Share and then “%1”", "Name", "Leave empty for the system name.",
-        "Phone and PC must be on the same Wi-Fi.", "No shared Wi-Fi needed: the phone switches to an access point of this PC.", "Phone doesn't find this PC? Turn off “Share with Apple devices” in Quick Share on the phone.",
+        "Phone and PC must be on the same Wi-Fi.", "No shared Wi-Fi needed: the phone switches to an access point of this PC.", "This PC", "Receiving from %1", "Sending to %1", "Access point", "Recently received", "Wi-Fi", "Bluetooth", "Phone doesn't find this PC? Turn off “Share with Apple devices” in Quick Share on the phone.",
         // Devices without a name
         "Android phone", "Tablet", "Laptop", "Nearby device",
         // Incoming offer

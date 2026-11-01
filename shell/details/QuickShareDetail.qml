@@ -94,6 +94,8 @@ ColumnLayout {
     Component {
         id: receiveTab
 
-        QuickShareReceive {}
+        QuickShareReceive {
+            roomy: root.inWindow
+        }
     }
 }
