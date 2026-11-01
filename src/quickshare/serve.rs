@@ -461,6 +461,9 @@ struct Options {
     /// The address a Bluetooth transfer offers the phone to go on over
     /// Wi-Fi ([`bwu::local_ipv4`]).
     upgrade_ip: Box<dyn Fn() -> Option<Ipv4Addr> + Send>,
+    /// Opens our own access point for a phone without a shared network
+    /// (`None`: the helper is not installed).
+    hotspot: Option<bwu::OpenHotspot>,
     /// Shows a notification (must not block).
     notify: Box<dyn Fn(Notice) + Send>,
 }
@@ -515,6 +518,7 @@ struct Server<'a, W: Write> {
     /// Starting the BLE receiver failed before (warned once).
     ble_warned: bool,
     upgrade_ip: Box<dyn Fn() -> Option<Ipv4Addr> + Send>,
+    hotspot: Option<bwu::OpenHotspot>,
     /// Where Bluetooth transfers wait for the phone's Wi-Fi connection.
     rendezvous: bwu::Rendezvous,
     /// Our endpoint id, for this run.
@@ -552,6 +556,9 @@ pub fn run() -> anyhow::Result<()> {
             })
         }),
         upgrade_ip: Box::new(bwu::local_ipv4),
+        hotspot: crate::wifidirect::helper().map(|_| -> bwu::OpenHotspot {
+            Arc::new(|port| crate::wifidirect::Group::open(port).map(|g| (g.credentials.clone(), Box::new(g) as Box<dyn Send>)))
+        }),
         notify: Box::new(desktop::notify_detached),
     };
     serve(tx, rx, &mut std::io::stdout().lock(), opts)
@@ -609,6 +616,7 @@ impl<'a, W: Write> Server<'a, W> {
             bluez: bluez_worker(),
             ble_warned: false,
             upgrade_ip: opts.upgrade_ip,
+            hotspot: opts.hotspot,
             rendezvous: bwu::Rendezvous::default(),
             id: new_endpoint_id(),
             name: settings.effective_name(),
@@ -951,6 +959,7 @@ impl<'a, W: Write> Server<'a, W> {
             ip: (self.upgrade_ip)(),
             port: self.listener.port,
             rendezvous: self.rendezvous.clone(),
+            hotspot: self.hotspot.clone(),
         };
         self.receive(id, move |events, decisions, cancel| {
             inbound::handle_link(link, id, events, decisions, cancel, Some(offer))
@@ -1556,6 +1565,7 @@ mod tests {
             probe_ble: Arc::new(|| false),
             receive_ble: Arc::new(|_, _, _| Err(anyhow::anyhow!("no Bluetooth in tests"))),
             upgrade_ip: Box::new(|| Some(Ipv4Addr::LOCALHOST)),
+            hotspot: None,
             notify: Box::new(move |n| {
                 let _ = ntx.send(n);
             }),

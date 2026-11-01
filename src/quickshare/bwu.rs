@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 
 use super::conn::Conn;
 pub use super::proto::connections::BandwidthUpgradeNegotiationFrame;
-use super::proto::connections::bandwidth_upgrade_negotiation_frame::upgrade_path_info::{Medium, WifiLanSocket};
+use super::proto::connections::bandwidth_upgrade_negotiation_frame::upgrade_path_info::{Medium, WifiHotspotCredentials, WifiLanSocket};
 use super::proto::connections::bandwidth_upgrade_negotiation_frame::{ClientIntroductionAck, EventType, UpgradePathInfo};
 use super::proto::connections::{V1Frame, v1_frame};
 use super::write_plain;
@@ -48,6 +48,25 @@ pub fn event(kind: EventType) -> BandwidthUpgradeNegotiationFrame {
     BandwidthUpgradeNegotiationFrame {
         event_type: Some(kind as i32),
         ..BandwidthUpgradeNegotiationFrame::default()
+    }
+}
+
+/// The offer to join our access point and connect to `ip`:`port` there.
+pub fn upgrade_path_available_wifi_hotspot(ap: &crate::wifidirect::Credentials, port: u16) -> BandwidthUpgradeNegotiationFrame {
+    BandwidthUpgradeNegotiationFrame {
+        upgrade_path_info: Some(UpgradePathInfo {
+            medium: Some(Medium::WifiHotspot as i32),
+            wifi_hotspot_credentials: Some(WifiHotspotCredentials {
+                ssid: Some(ap.ssid.clone()),
+                password: Some(ap.passphrase.clone()),
+                port: Some(i32::from(port)),
+                gateway: Some(ap.ip.to_string()),
+                frequency: Some(i32::try_from(ap.frequency).unwrap_or(-1)),
+            }),
+            supports_client_introduction_ack: Some(true),
+            ..UpgradePathInfo::default()
+        }),
+        ..event(EventType::UpgradePathAvailable)
     }
 }
 
@@ -182,48 +201,153 @@ impl Rendezvous {
     }
 }
 
+/// Opens our access point for a phone that connects to `port`; it stays
+/// open while the returned guard lives ([`crate::wifidirect::Group::open`]).
+pub type OpenHotspot = Arc<dyn Fn(u16) -> OpenedHotspot + Send + Sync>;
+/// The access point's credentials and the guard that keeps it open.
+pub type OpenedHotspot = anyhow::Result<(crate::wifidirect::Credentials, Box<dyn Send>)>;
+
 /// What a Bluetooth session can offer: our address (`None`: no network),
-/// serve's port, and where the phone's connection turns up.
+/// serve's port, where the phone's connection turns up, and an access point
+/// of our own if the helper is installed.
 #[derive(Clone)]
 pub struct Offer {
     pub ip: Option<Ipv4Addr>,
     pub port: u16,
     pub rendezvous: Rendezvous,
+    pub hotspot: Option<OpenHotspot>,
 }
 
-/// An offered upgrade, until the switch is over, the phone said no or took
-/// too long.
+/// The mediums the phone can move to (its ConnectionRequest).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Mediums {
+    pub wifi_lan: bool,
+    pub wifi_hotspot: bool,
+}
+
+/// A way to Wi-Fi, tried in this order.
+#[derive(Debug, PartialEq, Eq)]
+enum Path {
+    /// The network we are on: works if the phone is on it too.
+    Lan(Ipv4Addr),
+    /// Our own access point: works without a shared network.
+    Hotspot,
+}
+
+/// How long the phone has to join our access point and connect.
+#[cfg(not(test))]
+const HOTSPOT_ARRIVAL_TIMEOUT: Duration = Duration::from_secs(40);
+#[cfg(test)]
+const HOTSPOT_ARRIVAL_TIMEOUT: Duration = Duration::from_millis(2000);
+
+/// The ways to try for a phone that can move to `mediums`.
+fn paths(offer: &Offer, mediums: Mediums) -> Vec<Path> {
+    let mut out = Vec::new();
+    if let Some(ip) = offer.ip.filter(|_| mediums.wifi_lan) {
+        out.push(Path::Lan(ip));
+    }
+    if offer.hotspot.is_some() && mediums.wifi_hotspot {
+        out.push(Path::Hotspot);
+    }
+    out
+}
+
+/// An offered upgrade, until the switch is over or no way is left; then
+/// the transfer stays where it is.
 pub struct Upgrade {
+    offer: Offer,
+    endpoint: String,
+    paths: std::collections::VecDeque<Path>,
     waiting: Option<(Expected, Instant)>,
+    /// The access point is being opened (on a thread: it takes seconds).
+    opening: Option<mpsc::Receiver<OpenedHotspot>>,
+    /// The phone said it cannot take the current offer.
+    refused: bool,
     /// A connection came and the switch began.
     switching: bool,
+    /// Our access point, open until the transfer ends.
+    hotspot: Option<Box<dyn Send>>,
 }
 
 impl Upgrade {
-    /// Offers phone `endpoint` to move `conn` to Wi-Fi LAN (after accepting
-    /// its transfer). `None` when there is no address to offer.
-    pub fn start(conn: &mut Conn, offer: &Offer, endpoint: &str) -> anyhow::Result<Option<Upgrade>> {
-        let Some(ip) = offer.ip else {
-            log::info!("quickshare: no network address to offer, the transfer stays on Bluetooth");
-            return Ok(None);
-        };
+    /// Offers phone `endpoint` (which can move to `mediums`) to move `conn`
+    /// to Wi-Fi (after accepting its transfer). `None` when there is no way.
+    pub fn start(conn: &mut Conn, offer: &Offer, endpoint: &str, mediums: Mediums) -> anyhow::Result<Option<Upgrade>> {
         if endpoint.is_empty() {
             log::info!("quickshare: the phone has no endpoint id to find it by over Wi-Fi, the transfer stays on Bluetooth");
             return Ok(None);
         }
-        let expected = offer.rendezvous.expect(endpoint);
-        conn.send_upgrade(upgrade_path_available_wifi_lan(ip, offer.port))?;
-        log::info!("quickshare: offering {endpoint} to go on over Wi-Fi at {ip}:{}", offer.port);
-        Ok(Some(Upgrade {
-            waiting: Some((expected, Instant::now() + ARRIVAL_TIMEOUT)),
+        let paths = paths(offer, mediums);
+        if paths.is_empty() {
+            log::info!("quickshare: no way to Wi-Fi with this phone ({mediums:?}), the transfer stays on Bluetooth");
+            return Ok(None);
+        }
+        let mut upgrade = Upgrade {
+            offer: offer.clone(),
+            endpoint: endpoint.to_owned(),
+            paths: paths.into(),
+            waiting: None,
+            opening: None,
+            refused: false,
             switching: false,
-        }))
+            hotspot: None,
+        };
+        upgrade.next(conn)?;
+        Ok(Some(upgrade))
+    }
+
+    /// Offers the next way, if any is left.
+    fn next(&mut self, conn: &mut Conn) -> anyhow::Result<()> {
+        self.refused = false;
+        match self.paths.pop_front() {
+            Some(Path::Lan(ip)) => {
+                let expected = self.offer.rendezvous.expect(&self.endpoint);
+                conn.send_upgrade(upgrade_path_available_wifi_lan(ip, self.offer.port))?;
+                log::info!("quickshare: offering {} to go on over Wi-Fi at {ip}:{}", self.endpoint, self.offer.port);
+                self.waiting = Some((expected, Instant::now() + ARRIVAL_TIMEOUT));
+            }
+            Some(Path::Hotspot) => {
+                let open = self.offer.hotspot.clone().expect("a hotspot path has an opener");
+                let port = self.offer.port;
+                let (tx, rx) = mpsc::channel();
+                std::thread::Builder::new().name("quickshare-hotspot".into()).spawn(move || {
+                    let _ = tx.send(open(port));
+                })?;
+                log::info!("quickshare: opening an access point for {}", self.endpoint);
+                self.opening = Some(rx);
+            }
+            None => log::info!("quickshare: no other way to Wi-Fi, the transfer stays on Bluetooth"),
+        }
+        Ok(())
     }
 
     /// Moves `conn` to the connections that claim the phone as they come
-    /// (see [`Conn::switch_to`]); stops waiting once the switch is over, or
-    /// after [`ARRIVAL_TIMEOUT`] if none came.
+    /// (see [`Conn::switch_to`]); goes on to the next way when the phone
+    /// says no or does not come in time.
     pub fn poll(&mut self, conn: &mut Conn) -> anyhow::Result<()> {
+        if let Some(opening) = &self.opening {
+            match opening.try_recv() {
+                Ok(Ok((ap, guard))) => {
+                    self.opening = None;
+                    self.hotspot = Some(guard);
+                    let expected = self.offer.rendezvous.expect(&self.endpoint);
+                    conn.send_upgrade(upgrade_path_available_wifi_hotspot(&ap, self.offer.port))?;
+                    log::info!("quickshare: offering {} our access point {} ({} MHz)", self.endpoint, ap.ssid, ap.frequency);
+                    self.waiting = Some((expected, Instant::now() + HOTSPOT_ARRIVAL_TIMEOUT));
+                }
+                Ok(Err(e)) => {
+                    self.opening = None;
+                    log::warn!("quickshare: no access point: {e:#}");
+                    self.next(conn)?;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.opening = None;
+                    self.next(conn)?;
+                }
+            }
+            return Ok(());
+        }
         let Some((expected, deadline)) = &self.waiting else {
             return Ok(());
         };
@@ -240,29 +364,40 @@ impl Upgrade {
             }
             return Ok(());
         }
-        if Instant::now() < *deadline {
+        if !self.refused && Instant::now() < *deadline {
             return Ok(());
         }
         // Stop waiting first, then look once more: a hand-over that claimed
         // this session just before has acked the phone, so its connection is
         // taken (once the ack is written).
         expected.stop();
-        let late = expected.arrivals.recv_timeout(CLAIMED_WAIT).ok();
+        let late = if self.refused {
+            expected.arrivals.try_recv().ok()
+        } else {
+            expected.arrivals.recv_timeout(CLAIMED_WAIT).ok()
+        };
         self.waiting = None;
         match late {
             Some(stream) => {
                 log::info!("quickshare: the transfer goes on over Wi-Fi");
                 conn.switch_to(Box::new(stream))?;
+                self.switching = true;
             }
-            None => log::info!("quickshare: the phone did not connect over Wi-Fi, the transfer stays on Bluetooth"),
+            None => {
+                log::info!("quickshare: the phone did not connect that way");
+                // The access point of a way that failed is no use.
+                self.hotspot = None;
+                self.next(conn)?;
+            }
         }
         Ok(())
     }
 
     /// A bandwidth upgrade frame from the phone.
     pub fn on_frame(&mut self, f: &BandwidthUpgradeNegotiationFrame) {
-        if f.event_type() == EventType::UpgradeFailure && self.waiting.take().is_some() {
-            log::info!("quickshare: the phone cannot go on over Wi-Fi, the transfer stays on Bluetooth");
+        if f.event_type() == EventType::UpgradeFailure && self.waiting.is_some() && !self.switching {
+            log::info!("quickshare: the phone cannot go on that way");
+            self.refused = true;
         }
     }
 }
@@ -375,22 +510,43 @@ pub(crate) mod fake {
     /// The phone's part, as the responder: waits for the offer, connects to
     /// it, introduces itself as `endpoint`, takes the ack and moves `conn`
     /// over. Returns the byte count of the new connection once moved.
-    pub(crate) fn respond(conn: &mut Conn, endpoint: &str) -> Arc<AtomicUsize> {
+    /// The next UPGRADE_PATH_AVAILABLE on `conn` (what the phone gets).
+    pub(crate) fn next_offer(conn: &mut Conn) -> UpgradePathInfo {
         let deadline = Instant::now() + Duration::from_secs(10);
-        let offer = loop {
+        loop {
             assert!(Instant::now() < deadline, "no UPGRADE_PATH_AVAILABLE");
             if let Some(Incoming::Upgrade(f)) = conn.recv(POLL).unwrap()
                 && f.event_type() == EventType::UpgradePathAvailable
             {
-                break f;
+                return f.upgrade_path_info.unwrap();
             }
-        };
-        let info = offer.upgrade_path_info.unwrap();
+        }
+    }
+
+    /// The phone takes the Wi-Fi LAN offer.
+    pub(crate) fn respond(conn: &mut Conn, endpoint: &str) -> Arc<AtomicUsize> {
+        let info = next_offer(conn);
         assert_eq!(info.medium(), Medium::WifiLan);
+        respond_to(conn, endpoint, info)
+    }
+
+    /// The phone connects where `info` says and moves `conn` there.
+    pub(crate) fn respond_to(conn: &mut Conn, endpoint: &str, info: UpgradePathInfo) -> Arc<AtomicUsize> {
+        let deadline = Instant::now() + Duration::from_secs(10);
         assert!(info.supports_client_introduction_ack());
-        let socket = info.wifi_lan_socket.unwrap();
-        let ip: [u8; 4] = socket.ip_address.unwrap().try_into().unwrap();
-        let addr = SocketAddrV4::new(ip.into(), u16::try_from(socket.wifi_port.unwrap()).unwrap());
+        let addr = match info.medium() {
+            Medium::WifiLan => {
+                let socket = info.wifi_lan_socket.unwrap();
+                let ip: [u8; 4] = socket.ip_address.unwrap().try_into().unwrap();
+                SocketAddrV4::new(ip.into(), u16::try_from(socket.wifi_port.unwrap()).unwrap())
+            }
+            Medium::WifiHotspot => {
+                let ap = info.wifi_hotspot_credentials.unwrap();
+                assert!(ap.ssid().starts_with("vela-") && ap.password().len() >= 8, "{ap:?}");
+                SocketAddrV4::new(ap.gateway().parse().unwrap(), u16::try_from(ap.port()).unwrap())
+            }
+            other => panic!("unexpected medium {other:?}"),
+        };
         let tcp = TcpStream::connect(addr).unwrap();
         let introduction = BandwidthUpgradeNegotiationFrame {
             client_introduction: Some(ClientIntroduction {
@@ -414,10 +570,11 @@ pub(crate) mod fake {
 
 #[cfg(test)]
 mod tests {
-    use super::fake::{Counted, respond};
+    use super::fake::{self, Counted, respond};
     use super::*;
     use crate::quickshare::conn::Incoming;
     use crate::quickshare::endpoint::{DeviceKind, EndpointInfo};
+    use crate::quickshare::proto::connections::connection_request_frame::Medium as RequestMedium;
     use crate::quickshare::proto::sharing;
     use crate::quickshare::{Decision, Event, Outcome, POLL, Step, close, inbound, outbound, sharing_frame, weave};
     use prost::Message;
@@ -485,6 +642,118 @@ mod tests {
         }
     }
 
+    thread_local! {
+        /// The access point opener `session` gives its offer.
+        static HOTSPOT: std::cell::RefCell<Option<OpenHotspot>> = const { std::cell::RefCell::new(None) };
+    }
+
+    /// An opener whose access point is loopback; `open` counts the open
+    /// ones (closed when the guard drops).
+    fn fake_hotspot(fails: bool) -> (OpenHotspot, Arc<std::sync::atomic::AtomicIsize>) {
+        struct Guard(Arc<std::sync::atomic::AtomicIsize>);
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                self.0.fetch_sub(1, Ordering::SeqCst);
+            }
+        }
+        let open = Arc::new(std::sync::atomic::AtomicIsize::new(0));
+        let counter = open.clone();
+        let opener: OpenHotspot = Arc::new(move |_port| {
+            if fails {
+                anyhow::bail!("no Wi-Fi card");
+            }
+            counter.fetch_add(1, Ordering::SeqCst);
+            let ap = crate::wifidirect::Credentials {
+                iface: "vela-ap".into(),
+                ssid: "vela-Test".into(),
+                passphrase: "secretsecret".into(),
+                frequency: 2437,
+                ip: Ipv4Addr::LOCALHOST,
+            };
+            Ok((ap, Box::new(Guard(counter.clone())) as Box<dyn Send>))
+        });
+        (opener, open)
+    }
+
+    #[test]
+    fn the_ways_to_wifi_follow_what_the_phone_can_do() {
+        let (hotspot, _) = fake_hotspot(false);
+        let mut offer = Offer {
+            ip: Some(Ipv4Addr::new(10, 0, 0, 2)),
+            port: 1,
+            rendezvous: Rendezvous::default(),
+            hotspot: Some(hotspot),
+        };
+        let m = |wifi_lan, wifi_hotspot| Mediums { wifi_lan, wifi_hotspot };
+        assert_eq!(paths(&offer, m(true, true)), [Path::Lan(Ipv4Addr::new(10, 0, 0, 2)), Path::Hotspot]);
+        assert_eq!(paths(&offer, m(false, true)), [Path::Hotspot]);
+        assert_eq!(paths(&offer, m(true, false)), [Path::Lan(Ipv4Addr::new(10, 0, 0, 2))]);
+        offer.ip = None;
+        assert_eq!(paths(&offer, m(true, true)), [Path::Hotspot], "no network: only our access point");
+        offer.hotspot = None;
+        assert!(paths(&offer, m(true, true)).is_empty());
+    }
+
+    /// The phone's handshake with `mediums` in its ConnectionRequest.
+    fn with_mediums<T>(mediums: &[RequestMedium], f: impl FnOnce() -> T) -> T {
+        crate::quickshare::outbound::MEDIUMS.set(Some(mediums.to_vec()));
+        let r = f();
+        crate::quickshare::outbound::MEDIUMS.set(None);
+        r
+    }
+
+    #[test]
+    fn a_phone_that_cannot_reach_us_on_the_lan_joins_our_access_point() {
+        let dest = tempfile::tempdir().unwrap();
+        let data = data(200 * 1024);
+        let (opener, open) = fake_hotspot(false);
+        HOTSPOT.set(Some(opener));
+        let (ours, phone) = weave::fake::pair(185);
+        let s = session(ours);
+        HOTSPOT.set(None);
+        let mut conn = with_mediums(&[RequestMedium::WifiLan, RequestMedium::WifiHotspot], || {
+            offer_and_accept(phone, &s, &data, dest.path())
+        });
+        send_chunks(&mut conn, &data, 0, data.len() / 2);
+        // The LAN offer first; the phone is elsewhere and says no.
+        assert_eq!(fake::next_offer(&mut conn).medium(), Medium::WifiLan);
+        conn.send_upgrade(event(EventType::UpgradeFailure)).unwrap();
+        // Then our access point.
+        let info = fake::next_offer(&mut conn);
+        assert_eq!(info.medium(), Medium::WifiHotspot);
+        assert_eq!(open.load(Ordering::SeqCst), 1);
+        let over_tcp = fake::respond_to(&mut conn, "PHON", info);
+        send_chunks(&mut conn, &data, data.len() / 2, data.len());
+        conn.send_file_chunk(5, data.len() as i64, data.len() as i64, &[], true).unwrap();
+        let (outcome, saved) = finished(&s.events);
+        assert_eq!(outcome, Outcome::Done);
+        assert_eq!(std::fs::read(&saved[0]).unwrap(), data);
+        assert!(over_tcp.load(Ordering::SeqCst) > data.len() / 2, "the second half went over the access point");
+        close(&mut conn);
+        s.thread.join().unwrap().unwrap();
+        assert_eq!(open.load(Ordering::SeqCst), 0, "the access point is closed with the transfer");
+    }
+
+    #[test]
+    fn without_an_access_point_the_transfer_stays_on_bluetooth() {
+        let dest = tempfile::tempdir().unwrap();
+        let data = data(100 * 1024);
+        let (opener, _) = fake_hotspot(true);
+        HOTSPOT.set(Some(opener));
+        let (ours, phone) = weave::fake::pair(185);
+        let s = session(ours);
+        HOTSPOT.set(None);
+        // The phone cannot use the LAN at all: only the access point is tried, and it fails.
+        let mut conn = with_mediums(&[RequestMedium::WifiHotspot], || offer_and_accept(phone, &s, &data, dest.path()));
+        send_chunks(&mut conn, &data, 0, data.len());
+        conn.send_file_chunk(5, data.len() as i64, data.len() as i64, &[], true).unwrap();
+        let (outcome, saved) = finished(&s.events);
+        assert_eq!(outcome, Outcome::Done);
+        assert_eq!(std::fs::read(&saved[0]).unwrap(), data);
+        close(&mut conn);
+        s.thread.join().unwrap().unwrap();
+    }
+
     struct Session {
         events: mpsc::Receiver<Event>,
         decisions: mpsc::Sender<Decision>,
@@ -510,6 +779,7 @@ mod tests {
             ip: Some(Ipv4Addr::LOCALHOST),
             port,
             rendezvous,
+            hotspot: HOTSPOT.with_borrow(Clone::clone),
         };
         let (tx, events) = mpsc::channel();
         let (decisions, rx) = mpsc::channel();
@@ -721,8 +991,13 @@ mod tests {
             ip: Some(Ipv4Addr::LOCALHOST),
             port: 1,
             rendezvous: Rendezvous::default(),
+            hotspot: None,
         };
-        assert!(Upgrade::start(&mut conn, &offer, "").unwrap().is_none());
+        let both = Mediums {
+            wifi_lan: true,
+            wifi_hotspot: true,
+        };
+        assert!(Upgrade::start(&mut conn, &offer, "", both).unwrap().is_none());
         assert!(offer.rendezvous.lock().is_empty(), "nothing registered");
         drop(conn);
         assert_eq!(std::io::Read::read(&mut peer, &mut [0; 8]).unwrap(), 0, "no offer went out");

@@ -258,6 +258,21 @@ fn open_files(paths: &[PathBuf]) -> anyhow::Result<Vec<Outgoing>> {
         .collect()
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Test seam: the mediums a fake phone (which uses this side) names.
+    pub(crate) static MEDIUMS: std::cell::RefCell<Option<Vec<Medium>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// What we can move a connection to: Wi-Fi LAN.
+fn our_mediums() -> Vec<i32> {
+    #[cfg(test)]
+    if let Some(m) = MEDIUMS.with_borrow(Clone::clone) {
+        return m.into_iter().map(|m| m as i32).collect();
+    }
+    vec![Medium::WifiLan as i32]
+}
+
 fn connection_request(me: &EndpointInfo, endpoint_id: [u8; 4]) -> V1Frame {
     V1Frame {
         r#type: Some(v1_frame::FrameType::ConnectionRequest as i32),
@@ -265,7 +280,7 @@ fn connection_request(me: &EndpointInfo, endpoint_id: [u8; 4]) -> V1Frame {
             endpoint_id: Some(String::from_utf8_lossy(&endpoint_id).into_owned()),
             endpoint_name: Some(me.name.clone().unwrap_or_default()),
             endpoint_info: Some(me.encode()),
-            mediums: vec![Medium::WifiLan as i32],
+            mediums: our_mediums(),
             ..Default::default()
         }),
         ..Default::default()

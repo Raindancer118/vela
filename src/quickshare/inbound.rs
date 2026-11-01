@@ -130,19 +130,13 @@ fn session(
         device,
         kind,
         endpoint,
-        wifi_lan,
+        mediums,
     } = sender_of(request)?;
     let mut reader = link.reader()?;
     let keys = ukey2::server(&mut reader, &mut link)?;
     check_connection_response(&read_plain(&mut reader)?)?;
     write_plain(&mut link, connection_response())?;
     drop(reader);
-    let upgrade = upgrade.filter(|_| {
-        if !wifi_lan {
-            log::info!("quickshare: {device} cannot go on over Wi-Fi LAN");
-        }
-        wifi_lan
-    });
 
     let mut conn = Conn::new(Box::new(link), &keys)?;
     conn.send_sharing(&paired_key_encryption())?;
@@ -178,7 +172,7 @@ fn session(
         total: plan.total,
     }));
     let mut saved = Vec::new();
-    let upgrade = upgrade.as_ref().map(|offer| (offer, endpoint.as_str()));
+    let upgrade = upgrade.as_ref().map(|offer| (offer, endpoint.as_str(), mediums));
     let result = receive(&mut conn, &plan, id, &events, &decisions, &cancel, &mut saved, upgrade);
     let outcome = match &result {
         Ok(outcome) => outcome.clone(),
@@ -198,8 +192,8 @@ struct Peer {
     device: String,
     kind: DeviceKind,
     endpoint: String,
-    /// Wi-Fi LAN is among the mediums it can move to (or it names none).
-    wifi_lan: bool,
+    /// What it can move to (no list at all counts as Wi-Fi LAN).
+    mediums: bwu::Mediums,
 }
 
 fn sender_of(request: &V1Frame) -> anyhow::Result<Peer> {
@@ -217,7 +211,10 @@ fn sender_of(request: &V1Frame) -> anyhow::Result<Peer> {
         device,
         kind,
         endpoint: request.endpoint_id().to_owned(),
-        wifi_lan: request.mediums.is_empty() || request.mediums().any(|m| m == Medium::WifiLan),
+        mediums: bwu::Mediums {
+            wifi_lan: request.mediums.is_empty() || request.mediums().any(|m| m == Medium::WifiLan),
+            wifi_hotspot: request.mediums().any(|m| m == Medium::WifiHotspot),
+        },
     })
 }
 
@@ -328,7 +325,7 @@ fn receive(
     decisions: &mpsc::Receiver<Decision>,
     cancel: &AtomicBool,
     saved: &mut Vec<PathBuf>,
-    upgrade: Option<(&bwu::Offer, &str)>,
+    upgrade: Option<(&bwu::Offer, &str, bwu::Mediums)>,
 ) -> anyhow::Result<Outcome> {
     let dir = match decide(conn, decisions, cancel)? {
         Step::Next(dir) => dir,
@@ -347,7 +344,7 @@ fn receive(
     conn.send_sharing(&response(Status::Accept))?;
     // Text alone is done before an upgrade could be.
     let mut upgrade = match upgrade {
-        Some((offer, endpoint)) if !plan.files.is_empty() => bwu::Upgrade::start(conn, offer, endpoint)?,
+        Some((offer, endpoint, mediums)) if !plan.files.is_empty() => bwu::Upgrade::start(conn, offer, endpoint, mediums)?,
         _ => None,
     };
     transfer(
