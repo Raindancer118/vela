@@ -84,11 +84,13 @@ pub struct Partial {
     file: File,
     part: PathBuf,
     final_path: PathBuf,
+    /// The offered name: the base for `name (n).ext` if `final_path` is taken at commit.
+    offered: String,
     committed: bool,
 }
 
 impl Partial {
-    pub fn create(dir: &Path, final_path: PathBuf) -> io::Result<Partial> {
+    pub fn create(dir: &Path, offered: &str, final_path: PathBuf) -> io::Result<Partial> {
         let name = file_name(&final_path)?;
         for n in 0..MAX_TRIES {
             // A leftover from a crash or a parallel transfer of the same name
@@ -102,6 +104,7 @@ impl Partial {
                         file,
                         part,
                         final_path,
+                        offered: offered.to_string(),
                         committed: false,
                     });
                 }
@@ -120,7 +123,6 @@ impl Partial {
     /// the destination appeared in the meantime, the next free `name (n).ext`
     /// is used. Returns where the file ended up.
     pub fn commit(mut self) -> io::Result<PathBuf> {
-        let name = file_name(&self.final_path)?;
         let dir = self.final_path.parent().unwrap_or(Path::new("")).to_path_buf();
         let mut target = self.final_path.clone();
         for _ in 0..MAX_TRIES {
@@ -129,7 +131,7 @@ impl Partial {
                     self.committed = true;
                     return Ok(target);
                 }
-                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => target = unique_path(&dir, &name, &HashSet::new()),
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => target = unique_path(&dir, &self.offered, &HashSet::new()),
                 Err(e) => return Err(e),
             }
         }
@@ -377,7 +379,7 @@ mod tests {
     #[test]
     fn partial_dropped_leaves_nothing() {
         let d = tempfile::tempdir().unwrap();
-        let mut p = Partial::create(d.path(), d.path().join("a.txt")).unwrap();
+        let mut p = Partial::create(d.path(), "a.txt", d.path().join("a.txt")).unwrap();
         p.file().write_all(b"half").unwrap();
         assert_eq!(names(d.path()), [".a.txt.vela-part"]);
         drop(p);
@@ -387,7 +389,7 @@ mod tests {
     #[test]
     fn partial_commit_moves_into_place() {
         let d = tempfile::tempdir().unwrap();
-        let mut p = Partial::create(d.path(), d.path().join("a.txt")).unwrap();
+        let mut p = Partial::create(d.path(), "a.txt", d.path().join("a.txt")).unwrap();
         p.file().write_all(b"data").unwrap();
         assert_eq!(p.commit().unwrap(), d.path().join("a.txt"));
         assert_eq!(names(d.path()), ["a.txt"]);
@@ -398,7 +400,7 @@ mod tests {
     fn partial_commit_never_overwrites() {
         let d = tempfile::tempdir().unwrap();
         fs::write(d.path().join("a.txt"), b"original").unwrap();
-        let mut p = Partial::create(d.path(), d.path().join("a.txt")).unwrap();
+        let mut p = Partial::create(d.path(), "a.txt", d.path().join("a.txt")).unwrap();
         p.file().write_all(b"new").unwrap();
         assert_eq!(p.commit().unwrap(), d.path().join("a (1).txt"));
         assert_eq!(fs::read(d.path().join("a.txt")).unwrap(), b"original");
@@ -407,11 +409,23 @@ mod tests {
     }
 
     #[test]
+    fn partial_commit_counts_on_from_the_offered_name() {
+        let d = tempfile::tempdir().unwrap();
+        fs::write(d.path().join("photo.jpg"), b"existing").unwrap();
+        let planned = unique_path(d.path(), "photo.jpg", &HashSet::new());
+        assert_eq!(planned, d.path().join("photo (1).jpg"));
+        let mut p = Partial::create(d.path(), "photo.jpg", planned).unwrap();
+        p.file().write_all(b"new").unwrap();
+        fs::write(d.path().join("photo (1).jpg"), b"appeared").unwrap();
+        assert_eq!(p.commit().unwrap(), d.path().join("photo (2).jpg"));
+    }
+
+    #[test]
     fn partial_long_name_and_leftover() {
         let d = tempfile::tempdir().unwrap();
         let name = sanitize(&format!("{}.jpg", "x".repeat(300)));
-        let first = Partial::create(d.path(), d.path().join(&name)).unwrap();
-        let mut second = Partial::create(d.path(), d.path().join(&name)).unwrap();
+        let first = Partial::create(d.path(), &name, d.path().join(&name)).unwrap();
+        let mut second = Partial::create(d.path(), &name, d.path().join(&name)).unwrap();
         second.file().write_all(b"2").unwrap();
         assert_eq!(names(d.path()).len(), 2);
         drop(first);

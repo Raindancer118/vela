@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::net::{Ipv4Addr, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, TryRecvError};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -93,15 +93,22 @@ pub fn client_introduction(v1: &V1Frame) -> Option<Vec<String>> {
     (!ids.is_empty()).then_some(ids)
 }
 
+/// Connections one waiting session takes. The endpoint id is no secret, so
+/// someone else on the LAN may claim it too; the session keeps the one that
+/// speaks with its keys ([`Conn::switch_to`]).
+const MAX_ARRIVALS: usize = 3;
+
 /// A session's place in a [`Rendezvous`]: which one it is (a newer session
-/// of the same phone may take its endpoint id) and where its connection goes.
+/// of the same phone may take its endpoint id), where its connections go and
+/// how many went there.
 struct Waiting {
     session: u64,
     arrivals: mpsc::Sender<TcpStream>,
+    taken: usize,
 }
 
 /// Where sessions wait for the phone's new connection, by its endpoint id.
-/// A session takes one connection: the first that claims it.
+/// A session takes up to [`MAX_ARRIVALS`] connections that claim it.
 #[derive(Clone, Default)]
 pub struct Rendezvous(Arc<Mutex<HashMap<String, Waiting>>>);
 
@@ -138,7 +145,14 @@ impl Rendezvous {
         static SESSIONS: AtomicU64 = AtomicU64::new(0);
         let session = SESSIONS.fetch_add(1, Ordering::Relaxed);
         let (tx, arrivals) = mpsc::channel();
-        self.lock().insert(endpoint.to_owned(), Waiting { session, arrivals: tx });
+        self.lock().insert(
+            endpoint.to_owned(),
+            Waiting {
+                session,
+                arrivals: tx,
+                taken: 0,
+            },
+        );
         Expected {
             arrivals,
             endpoint: endpoint.to_owned(),
@@ -149,18 +163,22 @@ impl Rendezvous {
 
     /// Acks the introduction of the phone with one of the endpoint ids
     /// `ids` on `stream` and hands the stream to the session waiting for it;
-    /// false (and nothing written) if none waits. The session is claimed
-    /// before the ack goes out, so only one connection is ever acked.
+    /// false (and nothing written) if none waits or it has
+    /// [`MAX_ARRIVALS`] already.
     pub fn hand_over(&self, ids: &[String], stream: TcpStream) -> anyhow::Result<bool> {
-        let claimed = {
+        let arrivals = {
             let mut waiting = self.lock();
-            ids.iter().filter(|id| !id.is_empty()).find_map(|id| waiting.remove(id))
-        };
-        let Some(waiting) = claimed else {
-            return Ok(false);
+            let key = ids.iter().find(|id| !id.is_empty() && waiting.contains_key(*id)).cloned();
+            match key.and_then(|k| waiting.get_mut(&k)) {
+                Some(w) if w.taken < MAX_ARRIVALS => {
+                    w.taken += 1;
+                    w.arrivals.clone()
+                }
+                _ => return Ok(false),
+            }
         };
         write_plain(&stream, client_introduction_ack())?;
-        Ok(waiting.arrivals.send(stream).is_ok())
+        Ok(arrivals.send(stream).is_ok())
     }
 }
 
@@ -173,9 +191,12 @@ pub struct Offer {
     pub rendezvous: Rendezvous,
 }
 
-/// An offered upgrade, until the phone came, said no or took too long.
+/// An offered upgrade, until the switch is over, the phone said no or took
+/// too long.
 pub struct Upgrade {
     waiting: Option<(Expected, Instant)>,
+    /// A connection came and the switch began.
+    switching: bool,
 }
 
 impl Upgrade {
@@ -195,28 +216,40 @@ impl Upgrade {
         log::info!("quickshare: offering {endpoint} to go on over Wi-Fi at {ip}:{}", offer.port);
         Ok(Some(Upgrade {
             waiting: Some((expected, Instant::now() + ARRIVAL_TIMEOUT)),
+            switching: false,
         }))
     }
 
-    /// Moves `conn` once the phone's connection is there; gives up after
-    /// [`ARRIVAL_TIMEOUT`].
+    /// Moves `conn` to the connections that claim the phone as they come
+    /// (see [`Conn::switch_to`]); stops waiting once the switch is over, or
+    /// after [`ARRIVAL_TIMEOUT`] if none came.
     pub fn poll(&mut self, conn: &mut Conn) -> anyhow::Result<()> {
         let Some((expected, deadline)) = &self.waiting else {
             return Ok(());
         };
-        let stream = match expected.arrivals.try_recv() {
-            Ok(stream) => Some(stream),
-            Err(TryRecvError::Empty) if Instant::now() < *deadline => return Ok(()),
-            // Stop waiting first, then look once more: a hand-over that
-            // claimed this session just before has acked the phone, so its
-            // connection is taken (once the ack is written).
-            Err(_) => {
-                expected.stop();
-                expected.arrivals.recv_timeout(CLAIMED_WAIT).ok()
+        while let Ok(stream) = expected.arrivals.try_recv() {
+            if !self.switching {
+                log::info!("quickshare: the transfer goes on over Wi-Fi");
             }
-        };
+            conn.switch_to(Box::new(stream))?;
+            self.switching = true;
+        }
+        if self.switching {
+            if !conn.switching() {
+                self.waiting = None;
+            }
+            return Ok(());
+        }
+        if Instant::now() < *deadline {
+            return Ok(());
+        }
+        // Stop waiting first, then look once more: a hand-over that claimed
+        // this session just before has acked the phone, so its connection is
+        // taken (once the ack is written).
+        expected.stop();
+        let late = expected.arrivals.recv_timeout(CLAIMED_WAIT).ok();
         self.waiting = None;
-        match stream {
+        match late {
             Some(stream) => {
                 log::info!("quickshare: the transfer goes on over Wi-Fi");
                 conn.switch_to(Box::new(stream))?;
@@ -633,19 +666,22 @@ mod tests {
     }
 
     #[test]
-    fn a_waiting_session_takes_one_connection_only() {
+    fn a_waiting_session_takes_a_few_connections() {
+        // Whoever names the phone's endpoint id gets an ack; the session
+        // keeps the one that speaks with the session keys (see Conn).
         let rendezvous = Rendezvous::default();
         let connections = Connections::new();
         let expected = rendezvous.expect("PHON");
         let phone = ["PHON".to_owned()];
-        let (first, server) = connections.accept();
-        assert!(rendezvous.hand_over(&phone, server).unwrap());
-        let (second, server) = connections.accept();
-        assert!(!rendezvous.hand_over(&phone, server).unwrap(), "the session is taken");
-        no_ack(second);
-        ack(&first);
-        assert!(expected.arrivals.try_recv().is_ok());
-        assert!(expected.arrivals.try_recv().is_err(), "one connection");
+        for _ in 0..MAX_ARRIVALS {
+            let (client, server) = connections.accept();
+            assert!(rendezvous.hand_over(&phone, server).unwrap());
+            ack(&client);
+        }
+        let (extra, server) = connections.accept();
+        assert!(!rendezvous.hand_over(&phone, server).unwrap(), "no more than {MAX_ARRIVALS}");
+        no_ack(extra);
+        assert_eq!(expected.arrivals.try_iter().count(), MAX_ARRIVALS);
     }
 
     #[test]

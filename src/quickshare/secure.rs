@@ -68,6 +68,12 @@ impl SecureChannel {
         .encode_to_vec()
     }
 
+    /// Whether `secure_message` is signed with the peer's key, without
+    /// opening it or moving the sequence on.
+    pub fn authentic(&self, secure_message: &[u8]) -> bool {
+        SecureMessage::decode(secure_message).is_ok_and(|msg| bool::from(hmac(&self.recv_hmac, &msg.header_and_body).as_slice().ct_eq(&msg.signature)))
+    }
+
     /// Checks and decrypts a serialized `SecureMessage`, returning the
     /// serialized `OfflineFrame` inside. The signature is checked over the
     /// `header_and_body` bytes exactly as received, before anything is

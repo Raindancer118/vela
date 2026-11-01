@@ -437,7 +437,7 @@ pub fn spawn() {
     std::thread::Builder::new()
         .name("pulse-recorder".into())
         .spawn(|| {
-            let mut cfg = super::actions::load_config().pulse;
+            let mut cfg = crate::config::Config::load().pulse;
             let mut monitor = Monitor::light();
             let mut rec = Recorder::new(cfg.record_interval_secs as u64 * 1000, cfg.history_minutes, cfg.long_history_hours);
             rec.load_history(history_file(), super::sample::now_ms());
@@ -456,7 +456,7 @@ pub fn spawn() {
             loop {
                 if cfg_at.elapsed() >= Duration::from_secs(30) {
                     cfg_at = Instant::now();
-                    let next = super::actions::load_config().pulse;
+                    let next = crate::config::Config::load().pulse;
                     if next.record_interval_secs != cfg.record_interval_secs
                         || next.history_minutes != cfg.history_minutes
                         || next.long_history_hours != cfg.long_history_hours

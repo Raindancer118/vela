@@ -80,10 +80,14 @@ pub enum Cmd {
     Pick {
         req: Option<u64>,
     },
-    /// Name and size of files (answered like `pick`).
+    /// Name and size of files, given as paths or as `file://` URIs (a
+    /// drop), answered like `pick`.
     Stat {
         req: Option<u64>,
+        #[serde(default)]
         files: Vec<PathBuf>,
+        #[serde(default)]
+        uris: Vec<String>,
     },
     /// Reads the config again; a new name or port is announced (and a new
     /// `hello` sent).
@@ -113,6 +117,15 @@ enum Msg {
     Ended(u64),
     /// From the search with this number.
     Peer(u64, PeerEvent),
+    /// The BLE beacon for the search with this number, started or not.
+    Beacon(u64, Result<ble::Beacon, String>),
+    /// Bluetooth work for the BLE receiver with this number is done: the
+    /// receiver if one was (re)started, and whether the beacon can run.
+    BleReady {
+        number: u64,
+        receiver: Option<anyhow::Result<(Box<dyn Send>, weave::Indicate)>>,
+        probe: Option<bool>,
+    },
     /// A line a worker thread has ready (the answer to `pick`).
     Reply(Value),
     /// The file dialog's worker is done; another dialog may open.
@@ -173,6 +186,9 @@ fn state_of(outcome: &Outcome) -> (&'static str, String) {
 
 /// Concurrent incoming connections (TCP and Bluetooth); more are closed.
 const MAX_CONNECTIONS: usize = 8;
+/// Incoming TCP connections from one host whose offer has not arrived yet;
+/// more are closed, so one host cannot take all [`MAX_CONNECTIONS`].
+const MAX_SETUPS_PER_HOST: usize = 2;
 /// Offers waiting for the user at once; more are rejected.
 const MAX_PENDING_OFFERS: usize = 3;
 
@@ -232,9 +248,28 @@ fn mkdir_reply(req: Option<u64>, parent: &Path, name: &str) -> Value {
 }
 
 /// `files` that are files, with name and size; the others are named in `error`.
+/// The paths of `file://` URIs (decoded in Rust: names need not be UTF-8),
+/// and what was said about the others.
+fn uri_paths(uris: &[String]) -> (Vec<PathBuf>, Vec<String>) {
+    let (mut paths, mut others) = (Vec::new(), Vec::new());
+    for uri in uris {
+        match desktop::path_from_uri(uri) {
+            Some(p) => paths.push(p),
+            None => others.push(format!("{} is not a local file", files::display(uri, inbound::MAX_TITLE_CHARS))),
+        }
+    }
+    (paths, others)
+}
+
 fn stat_reply(req: Option<u64>, paths: &[PathBuf]) -> Value {
     let (mut ok, mut problems) = (Vec::new(), Vec::new());
     for p in paths {
+        // The shell hands paths back as JSON strings; one that is not
+        // UTF-8 would come back as a different file.
+        if p.to_str().is_none() {
+            problems.push(format!("{}: the name is not UTF-8 and cannot be sent", p.display()));
+            continue;
+        }
         match fs::metadata(p) {
             Ok(m) if m.is_file() => ok.push(json!({
                 "path": lossy(p),
@@ -267,13 +302,16 @@ fn received_notice(lang: desktop::Lang, n: usize, device: &str, dir: &str) -> No
 }
 
 /// The notification for received text: a link can be opened (web links
-/// only), plain text was copied by the shell.
+/// without hidden characters only, so what is shown is what opens), plain
+/// text was copied by the shell.
 fn text_notice(lang: desktop::Lang, kind: &str, text: &str, device: &str) -> Notice {
     let is_web_link = text.starts_with("https://") || text.starts_with("http://");
     if kind == "url" {
-        let action = is_web_link.then(|| (desktop::open_label(lang).into(), text.to_owned()));
+        let shown = files::display(text, inbound::MAX_TITLE_CHARS);
+        let hides_nothing = files::display(text, usize::MAX) == text;
+        let action = (is_web_link && hides_nothing).then(|| (desktop::open_label(lang).into(), text.to_owned()));
         Notice {
-            summary: text.to_owned(),
+            summary: shown,
             body: device.to_owned(),
             action,
         }
@@ -370,6 +408,8 @@ struct Transfer {
     cancel: Arc<AtomicBool>,
     /// Incoming, until the user decided.
     decisions: Option<mpsc::Sender<Decision>>,
+    /// Incoming over TCP: the other end's address.
+    host: Option<std::net::IpAddr>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -386,6 +426,7 @@ impl Transfer {
             dir: String::new(),
             saved: Vec::new(),
             announced: false,
+            host: None,
             cancel,
             decisions: None,
             thread: Some(thread),
@@ -415,7 +456,7 @@ struct Options {
     /// The `[quickshare]` settings, read at the start and on `reload`.
     load: Box<dyn Fn() -> config::Quickshare + Send>,
     /// Whether the BLE beacon can run, asked at the start and on `reload`.
-    probe_ble: Box<dyn Fn() -> bool + Send>,
+    probe_ble: ProbeBle,
     receive_ble: ReceiveBle,
     /// The address a Bluetooth transfer offers the phone to go on over
     /// Wi-Fi ([`bwu::local_ipv4`]).
@@ -428,7 +469,27 @@ struct Options {
 /// Bluetooth (sending what phones do to the channel) until the returned
 /// guard is dropped, and how to indicate to phones:
 /// [`gatt::Receiver::start`], [`gatt::Receiver::indicator`].
-type ReceiveBle = Box<dyn Fn([u8; 4], &EndpointInfo, mpsc::Sender<gatt::Event>) -> anyhow::Result<(Box<dyn Send>, weave::Indicate)> + Send>;
+/// Called on a worker thread: BlueZ may take seconds to answer.
+type ReceiveBle = Arc<dyn Fn([u8; 4], &EndpointInfo, mpsc::Sender<gatt::Event>) -> anyhow::Result<(Box<dyn Send>, weave::Indicate)> + Send + Sync>;
+type ProbeBle = Arc<dyn Fn() -> bool + Send + Sync>;
+type BluezJob = Box<dyn FnOnce() + Send>;
+
+/// The BlueZ worker: runs jobs one after another until the sender is gone.
+fn bluez_worker() -> Option<mpsc::Sender<BluezJob>> {
+    let (tx, jobs) = mpsc::channel::<BluezJob>();
+    let spawned = std::thread::Builder::new().name("quickshare-bluez".into()).spawn(move || {
+        for job in jobs {
+            job();
+        }
+    });
+    match spawned {
+        Ok(_) => Some(tx),
+        Err(e) => {
+            log::warn!("quickshare: cannot talk to Bluetooth: {e}");
+            None
+        }
+    }
+}
 
 struct Server<'a, W: Write> {
     out: &'a mut W,
@@ -436,7 +497,7 @@ struct Server<'a, W: Write> {
     connected: bool,
     tx: mpsc::Sender<Msg>,
     load: Box<dyn Fn() -> config::Quickshare + Send>,
-    probe_ble: Box<dyn Fn() -> bool + Send>,
+    probe_ble: ProbeBle,
     notify: Box<dyn Fn(Notice) + Send>,
     /// A file dialog is open (one at a time).
     picking: bool,
@@ -449,6 +510,8 @@ struct Server<'a, W: Write> {
     ble_receiver: Option<Box<dyn Send>>,
     /// The number of the latest BLE receiver.
     ble_receivers: u64,
+    /// Jobs for the BlueZ worker ([`Server::bluez`]).
+    bluez: Option<mpsc::Sender<BluezJob>>,
     /// Starting the BLE receiver failed before (warned once).
     ble_warned: bool,
     upgrade_ip: Box<dyn Fn() -> Option<Ipv4Addr> + Send>,
@@ -480,9 +543,9 @@ pub fn run() -> anyhow::Result<()> {
     std::thread::spawn(move || read_commands(std::io::stdin().lock(), &reader));
     let opts = Options {
         mdns: true,
-        load: Box::new(|| load_config().quickshare),
-        probe_ble: Box::new(probe_ble),
-        receive_ble: Box::new(|id, info, events| {
+        load: Box::new(|| config::Config::load().quickshare),
+        probe_ble: Arc::new(probe_ble),
+        receive_ble: Arc::new(|id, info, events| {
             gatt::Receiver::start(id, info, events).map(|r| {
                 let indicate = r.indicator();
                 (Box::new(r) as Box<dyn Send>, indicate)
@@ -502,18 +565,6 @@ fn probe_ble() -> bool {
             log::info!("quickshare: no BLE beacon: {e:#}");
             false
         }
-    }
-}
-
-fn load_config() -> config::Config {
-    let file = crate::paths::config_file();
-    match fs::read_to_string(&file).map(|t| config::Config::from_toml(&t)) {
-        Ok(Ok(cfg)) => cfg,
-        Ok(Err(e)) => {
-            log::warn!("quickshare: {}: {e:#}; using the defaults", file.display());
-            config::Config::default()
-        }
-        Err(_) => config::Config::default(),
     }
 }
 
@@ -555,6 +606,7 @@ impl<'a, W: Write> Server<'a, W> {
             receive_ble: opts.receive_ble,
             ble_receiver: None,
             ble_receivers: 0,
+            bluez: bluez_worker(),
             ble_warned: false,
             upgrade_ip: opts.upgrade_ip,
             rendezvous: bwu::Rendezvous::default(),
@@ -585,10 +637,7 @@ impl<'a, W: Write> Server<'a, W> {
             server.advertise();
         }
         // BlueZ may take a while; the shell and mDNS do not wait for it.
-        server.receive_over_ble();
-        if server.ble_receiver.is_some() {
-            server.hello();
-        }
+        server.bluetooth(true, false);
         Ok(server)
     }
 
@@ -624,52 +673,85 @@ impl<'a, W: Write> Server<'a, W> {
         }
     }
 
-    /// (Re)starts the BLE receiver under the current name; a thread turns
-    /// what phones do into links ([`weave::Hub`]). Without it phones that
+    /// Bluetooth work on a worker thread, so commands and connections do not
+    /// wait for BlueZ: (re)starts the BLE receiver under the current name
+    /// (`restart`) and asks whether the beacon can run (`probe`); the
+    /// result comes back as [`Msg::BleReady`].
+    fn bluetooth(&mut self, restart: bool, probe: bool) {
+        if restart {
+            self.ble_receivers += 1;
+        }
+        let number = self.ble_receivers;
+        let (id, me, tx) = (self.id, self.me(), self.tx.clone());
+        let (receive, probe_ble) = (self.receive_ble.clone(), self.probe_ble.clone());
+        self.bluez(move || {
+            let receiver = restart.then(|| {
+                let (events, rx) = mpsc::channel();
+                receive(id, &me, events).map(|(guard, indicate)| {
+                    let (hub_tx, hub_indicate) = (tx.clone(), indicate.clone());
+                    // Ends when the receiver is dropped (its end of the channel goes).
+                    let _ = std::thread::Builder::new().name("quickshare-ble".into()).spawn(move || {
+                        let mut hub = weave::Hub::new(hub_indicate);
+                        for e in rx {
+                            let msg = match e {
+                                gatt::Event::Released => Msg::BleReleased(number),
+                                e => match hub.handle(e) {
+                                    Some(link) => Msg::BleLink(link),
+                                    None => continue,
+                                },
+                            };
+                            if hub_tx.send(msg).is_err() {
+                                return;
+                            }
+                        }
+                    });
+                    (guard, indicate)
+                })
+            });
+            let probe = probe.then(|| probe_ble());
+            let _ = tx.send(Msg::BleReady { number, receiver, probe });
+        });
+    }
+
+    /// Runs `job` on the BlueZ worker: one thread, so jobs finish in the
+    /// order they were given and a receiver is never registered twice at once.
+    fn bluez(&mut self, job: impl FnOnce() + Send + 'static) {
+        if self.bluez.as_ref().is_some_and(|w| w.send(Box::new(job)).is_ok()) {
+            return;
+        }
+        log::warn!("quickshare: cannot talk to Bluetooth: its worker is gone");
+    }
+
+    /// The result of [`Server::bluetooth`]. Without the receiver phones that
     /// search over Bluetooth only do not find us; the shell explains that
     /// from `hello`, so a failure is no error line (and a warning only the
-    /// first time).
-    fn receive_over_ble(&mut self) {
-        self.ble_receiver = None;
-        self.ble_receivers += 1;
-        let number = self.ble_receivers;
-        let (events, rx) = mpsc::channel();
-        let (receiver, indicate) = match (self.receive_ble)(self.id, &self.me(), events) {
-            Ok(started) => started,
-            Err(e) => {
+    /// first time). A rename keeps the old receiver until the new one runs.
+    fn bluetooth_ready(&mut self, number: u64, receiver: Option<anyhow::Result<(Box<dyn Send>, weave::Indicate)>>, probe: Option<bool>, reload: bool) {
+        let before = (self.ble, self.ble_receiver.is_some());
+        // A receiver started before a newer one was asked for is dropped.
+        let receiver = receiver.filter(|_| number == self.ble_receivers);
+        match receiver {
+            Some(Ok((guard, _))) => {
+                self.ble_receiver = Some(guard);
+                // Losing it again later is worth a warning again.
+                self.ble_warned = false;
+            }
+            Some(Err(e)) => {
+                self.ble_receiver = None;
                 let e = format!("quickshare: not visible over Bluetooth, phones searching only there won't find us: {e:#}");
                 if std::mem::replace(&mut self.ble_warned, true) {
                     log::debug!("{e}");
                 } else {
                     log::warn!("{e}");
                 }
-                return;
             }
-        };
-        let tx = self.tx.clone();
-        // Ends when the receiver is dropped (its end of the channel goes).
-        let hub = std::thread::Builder::new().name("quickshare-ble".into()).spawn(move || {
-            let mut hub = weave::Hub::new(indicate);
-            for e in rx {
-                let msg = match e {
-                    gatt::Event::Released => Msg::BleReleased(number),
-                    e => match hub.handle(e) {
-                        Some(link) => Msg::BleLink(link),
-                        None => continue,
-                    },
-                };
-                if tx.send(msg).is_err() {
-                    return;
-                }
-            }
-        });
-        match hub {
-            Ok(_) => {
-                self.ble_receiver = Some(receiver);
-                // Losing it again later is worth a warning again.
-                self.ble_warned = false;
-            }
-            Err(e) => log::warn!("quickshare: cannot read from Bluetooth: {e}"),
+            None => {}
+        }
+        if let Some(probe) = probe {
+            self.ble = probe;
+        }
+        if reload || before != (self.ble, self.ble_receiver.is_some()) {
+            self.hello();
         }
     }
 
@@ -709,6 +791,12 @@ impl<'a, W: Write> Server<'a, W> {
             Msg::Event(e) => self.event(e),
             Msg::Ended(id) => self.ended(id),
             Msg::Peer(search, e) if Some(search) == self.search => self.peer(e),
+            Msg::Beacon(search, beacon) => self.beacon_ready(search, beacon),
+            Msg::BleReady { number, receiver, probe } => {
+                // A probe is only asked for on reload, which always ends with hello.
+                let reload = probe.is_some();
+                self.bluetooth_ready(number, receiver, probe, reload);
+            }
             Msg::Peer(..) => {}
             Msg::PickDone => self.picking = false,
             Msg::Reply(v) => {
@@ -763,8 +851,14 @@ impl<'a, W: Write> Server<'a, W> {
                     }
                 }
             }
-            Cmd::Stat { req, files } => {
-                let reply = stat_reply(req, &files);
+            Cmd::Stat { req, mut files, uris } => {
+                let (paths, not_files) = uri_paths(&uris);
+                files.extend(paths);
+                let mut reply = stat_reply(req, &files);
+                if !not_files.is_empty() {
+                    let error = [reply["error"].as_str().unwrap_or_default().to_owned(), not_files.join("; ")];
+                    reply["error"] = json!(error.iter().filter(|e| !e.is_empty()).cloned().collect::<Vec<_>>().join("; "));
+                }
                 self.emit(&reply);
             }
             Cmd::Reload => self.reload(),
@@ -817,9 +911,20 @@ impl<'a, W: Write> Server<'a, W> {
     }
 
     fn incoming(&mut self, stream: TcpStream) {
-        let from = stream.peer_addr().map(|a| a.to_string()).unwrap_or_default();
+        let peer = stream.peer_addr().ok();
+        let from = peer.map(|a| a.to_string()).unwrap_or_default();
         if self.connections() >= MAX_CONNECTIONS {
             log::warn!("quickshare: {MAX_CONNECTIONS} connections already, closing the one from {from}");
+            return;
+        }
+        let host = peer.map(|a| a.ip());
+        let setting_up = self
+            .transfers
+            .values()
+            .filter(|t| t.direction == "in" && !t.announced && host.is_some() && t.host == host)
+            .count();
+        if setting_up >= MAX_SETUPS_PER_HOST {
+            log::warn!("quickshare: {setting_up} unfinished connections from {from} already, closing this one");
             return;
         }
         let id = self.next_id();
@@ -828,6 +933,9 @@ impl<'a, W: Write> Server<'a, W> {
         self.receive(id, move |events, decisions, cancel| {
             inbound::handle_tcp(stream, id, events, decisions, cancel, &rendezvous)
         });
+        if let Some(t) = self.transfers.get_mut(&id) {
+            t.host = host;
+        }
     }
 
     /// Like [`Server::incoming`], over Bluetooth; an accepted transfer is
@@ -1023,10 +1131,22 @@ impl<'a, W: Write> Server<'a, W> {
         self.devices();
     }
 
-    /// Without the beacon phones may not show up; the shell explains that
-    /// from `hello`, so a failure is no error line.
+    /// Starts the beacon on a worker thread ([`Msg::Beacon`]).
     fn start_beacon(&mut self) {
-        match ble::start() {
+        let (Some(search), tx) = (self.search, self.tx.clone()) else { return };
+        self.bluez(move || {
+            let _ = tx.send(Msg::Beacon(search, ble::start().map_err(|e| format!("{e:#}"))));
+        });
+    }
+
+    /// Without the beacon phones may not show up; the shell explains that
+    /// from `hello`, so a failure is no error line. A beacon for a search
+    /// that has ended is dropped.
+    fn beacon_ready(&mut self, search: u64, beacon: Result<ble::Beacon, String>) {
+        if self.search != Some(search) {
+            return;
+        }
+        match beacon {
             Ok(beacon) => {
                 self.beacon = Some(beacon);
                 if !self.ble {
@@ -1035,7 +1155,7 @@ impl<'a, W: Write> Server<'a, W> {
                 }
             }
             Err(e) => {
-                log::warn!("quickshare: no BLE beacon, phones may not show up: {e:#}");
+                log::warn!("quickshare: no BLE beacon, phones may not show up: {e}");
                 if self.ble {
                     self.ble = false;
                     self.hello();
@@ -1084,12 +1204,8 @@ impl<'a, W: Write> Server<'a, W> {
             log::info!("quickshare: now {:?} on port {}", self.name, self.listener.port);
             self.advertise();
         }
-        // Also when Bluetooth was not there before.
-        if renamed || self.ble_receiver.is_none() {
-            self.receive_over_ble();
-        }
-        self.ble = (self.probe_ble)();
-        self.hello();
+        // Also when Bluetooth was not there before; hello once BlueZ answered.
+        self.bluetooth(renamed || self.ble_receiver.is_none(), true);
     }
 
     /// Withdraws the announcements, stops searching, the beacon and
@@ -1221,6 +1337,15 @@ mod tests {
                 Cmd::Stat {
                     req: Some(6),
                     files: vec!["/abs".into()],
+                    uris: Vec::new(),
+                },
+            ),
+            (
+                r#"{"cmd":"stat","req":7,"uris":["file:///a%20b"]}"#,
+                Cmd::Stat {
+                    req: Some(7),
+                    files: Vec::new(),
+                    uris: vec!["file:///a%20b".into()],
                 },
             ),
             (r#"{"cmd":"reload"}"#, Cmd::Reload),
@@ -1316,6 +1441,16 @@ mod tests {
         let error = r["error"].as_str().unwrap();
         assert!(error.contains("Neu") && error.contains("gone"), "{error}");
 
+        // Dropped files come as URIs; one that cannot be sent spoils nothing else.
+        let latin1 = <std::ffi::OsString as std::os::unix::ffi::OsStringExt>::from_vec(b"caf\xe9.txt".to_vec());
+        fs::write(tmp.path().join(&latin1), b"x").unwrap();
+        let dir = desktop::file_uri(tmp.path().to_str().unwrap());
+        let uris = [format!("{dir}/a.jpg"), format!("{dir}/caf%E9.txt"), "https://example.org/x".to_owned()];
+        let r = stat_reply(Some(7), &uri_paths(&uris).0);
+        assert_eq!(r["files"], json!([{ "path": file.to_str().unwrap(), "name": "a.jpg", "size": 5 }]));
+        assert!(r["error"].as_str().unwrap().contains("caf"), "{}", r["error"]);
+        assert_eq!(uri_paths(&uris).1, ["https://example.org/x is not a local file"]);
+
         let r = pick_reply(Some(5), Ok(vec![file.clone()]));
         assert_eq!(r["files"], json!([{ "path": file.to_str().unwrap(), "name": "a.jpg", "size": 5 }]));
         let r = pick_reply(Some(5), Ok(Vec::new()));
@@ -1339,6 +1474,13 @@ mod tests {
         assert_eq!(n.summary, "Text von Pixel kopiert");
         assert_eq!(n.body.chars().count(), 80);
         assert_eq!(n.action, None);
+        let spoof = "https://evil.example/\u{202E}gro.elpmaxe";
+        let n = text_notice(Lang::En, "url", spoof, "Pixel");
+        assert_eq!(n.summary, "https://evil.example/gro.elpmaxe");
+        assert_eq!(n.action, None, "a link with hidden characters is not offered for opening");
+        let n = text_notice(Lang::En, "url", &format!("https://x/{}", "a".repeat(10_000)), "Pixel");
+        assert_eq!(n.summary.chars().count(), inbound::MAX_TITLE_CHARS + 1);
+        assert!(n.action.is_some(), "a long link still opens");
         let n = received_notice(Lang::De, 3, "Pixel", "/home/a/Downloads");
         assert_eq!((n.summary.as_str(), n.body.as_str()), ("3 Dateien empfangen", "Pixel · /home/a/Downloads"));
         assert_eq!(n.action, Some(("Ordner öffnen".into(), "file:///home/a/Downloads".into())));
@@ -1397,7 +1539,7 @@ mod tests {
     }
 
     /// Like [`start`], with `probe_ble` saying whether BLE can run.
-    fn start_with_ble(port: u16, probe_ble: Box<dyn Fn() -> bool + Send>) -> Running {
+    fn start_with_ble(port: u16, probe_ble: Arc<dyn Fn() -> bool + Send + Sync>) -> Running {
         start_with(port, |o| o.probe_ble = probe_ble)
     }
 
@@ -1411,8 +1553,8 @@ mod tests {
         let mut opts = Options {
             mdns: false,
             load: Box::new(move || config::Quickshare { name: "test-pc".into(), port }),
-            probe_ble: Box::new(|| false),
-            receive_ble: Box::new(|_, _, _| Err(anyhow::anyhow!("no Bluetooth in tests"))),
+            probe_ble: Arc::new(|| false),
+            receive_ble: Arc::new(|_, _, _| Err(anyhow::anyhow!("no Bluetooth in tests"))),
             upgrade_ip: Box::new(|| Some(Ipv4Addr::LOCALHOST)),
             notify: Box::new(move |n| {
                 let _ = ntx.send(n);
@@ -1575,26 +1717,94 @@ mod tests {
         assert_eq!(outcome(second), Outcome::Cancelled);
     }
 
+    /// A TCP connection to `addr` from the loopback address `from`.
+    fn connect_from(from: Ipv4Addr, addr: std::net::SocketAddr) -> TcpStream {
+        use std::os::fd::FromRawFd;
+        let sockaddr = |ip: Ipv4Addr, port: u16| libc::sockaddr_in {
+            sin_family: libc::AF_INET as libc::sa_family_t,
+            sin_port: port.to_be(),
+            sin_addr: libc::in_addr { s_addr: u32::from(ip).to_be() },
+            sin_zero: [0; 8],
+        };
+        let std::net::SocketAddr::V4(to) = addr else { panic!("{addr}") };
+        let len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+        // SAFETY: plain socket calls on a fresh descriptor and stack sockaddrs.
+        unsafe {
+            let fd = libc::socket(libc::AF_INET, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0);
+            assert!(fd >= 0);
+            let local = sockaddr(from, 0);
+            assert_eq!(libc::bind(fd, (&raw const local).cast(), len), 0);
+            let remote = sockaddr(*to.ip(), to.port());
+            assert_eq!(libc::connect(fd, (&raw const remote).cast(), len), 0);
+            TcpStream::from_raw_fd(fd)
+        }
+    }
+
+    /// Whether the server closed `s` (end of stream or reset) within `wait`.
+    fn closed_within(s: &TcpStream, wait: Duration) -> bool {
+        let mut s = s.try_clone().unwrap();
+        s.set_read_timeout(Some(wait)).unwrap();
+        let mut buf = [0u8; 1];
+        match s.read(&mut buf) {
+            Ok(0) => true,
+            Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => true,
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => false,
+            other => panic!("{other:?}"),
+        }
+    }
+
     #[test]
     fn connections_beyond_the_limit_are_closed_at_once() {
         let r = start(0);
         let addr = hello(&r);
-        let idle: Vec<TcpStream> = (0..MAX_CONNECTIONS).map(|_| TcpStream::connect(addr).unwrap()).collect();
-        let mut extra = TcpStream::connect(addr).unwrap();
-        extra.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
-        let mut buf = [0u8; 1];
-        // Closed by the server: end of stream (or a reset), not a timeout.
-        match extra.read(&mut buf) {
-            Ok(0) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => {}
-            other => panic!("the extra connection was kept: {other:?}"),
-        }
-        // The ones inside the limit stay open.
-        let mut first = idle.first().unwrap().try_clone().unwrap();
-        first.set_read_timeout(Some(Duration::from_millis(200))).unwrap();
-        assert_eq!(first.read(&mut buf).unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
-
+        let idle: Vec<TcpStream> = (0..MAX_CONNECTIONS as u8)
+            .map(|n| connect_from(Ipv4Addr::new(127, 0, 1, n + 1), addr))
+            .collect();
+        let extra = connect_from(Ipv4Addr::new(127, 0, 2, 1), addr);
+        assert!(closed_within(&extra, Duration::from_secs(10)), "the extra connection was kept");
+        assert!(!closed_within(&idle[0], Duration::from_millis(200)), "the ones inside the limit stay open");
         drop(idle);
+        r.tx.send(Msg::Stop).unwrap();
+        r.thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn one_host_cannot_take_all_connections() {
+        let r = start(0);
+        let addr = hello(&r);
+        let from = Ipv4Addr::new(127, 0, 3, 1);
+        let mine: Vec<TcpStream> = (0..MAX_SETUPS_PER_HOST).map(|_| connect_from(from, addr)).collect();
+        let more = connect_from(from, addr);
+        assert!(
+            closed_within(&more, Duration::from_secs(10)),
+            "a host gets only {MAX_SETUPS_PER_HOST} unfinished connections"
+        );
+        assert!(!closed_within(&mine[0], Duration::from_millis(200)));
+        let other = connect_from(Ipv4Addr::new(127, 0, 3, 2), addr);
+        assert!(!closed_within(&other, Duration::from_millis(200)), "other hosts still get in");
+        drop(mine);
+        r.tx.send(Msg::Stop).unwrap();
+        r.thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn a_trickling_connection_is_closed_after_the_setup_deadline() {
+        let r = start(0);
+        let addr = hello(&r);
+        let mut slow = TcpStream::connect(addr).unwrap();
+        // A frame header promising a big frame, then one byte now and then:
+        // each read succeeds, so only a deadline for the whole setup ends it.
+        slow.write_all(&(1_000_000u32).to_be_bytes()).unwrap();
+        let begun = std::time::Instant::now();
+        let mut closed = false;
+        while begun.elapsed() < inbound::SETUP_DEADLINE * 4 {
+            if slow.write_all(b"x").is_err() || closed_within(&slow, Duration::from_millis(50)) {
+                closed = true;
+                break;
+            }
+        }
+        assert!(closed, "still open after {:?}", begun.elapsed());
+        assert!(begun.elapsed() >= inbound::SETUP_DEADLINE);
         r.tx.send(Msg::Stop).unwrap();
         r.thread.join().unwrap().unwrap();
     }
@@ -1654,7 +1864,7 @@ mod tests {
     fn hello_says_whether_ble_can_run_and_reload_asks_again() {
         let powered = Arc::new(AtomicBool::new(true));
         let probe = powered.clone();
-        let r = start_with_ble(0, Box::new(move || probe.load(Ordering::SeqCst)));
+        let r = start_with_ble(0, Arc::new(move || probe.load(Ordering::SeqCst)));
         assert_eq!(next(&r.lines, "hello")["ble"], true);
 
         powered.store(false, Ordering::SeqCst);
@@ -1675,6 +1885,30 @@ mod tests {
     }
 
     #[test]
+    fn slow_bluetooth_does_not_hold_up_commands() {
+        let slow = Duration::from_millis(1500);
+        let r = start_with(0, move |o| {
+            o.receive_ble = Arc::new(move |_, _, _| {
+                std::thread::sleep(slow);
+                Err(anyhow::anyhow!("BlueZ is slow"))
+            });
+            o.probe_ble = Arc::new(move || {
+                std::thread::sleep(slow);
+                false
+            });
+        });
+        next(&r.lines, "hello");
+        r.tx.send(Msg::Cmd(Cmd::Reload)).unwrap();
+        let begun = Instant::now();
+        r.tx.send(Msg::Cmd(Cmd::Cancel { id: 999 })).unwrap();
+        next(&r.lines, "error");
+        assert!(begun.elapsed() < Duration::from_millis(500), "answered after {:?}", begun.elapsed());
+        assert_eq!(next(&r.lines, "hello")["bleReceive"], false, "the reload still ends with hello");
+        r.tx.send(Msg::Eof).unwrap();
+        r.thread.join().unwrap().unwrap();
+    }
+
+    #[test]
     fn visible_over_ble_while_serving_and_under_a_new_name() {
         let name = Arc::new(Mutex::new("test-pc".to_owned()));
         let (started, stopped) = (Arc::new(Mutex::new(Vec::new())), Arc::new(AtomicUsize::new(0)));
@@ -1684,7 +1918,7 @@ mod tests {
                 name: n.lock().unwrap().clone(),
                 port: 0,
             });
-            o.receive_ble = Box::new(move |id, info, _| {
+            o.receive_ble = Arc::new(move |id, info, _| {
                 s.lock().unwrap().push((id, info.name.clone().unwrap()));
                 Ok((Box::new(Guard(d.clone())), weave::fake::indications().0))
             });
@@ -1719,7 +1953,7 @@ mod tests {
         let events = Arc::new(Mutex::new(None));
         let (c, d, e) = (calls.clone(), stopped.clone(), events.clone());
         let r = start_with(0, move |o| {
-            o.receive_ble = Box::new(move |_, _, tx| {
+            o.receive_ble = Arc::new(move |_, _, tx| {
                 if c.fetch_add(1, Ordering::SeqCst) == 0 {
                     anyhow::bail!("Bluetooth is off");
                 }
@@ -1757,7 +1991,7 @@ mod tests {
         let events = Arc::new(Mutex::new(None));
         let e = events.clone();
         let r = start_with(0, move |o| {
-            o.receive_ble = Box::new(move |_, _, tx| {
+            o.receive_ble = Arc::new(move |_, _, tx| {
                 *e.lock().unwrap() = Some(tx);
                 Ok((Box::new(()), indicate.clone()))
             });

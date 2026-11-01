@@ -38,8 +38,8 @@ fn host_info() -> Value {
     json!({
         "type": "hello",
         "version": env!("CARGO_PKG_VERSION"),
-        "interval": actions::load_config().pulse.interval_ms,
-        "record": actions::load_config().pulse.record,
+        "interval": crate::config::Config::load().pulse.interval_ms,
+        "record": crate::config::Config::load().pulse.record,
         "hostname": read("/proc/sys/kernel/hostname"),
         "kernel": read("/proc/sys/kernel/osrelease"),
         "os": pretty,
@@ -92,7 +92,7 @@ pub fn run() -> std::io::Result<()> {
             return Ok(());
         }
     }
-    let cfg = actions::load_config().pulse;
+    let cfg = crate::config::Config::load().pulse;
     let mut interval = Duration::from_millis(cfg.interval_ms as u64);
     let mut next = Instant::now();
     loop {
@@ -215,13 +215,15 @@ fn handle(cmd: &Value, monitor: &mut Monitor, state: &State, tx: &mpsc::Sender<M
             let a = need_app(tx, "restart")?;
             let file = a.desktop_id.as_deref().and_then(|d| monitor.desktop_path(d)).cloned();
             work(tx, id, "restart", &a.name.clone(), &key, move || {
-                actions::restart_app(&a, file.as_deref(), &actions::load_config())
+                actions::restart_app(&a, file.as_deref(), &crate::config::Config::load())
             });
         }
         "restart_proc" => {
             let pid = cmd.get("pid").and_then(Value::as_i64).unwrap_or(0) as i32;
             let name = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default().trim().to_owned();
-            work(tx, id, "restart", &name, "", move || actions::restart_process(pid, &actions::load_config()));
+            work(tx, id, "restart", &name, "", move || {
+                actions::restart_process(pid, &crate::config::Config::load())
+            });
         }
         "efficiency" => {
             let on = b("on");
@@ -276,14 +278,14 @@ fn handle(cmd: &Value, monitor: &mut Monitor, state: &State, tx: &mpsc::Sender<M
         "run" => {
             let (line, term) = (s("command"), b("terminal"));
             work(tx, id, "run", &line.clone(), "", move || {
-                actions::run_command(&line, term, &actions::load_config())
+                actions::run_command(&line, term, &crate::config::Config::load())
             });
         }
         "launch" => {
             let did = s("desktopId");
             let file = monitor.desktop_path(&did).cloned();
             work(tx, id, "launch", &did, "", move || match file {
-                Some(f) => actions::launch_desktop(&f, &actions::load_config()),
+                Some(f) => actions::launch_desktop(&f, &crate::config::Config::load()),
                 None => Err("app not found".into()),
             });
         }
@@ -294,7 +296,7 @@ fn handle(cmd: &Value, monitor: &mut Monitor, state: &State, tx: &mpsc::Sender<M
         "reboot" => work(tx, id, "reboot", "", "", actions::reboot),
         "claude" => {
             let prompt = claude_prompt(&s("topic"), state);
-            work(tx, id, "claude", "", "", move || actions::ask_claude(&prompt, &actions::load_config()));
+            work(tx, id, "claude", "", "", move || actions::ask_claude(&prompt, &crate::config::Config::load()));
         }
         "services" => {
             let tx = tx.clone();
@@ -370,7 +372,7 @@ fn claude_prompt(topic: &str, state: &State) -> String {
         })
         .unwrap_or_default();
     let ask = claude_ask(topic, state.last.as_ref().map(|f| f.findings.as_slice()).unwrap_or_default());
-    let hours = actions::load_config().pulse.claude_log_hours;
+    let hours = crate::config::Config::load().pulse.claude_log_hours;
     let log = if hours > 0 {
         match write_claude_log(hours) {
             Ok(path) => format!(

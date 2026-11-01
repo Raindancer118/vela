@@ -78,7 +78,7 @@ impl EndpointInfo {
         out
     }
 
-    /// Trailing TLV records are ignored.
+    /// Trailing TLV records are ignored; the name comes back cleaned for display.
     pub fn decode(b: &[u8]) -> Option<EndpointInfo> {
         if b.len() < 17 {
             return None;
@@ -89,9 +89,12 @@ impl EndpointInfo {
         }
         let len = *b.get(17)? as usize;
         let name = std::str::from_utf8(b.get(18..18 + len)?).ok()?;
+        // Names from other devices are shown everywhere (send list, offers,
+        // progress), so they are cleaned once here.
+        let name = super::files::display(name, super::inbound::MAX_DEVICE_CHARS);
         Some(EndpointInfo {
             kind,
-            name: Some(name.to_owned()),
+            name: (!name.trim().is_empty()).then_some(name),
         })
     }
 }
@@ -163,6 +166,21 @@ mod tests {
         let i = EndpointInfo::decode(&b).unwrap();
         assert_eq!(i.kind, DeviceKind::Phone);
         assert_eq!(i.name.as_deref(), Some("Galax"));
+    }
+
+    #[test]
+    fn names_lose_hidden_characters_and_are_cut() {
+        let encoded = |name: &str| {
+            let mut b = vec![1 << 1];
+            b.extend([0u8; 16]);
+            b.push(name.len() as u8);
+            b.extend(name.as_bytes());
+            EndpointInfo::decode(&b).unwrap().name
+        };
+        assert_eq!(encoded("Luna\u{202E}s Pixel\u{7}").as_deref(), Some("Lunas Pixel"));
+        assert_eq!(encoded("\u{200B}\u{202E}"), None, "nothing visible is no name");
+        let long = encoded(&"ü".repeat(100)).unwrap();
+        assert_eq!(long.chars().count(), crate::quickshare::inbound::MAX_DEVICE_CHARS + 1);
     }
 
     #[test]

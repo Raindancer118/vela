@@ -905,6 +905,24 @@ impl Config {
         Ok(cfg)
     }
 
+    /// The config in `file` without creating it: the defaults if it is
+    /// missing, and (with a warning) if it does not parse.
+    pub fn load_from(file: &std::path::Path) -> Config {
+        match std::fs::read_to_string(file).map(|t| Config::from_toml(&t)) {
+            Ok(Ok(cfg)) => cfg,
+            Ok(Err(e)) => {
+                log::warn!("{}: {e:#}; using the defaults", file.display());
+                Config::default()
+            }
+            Err(_) => Config::default(),
+        }
+    }
+
+    /// [`Config::load_from`] the user's config file.
+    pub fn load() -> Config {
+        Config::load_from(&crate::paths::config_file())
+    }
+
     pub fn to_toml(&self) -> String {
         let body = toml::to_string_pretty(self).unwrap_or_default();
         format!("{HEADER}\n{body}")
@@ -986,6 +1004,20 @@ pub fn save(path: &Path, cfg: &Config) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn load_from_falls_back_to_the_defaults() {
+        let d = tempfile::tempdir().unwrap();
+        let missing = d.path().join("none.toml");
+        assert_eq!(super::Config::load_from(&missing).to_toml(), super::Config::default().to_toml());
+        assert!(!missing.exists(), "nothing is created");
+        let broken = d.path().join("broken.toml");
+        std::fs::write(&broken, "[quickshare\nname = ").unwrap();
+        assert_eq!(super::Config::load_from(&broken).to_toml(), super::Config::default().to_toml());
+        let set = d.path().join("set.toml");
+        std::fs::write(&set, "[quickshare]\nname = \"desk\"\n").unwrap();
+        assert_eq!(super::Config::load_from(&set).quickshare.name, "desk");
+    }
+
     use super::*;
 
     #[test]
