@@ -15,6 +15,20 @@ Singleton {
     property string detail: ""
     // Tab of the Quick Share view: "send" or "receive".
     property string quickShareTab: "receive"
+    // Quick Share in a window of its own (the launcher entry, the pop-out
+    // button). While it is open, the panel's tile brings it to the front
+    // instead of opening the view a second time.
+    property bool quickShareWindow: false
+
+    signal raiseQuickShare
+
+    function openQuickShareWindow(): void {
+        if (panelOpen && detail === "quickshare")
+            closePanel();
+        if (quickShareWindow)
+            raiseQuickShare();
+        quickShareWindow = true;
+    }
 
     function focusedScreen(): ShellScreen {
         const name = Hyprland.focusedMonitor?.name;
@@ -45,6 +59,11 @@ Singleton {
     function openDetail(name: string): void {
         if (!details.includes(name)) {
             console.warn("ShellState: unknown detail view", name);
+            return;
+        }
+        if (name === "quickshare" && quickShareWindow) {
+            closePanel();
+            raiseQuickShare();
             return;
         }
         openPanel();

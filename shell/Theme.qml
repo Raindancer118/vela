@@ -136,7 +136,7 @@ Singleton {
         readonly property int normal: Math.round(250 * Config.animationScale)
         readonly property int slow: Math.round(350 * Config.animationScale)
         // One wave of the "visible nearby" pulse (Quick Share).
-        readonly property int pulse: Math.round(2200 * Config.animationScale)
+        readonly property int pulse: Math.round(4000 * Config.animationScale)
         // A window asking for a decision ignores keys and clicks this long
         // after it appears. Not scaled: it guards, it doesn't animate.
         readonly property int armDelay: 600

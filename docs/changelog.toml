@@ -6,6 +6,17 @@
 title = "The logbook"
 lede = "Every tag we pushed, newest on top. vela started as a Spotlight clone on a Wednesday evening and was a whole desktop shell by Saturday afternoon."
 
+["0.48.0"]
+area = ["quickshare", "launcher", "docs"]
+title = "Quick Share in a window of its own"
+notes = [
+  "“Quick Share” in the launcher (or `vela quickshare open`) opens it in a window of its own; the new button next to the switch pops the control center's view out into it. While the window is open, the tile and `vela quickshare send` bring it to the front.",
+  "The window's Receive tab has a picture of its own: this PC sending out waves while it waits; during a transfer the phone and the PC with dots running between them and the progress below, and a check that draws itself when it is done. It also shows what can reach this PC right now and what came in lately, with the folder one click away.",
+  "With the access point helper installed, the Receive tab no longer says the phone has to be on the same Wi-Fi.",
+  "The pulse around the PC icon is calmer.",
+  "The changelog page only shows days on which something was released.",
+]
+
 ["0.47.0"]
 area = ["quickshare", "panel", "install", "nixos"]
 title = "Quick Share with Android and Samsung phones"

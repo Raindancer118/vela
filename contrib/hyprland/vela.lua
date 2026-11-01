@@ -214,6 +214,17 @@ function M.setup(opts)
             center = true,
         })
     end
+    if has.quickshare then
+        -- Quick Share's window (launcher entry, pop-out): small and floating,
+        -- like the panel's view it shows.
+        pcall(hl.window_rule, {
+            name = "vela-quickshare",
+            match = { title = "^Quick Share$" },
+            float = true,
+            size = "460 820",
+            center = true,
+        })
+    end
 
     if o.settings then
         local generated = o.settings_file

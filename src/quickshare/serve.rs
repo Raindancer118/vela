@@ -663,13 +663,15 @@ impl<'a, W: Write> Server<'a, W> {
 
     fn hello(&mut self) {
         // "ble": whether the beacon that makes phones list us can run;
-        // "bleReceive": whether phones searching over Bluetooth find us.
+        // "bleReceive": whether phones searching over Bluetooth find us;
+        // "hotspot": whether a transfer can go on over our own access point.
         let hello = json!({
             "type": "hello",
             "name": self.name,
             "port": self.listener.port,
             "ble": self.ble,
             "bleReceive": self.ble_receiver.is_some(),
+            "hotspot": self.hotspot.is_some(),
         });
         self.emit(&hello);
     }
@@ -1868,6 +1870,19 @@ mod tests {
         let name = line["files"][0]["name"].as_str().unwrap();
         assert!(!name.contains('\u{202E}') && name.chars().count() == inbound::MAX_TITLE_CHARS + 1);
         assert_eq!(line["text"]["title"].as_str().unwrap().chars().count(), inbound::MAX_TITLE_CHARS + 1);
+    }
+
+    #[test]
+    fn hello_says_whether_an_access_point_can_be_opened() {
+        let r = start(0);
+        assert_eq!(next(&r.lines, "hello")["hotspot"], false);
+        r.tx.send(Msg::Eof).unwrap();
+        r.thread.join().unwrap().unwrap();
+
+        let r = start_with(0, |o| o.hotspot = Some(Arc::new(|_| anyhow::bail!("not in tests"))));
+        assert_eq!(next(&r.lines, "hello")["hotspot"], true);
+        r.tx.send(Msg::Eof).unwrap();
+        r.thread.join().unwrap().unwrap();
     }
 
     #[test]

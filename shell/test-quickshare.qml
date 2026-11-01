@@ -24,7 +24,7 @@ ShellRoot {
         "On the phone, Quick Share must be set to “Everyone”.", "Bluetooth is off – phones may not be found.",
         // Receive
         "Visible to nearby devices", "On the phone, choose Quick Share and then “%1”", "Name", "Leave empty for the system name.",
-        "Phone and PC must be on the same Wi-Fi.", "Phone doesn't find this PC? Turn off “Share with Apple devices” in Quick Share on the phone.",
+        "Phone and PC must be on the same Wi-Fi.", "No shared Wi-Fi needed: the phone switches to an access point of this PC.", "This PC", "Receiving from %1", "Sending to %1", "Access point", "Recently received", "Wi-Fi", "Bluetooth", "Phone doesn't find this PC? Turn off “Share with Apple devices” in Quick Share on the phone.",
         // Devices without a name
         "Android phone", "Tablet", "Laptop", "Nearby device",
         // Incoming offer
@@ -226,6 +226,40 @@ ShellRoot {
         check(off !== null && off.page === null, "Quick Share off shows no tab");
     }
 
+    // The Quick Share window: popping out closes the panel's view, the
+    // panel's tile then only raises the window, and the window's view looks
+    // for devices like the panel's.
+    function ownWindow(): void {
+        ShellState.panelOpen = true;
+        ShellState.detail = "quickshare";
+        let raised = 0;
+        const counter = (() => raised++);
+        ShellState.raiseQuickShare.connect(counter);
+        ShellState.openQuickShareWindow();
+        check(ShellState.quickShareWindow, "the window opens");
+        check(!ShellState.panelOpen && ShellState.detail === "", "popping out closes the panel's view");
+        ShellState.openDetail("quickshare");
+        check(ShellState.detail === "" && !ShellState.panelOpen, "the tile does not open the view a second time");
+        check(raised === 1, "the tile raises the window: " + raised);
+        const view = create("details/QuickShareDetail", {
+            usable: true,
+            inWindow: true
+        });
+        check(findChild(view, "popOut")?.visible === false, "no pop-out button in the window");
+        ShellState.quickShareTab = "send";
+        check(QuickShare.discovering, "the window's send tab looks for devices");
+        ShellState.quickShareWindow = false;
+        check(!QuickShare.discovering, "closing the window stops looking");
+        ShellState.quickShareTab = "receive";
+        ShellState.raiseQuickShare.disconnect(counter);
+        view?.destroy();
+        const panelView = create("details/QuickShareDetail", {
+            usable: true
+        });
+        check(findChild(panelView, "popOut")?.visible === true, "the panel's view has the pop-out button");
+        panelView?.destroy();
+    }
+
     // The hint about "Share with Apple devices" is shown whatever
     // `bleReceive` from `hello` says; the property still follows `hello`.
     function receiveHint(): void {
@@ -244,6 +278,20 @@ ShellRoot {
             check(QuickShare.bleReceive === on, "hello sets bleReceive " + on);
             check(hint?.visible === true, "hint shown " + hint?.visible + " with bleReceive " + on);
         }
+        // The network hint follows whether an access point can be opened.
+        const net = page ? findChild(page, "networkHint") : null;
+        for (const on of [true, false]) {
+            QuickShare.apply(JSON.stringify({
+                type: "hello",
+                name: QuickShare.name,
+                port: 47392,
+                ble: false,
+                bleReceive: false,
+                hotspot: on
+            }));
+            const want = on ? "No shared Wi-Fi needed: the phone switches to an access point of this PC." : "Phone and PC must be on the same Wi-Fi.";
+            check(net?.text === I18n.tr(want), "network hint with hotspot " + on + ": " + net?.text);
+        }
         // A backend that is gone leaves no Bluetooth state behind.
         QuickShare.apply(JSON.stringify({
             type: "hello",
@@ -253,7 +301,7 @@ ShellRoot {
             bleReceive: true
         }));
         QuickShare.reset();
-        check(!QuickShare.ble && !QuickShare.bleReceive, "reset clears ble " + QuickShare.ble + " and bleReceive " + QuickShare.bleReceive);
+        check(!QuickShare.ble && !QuickShare.bleReceive && !QuickShare.hotspot, "reset clears ble " + QuickShare.ble + ", bleReceive " + QuickShare.bleReceive + " and hotspot " + QuickShare.hotspot);
         QuickShare.connected = wasConnected;
         page?.destroy();
     }
@@ -594,6 +642,7 @@ ShellRoot {
         interval: 100
         onTriggered: {
             root.step(root.afterDestroy);
+            root.step(root.ownWindow);
             root.step(root.receiveHint);
             root.step(root.folderBrowser);
             root.step(root.incomingWindow);

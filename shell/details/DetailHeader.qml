@@ -13,15 +13,23 @@ RowLayout {
     property bool checked: false
     property bool switchEnabled: true
     default property alias actions: actionRow.data
+    // The close button closes the detail view; off for a header in a window
+    // of its own, which handles `closeClicked` itself.
+    property bool closesDetail: true
 
     signal toggled
+    signal closeClicked
 
     spacing: Theme.spacing.sm
 
     IconButton {
         icon: "close"
         tonal: false
-        onClicked: ShellState.closeDetail()
+        onClicked: {
+            root.closeClicked();
+            if (root.closesDetail)
+                ShellState.closeDetail();
+        }
     }
 
     StyledText {

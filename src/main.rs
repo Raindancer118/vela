@@ -92,7 +92,9 @@ enum Cmd {
     /// Quick Share with phones nearby: `serve` is the control center's
     /// backend (JSON lines on stdin/stdout, logs on stderr).
     Quickshare {
-        #[arg(value_parser = ["serve", "send"])]
+        /// `open` shows the Quick Share window; `send` without files does too
+        /// (the launcher entry).
+        #[arg(value_parser = ["serve", "send", "open"])]
         action: String,
         /// Files to send (`send`).
         files: Vec<std::path::PathBuf>,
@@ -456,9 +458,10 @@ fn quickshare(action: &str, files: &[std::path::PathBuf]) -> ExitCode {
         // The running control center takes the files (its IPC handler opens the
         // Send tab); `qs ipc` fails when no shell runs.
         _ if !vela::components::has(vela::components::Component::Quickshare) => {
-            eprintln!("vela: quickshare send: the Quick Share component is not installed");
+            eprintln!("vela: quickshare {action}: the Quick Share component is not installed");
             ExitCode::FAILURE
         }
+        _ if action == "open" || files.is_empty() => run_qs(&["ipc", "call", "quickshare", "window"]),
         _ => match vela::quickshare::files::send_json(files) {
             Ok(json) => run_qs(&["ipc", "call", "quickshare", "send", &json]),
             Err(e) => {
