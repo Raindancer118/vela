@@ -52,7 +52,7 @@ pub fn event(kind: EventType) -> BandwidthUpgradeNegotiationFrame {
 }
 
 /// The offer to join our access point and connect to `ip`:`port` there.
-pub fn upgrade_path_available_wifi_hotspot(ap: &crate::wifidirect::Credentials, port: u16) -> BandwidthUpgradeNegotiationFrame {
+pub fn upgrade_path_available_wifi_hotspot(ap: &crate::wifihotspot::Credentials, port: u16) -> BandwidthUpgradeNegotiationFrame {
     BandwidthUpgradeNegotiationFrame {
         upgrade_path_info: Some(UpgradePathInfo {
             medium: Some(Medium::WifiHotspot as i32),
@@ -202,10 +202,10 @@ impl Rendezvous {
 }
 
 /// Opens our access point for a phone that connects to `port`; it stays
-/// open while the returned guard lives ([`crate::wifidirect::Group::open`]).
+/// open while the returned guard lives ([`crate::wifihotspot::Helper::open`]).
 pub type OpenHotspot = Arc<dyn Fn(u16) -> OpenedHotspot + Send + Sync>;
 /// The access point's credentials and the guard that keeps it open.
-pub type OpenedHotspot = anyhow::Result<(crate::wifidirect::Credentials, Box<dyn Send>)>;
+pub type OpenedHotspot = anyhow::Result<(crate::wifihotspot::Credentials, Box<dyn Send>)>;
 
 /// What a Bluetooth session can offer: our address (`None`: no network),
 /// serve's port, where the phone's connection turns up, and an access point
@@ -663,7 +663,7 @@ mod tests {
                 anyhow::bail!("no Wi-Fi card");
             }
             counter.fetch_add(1, Ordering::SeqCst);
-            let ap = crate::wifidirect::Credentials {
+            let ap = crate::wifihotspot::Credentials {
                 iface: "vela-ap".into(),
                 ssid: "vela-Test".into(),
                 passphrase: "secretsecret".into(),

@@ -1,10 +1,10 @@
-//! `vela-p2p-helper`, run as root through polkit (pkexec): opens a Wi-Fi
-//! Direct group for one transfer and closes it again.
+//! `vela-hotspot-helper`, run as root through polkit (pkexec): opens an
+//! access point for one transfer and closes it again.
 //!
-//! `vela-p2p-helper start PORT`: starts the group (us as owner), gives its
-//! interface [`GO_IP`], hands out addresses (in the handshake and over
-//! DHCP), lets PORT (TCP) and DHCP in on that interface only, prints one
-//! JSON line with what the phone needs, and then waits. When stdin ends (or
+//! `vela-hotspot-helper start PORT`: starts the access point ([`ap`]), gives
+//! its interface [`AP_IP`], hands out addresses over DHCP, lets PORT (TCP)
+//! and DHCP in on that interface only, prints one JSON line with what the
+//! phone needs, and then waits. When stdin ends (or
 //! says `stop`), on SIGTERM/SIGINT/SIGHUP or after [`MAX_LIFETIME`],
 //! everything is undone. Nothing else can be asked of it: no paths, no
 //! commands, no other interfaces.
@@ -22,11 +22,11 @@ use std::time::Duration;
 use anyhow::{Context, bail};
 use serde_json::json;
 
+use super::ap::{self, Hotspot};
 use super::dhcp;
-use super::hotspot::{self, Hotspot};
-use super::{GO_IP, GO_MASK, GO_PREFIX, POOL_FIRST, POOL_LAST};
+use super::{AP_IP, AP_MASK, AP_PREFIX, POOL_FIRST, POOL_LAST};
 
-/// The group is closed after this long, whatever vela does.
+/// The access point is closed after this long, whatever vela does.
 const MAX_LIFETIME: Duration = Duration::from_secs(2 * 60 * 60);
 /// Programs are only taken from here (pkexec's PATH is not trusted).
 const BIN_DIRS: [&str; 5] = ["/usr/bin", "/usr/sbin", "/bin", "/sbin", "/run/current-system/sw/bin"];
@@ -48,7 +48,7 @@ pub fn main(args: &[String]) -> ExitCode {
     match run(port) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("vela-p2p-helper: {e:#}");
+            eprintln!("vela-hotspot-helper: {e:#}");
             println!("{}", json!({ "error": format!("{e:#}") }));
             ExitCode::FAILURE
         }
@@ -56,7 +56,7 @@ pub fn main(args: &[String]) -> ExitCode {
 }
 
 fn usage() -> ExitCode {
-    eprintln!("usage: vela-p2p-helper start PORT");
+    eprintln!("usage: vela-hotspot-helper start PORT");
     ExitCode::from(2)
 }
 
@@ -76,11 +76,11 @@ fn run(port: u16) -> anyhow::Result<()> {
     let tool = |name: &str| find_tool(name).with_context(|| format!("{name} not found"));
     let (iw, ip) = (tool("iw")?, tool("ip")?);
     let hostapd = tool("hostapd").context("Quick Share over a direct Wi-Fi connection needs hostapd")?;
-    let radio = hotspot::radio(&iw)?;
+    let radio = ap::radio(&iw)?;
     let hotspot = Hotspot::start(&iw, &ip, &hostapd, &radio, nm_leave_alone)?;
     let ap = hotspot.ap.clone();
     let iface = ap.iface.clone();
-    run_tool("ip", &["addr", "add", &format!("{GO_IP}/{GO_PREFIX}"), "dev", &iface])?;
+    run_tool("ip", &["addr", "add", &format!("{AP_IP}/{AP_PREFIX}"), "dev", &iface])?;
     let _firewall = Firewall::open(&iface, port);
     let _dhcp = DhcpThread::start(&iface)?;
 
@@ -89,16 +89,16 @@ fn run(port: u16) -> anyhow::Result<()> {
         "ssid": ap.ssid,
         "passphrase": ap.passphrase,
         "frequency": ap.frequency,
-        "ip": GO_IP.to_string(),
+        "ip": AP_IP.to_string(),
     });
     let mut out = std::io::stdout().lock();
     writeln!(out, "{line}")?;
     out.flush()?;
     drop(out);
-    eprintln!("vela-p2p-helper: access point {} on {iface} ({} MHz) is up", ap.ssid, ap.frequency);
+    eprintln!("vela-hotspot-helper: access point {} on {iface} ({} MHz) is up", ap.ssid, ap.frequency);
 
     wait_for_stop();
-    eprintln!("vela-p2p-helper: closing the access point");
+    eprintln!("vela-hotspot-helper: closing the access point");
     Ok(())
 }
 
@@ -137,7 +137,7 @@ fn nm_leave_alone(iface: &str) {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    eprintln!("vela-p2p-helper: NetworkManager does not know {iface}, leaving it as is");
+    eprintln!("vela-hotspot-helper: NetworkManager does not know {iface}, leaving it as is");
 }
 
 fn find_tool(name: &str) -> Option<PathBuf> {
@@ -157,7 +157,7 @@ fn run_tool(name: &str, args: &[&str]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Lets the phone in on the group interface only, until dropped: through
+/// Lets the phone in on our interface only, until dropped: through
 /// firewalld (runtime only, trusted zone) if it runs, else iptables rules
 /// (ufw and the NixOS firewall use iptables).
 enum Firewall {
@@ -171,7 +171,7 @@ impl Firewall {
         if find_tool("firewall-cmd").is_some() && run_tool("firewall-cmd", &["--state"]).is_ok() {
             match run_tool("firewall-cmd", &["--zone=trusted", &format!("--add-interface={iface}")]) {
                 Ok(()) => return Firewall::Firewalld(iface.to_owned()),
-                Err(e) => eprintln!("vela-p2p-helper: firewalld: {e:#}"),
+                Err(e) => eprintln!("vela-hotspot-helper: firewalld: {e:#}"),
             }
         }
         if find_tool("iptables").is_none() {
@@ -184,7 +184,7 @@ impl Firewall {
             let refs: Vec<&str> = args.iter().map(String::as_str).collect();
             match run_tool("iptables", &refs) {
                 Ok(()) => added.push(rule),
-                Err(e) => eprintln!("vela-p2p-helper: {e:#}"),
+                Err(e) => eprintln!("vela-hotspot-helper: {e:#}"),
             }
         }
         Firewall::Iptables(added)
@@ -203,7 +203,7 @@ impl Drop for Firewall {
             Firewall::Nothing => Ok(()),
         };
         if let Err(e) = result {
-            eprintln!("vela-p2p-helper: {e:#}");
+            eprintln!("vela-hotspot-helper: {e:#}");
         }
     }
 }
@@ -219,7 +219,7 @@ fn iptables_rules(iface: &str, port: u16) -> Vec<Vec<String>> {
     vec![rule("tcp", port), rule("udp", 67)]
 }
 
-/// The DHCP server on the group interface, until dropped.
+/// The DHCP server on the access point, until dropped.
 struct DhcpThread {
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
@@ -232,7 +232,7 @@ impl DhcpThread {
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = stop.clone();
         let thread = std::thread::Builder::new().name("dhcp".into()).spawn(move || {
-            let mut server = dhcp::Server::new(GO_IP, GO_MASK, POOL_FIRST, POOL_LAST);
+            let mut server = dhcp::Server::new(AP_IP, AP_MASK, POOL_FIRST, POOL_LAST);
             let mut buf = [0u8; 1500];
             while !stopped.load(Ordering::SeqCst) {
                 let Ok((n, _)) = socket.recv_from(&mut buf) else { continue };
@@ -299,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn the_firewall_lets_in_the_port_and_dhcp_on_the_group_only() {
+    fn the_firewall_lets_in_the_port_and_dhcp_on_our_interface_only() {
         let rules = iptables_rules("p2p-wlan0-0", 47392);
         assert_eq!(rules[0].join(" "), "-i p2p-wlan0-0 -p tcp --dport 47392 -j ACCEPT");
         assert_eq!(rules[1].join(" "), "-i p2p-wlan0-0 -p udp --dport 67 -j ACCEPT");

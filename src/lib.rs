@@ -31,5 +31,5 @@ pub mod shell;
 pub mod theme;
 pub mod ui;
 pub mod update;
-pub mod wifidirect;
+pub mod wifihotspot;
 pub mod xdph;

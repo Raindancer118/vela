@@ -1,10 +1,19 @@
 # One entry per pushed tag. Date, time, lines and commits come from git;
 # scripts/changelog.py refuses to build while a tag has no entry here.
-# area: launcher, panel, hyprland, settings, claude, pulse, updates, nixos, install, share, docs
+# area: launcher, panel, hyprland, settings, claude, pulse, updates, nixos, install, share, quickshare, docs
 
 [intro]
 title = "The logbook"
 lede = "Every tag we pushed, newest on top. vela started as a Spotlight clone on a Wednesday evening and was a whole desktop shell by Saturday afternoon."
+
+["0.47.0"]
+area = ["quickshare", "panel", "install", "nixos"]
+title = "Quick Share with Android and Samsung phones"
+notes = [
+  "Send files to phones nearby and receive files, text and links from them, from a tile in the control center, `vela quickshare send` or Dolphin's right-click menu. A window asks about every offer; nothing is accepted automatically. Off by default: while it is off, nothing runs and no port is open. Contributed by Luna Haiplick.",
+  "Phones that look for PCs over Bluetooth only find this one too. Their transfers start over Bluetooth and move to Wi-Fi.",
+  "Without a shared network, vela can open a Wi-Fi access point of its own for the transfer (`./install.sh --hotspot`, NixOS: `programs.vela.hotspot.enable`). The phone joins it by itself; the PC stays on its own Wi-Fi.",
+]
 
 ["0.46.7"]
 area = ["updates", "nixos", "launcher"]

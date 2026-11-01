@@ -556,8 +556,8 @@ pub fn run() -> anyhow::Result<()> {
             })
         }),
         upgrade_ip: Box::new(bwu::local_ipv4),
-        hotspot: crate::wifidirect::helper().map(|_| -> bwu::OpenHotspot {
-            Arc::new(|port| crate::wifidirect::Group::open(port).map(|g| (g.credentials.clone(), Box::new(g) as Box<dyn Send>)))
+        hotspot: crate::wifihotspot::helper().map(|_| -> bwu::OpenHotspot {
+            Arc::new(|port| crate::wifihotspot::Helper::open(port).map(|g| (g.credentials.clone(), Box::new(g) as Box<dyn Send>)))
         }),
         notify: Box::new(desktop::notify_detached),
     };

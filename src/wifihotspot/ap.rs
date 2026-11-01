@@ -258,7 +258,7 @@ impl Hotspot {
                 match wait_enabled(&mut child, &log_path) {
                     Ok(()) => {
                         eprintln!(
-                            "vela-p2p-helper: {} MHz, channel {}, {} MHz wide{}{}",
+                            "vela-hotspot-helper: {} MHz, channel {}, {} MHz wide{}{}",
                             frequency(plan.mode, plan.channel),
                             plan.channel,
                             plan.width,

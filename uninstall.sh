@@ -26,6 +26,11 @@ rm -f "$PREFIX/bin/vela" "$PREFIX/bin/vela-daemon" "$PREFIX/bin/vela-share-picke
     "$CONFDIR/systemd/user/vela.service" \
     "$HYPRDIR/vela.lua"
 rm -rf "$DATADIR/vela/shell"
+if [[ -e /usr/lib/vela/vela-hotspot-helper ]] && ! pacman -Qqo /usr/lib/vela/vela-hotspot-helper >/dev/null 2>&1; then
+    say "removing Quick Share's access point helper (sudo)"
+    sudo rm -f /usr/lib/vela/vela-hotspot-helper /usr/share/polkit-1/actions/de.raindancer118.vela.quickshare-hotspot.policy
+    sudo rmdir --ignore-fail-on-non-empty /usr/lib/vela 2>/dev/null || true
+fi
 rm -f "$DATADIR/vela/components.toml"
 # NixOS: GC root of the nix-built package (install.sh).
 rm -f "$DATADIR/vela/nix-package"

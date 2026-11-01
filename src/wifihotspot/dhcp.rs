@@ -1,6 +1,6 @@
-//! A minimal DHCP server for the Wi-Fi Direct group: the phone that joins
+//! A minimal DHCP server for our access point: the phone that joins
 //! asks for an address (DISCOVER, REQUEST) and gets one from a small pool
-//! (OFFER, ACK). No router or DNS is handed out: the group only carries the
+//! (OFFER, ACK). No router or DNS is handed out: the access point only carries the
 //! transfer. RFC 2131/2132, just the parts a phone uses.
 
 use std::collections::HashMap;
@@ -28,7 +28,7 @@ const ACK: u8 = 5;
 const NAK: u8 = 6;
 const RELEASE: u8 = 7;
 
-/// An hour; the group lives for one transfer anyway.
+/// An hour; the access point lives for one transfer anyway.
 const LEASE_SECS: u32 = 3600;
 
 /// What a client sent, as far as the server cares.

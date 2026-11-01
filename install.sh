@@ -11,6 +11,8 @@
 #   ./install.sh --hyprland         also add the dofile() line to
 #                                   ~/.config/hypr/hyprland.lua (a backup is made)
 #   ./install.sh --no-build         install the binaries in target/release as they are
+#   ./install.sh --hotspot          also install Quick Share's access point helper
+#                                   system-wide (sudo; see README → Quick Share)
 #
 # On NixOS it builds with `nix build` (the flake) instead of cargo and leaves
 # out the pacman-based updates; the Home Manager module is the declarative way.
@@ -69,10 +71,11 @@ list() {
 }
 
 # ------------------------------------------------------------ arguments
-EDIT_HYPR=0 BUILD=1 ASK=auto PROFILE="" WITH="" WITHOUT=""
+HOTSPOT=0 EDIT_HYPR=0 BUILD=1 ASK=auto PROFILE="" WITH="" WITHOUT=""
 while (($#)); do
     case "$1" in
         --hyprland) EDIT_HYPR=1 ;;
+        --hotspot) HOTSPOT=1 ;;
         --no-build) BUILD=0 ;;
         -y | --yes) ASK=no ;;
         --ask) ASK=yes ;;
@@ -318,6 +321,27 @@ if has quickshare && has panel; then
     sed "s|^Exec=vela|Exec=$BINDIR/vela|" data/vela-quickshare.desktop | install -Dm644 /dev/stdin "$DATADIR/applications/vela-quickshare.desktop"
     sed "s|^Exec=vela|Exec=$BINDIR/vela|" data/vela-quickshare-servicemenu.desktop | install -Dm755 /dev/stdin "$DATADIR/kio/servicemenus/vela-quickshare.desktop"
     had quickshare || say "Quick Share: open TCP 47392 and UDP 5353 in your firewall (README → Quick Share)"
+    # The access point helper runs as root through polkit, so it must be
+    # root-owned at the path its policy names: a system-wide install.
+    HELPER=/usr/lib/vela/vela-hotspot-helper
+    POLICY=/usr/share/polkit-1/actions/de.raindancer118.vela.quickshare-hotspot.policy
+    if ((HOTSPOT)) && ((NIXOS)); then
+        die "--hotspot: on NixOS use the flake's nixosModules.default (programs.vela.hotspot.enable)"
+    fi
+    current() { cmp -s "$BUILT/vela-hotspot-helper" "$HELPER" && cmp -s data/de.raindancer118.vela.quickshare-hotspot.policy "$POLICY"; }
+    if ((HOTSPOT)) || { [[ -e "$HELPER" ]] && ! current; }; then
+        if ((HOTSPOT)) || [[ -t 0 ]]; then
+            command -v hostapd >/dev/null || warn "the access point needs hostapd: sudo pacman -S --needed hostapd iw"
+            say "installing the access point helper (sudo): $HELPER"
+            sudo install -Dm755 -o root -g root "$BUILT/vela-hotspot-helper" "$HELPER"
+            sudo install -Dm644 -o root -g root data/de.raindancer118.vela.quickshare-hotspot.policy "$POLICY"
+        else
+            # Self-update runs without a terminal: no sudo prompt there.
+            warn "Quick Share's access point helper is outdated: ./install.sh --hotspot"
+        fi
+    elif ! had quickshare && [[ ! -e "$HELPER" ]]; then
+        say "Quick Share without a shared network: ./install.sh --hotspot (README → Quick Share)"
+    fi
 else
     rm -f "$DATADIR/applications/vela-quickshare.desktop" "$DATADIR/kio/servicemenus/vela-quickshare.desktop"
 fi
