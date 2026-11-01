@@ -35,6 +35,10 @@ pub fn launcher_css(cfg: &Config) -> String {
     };
     let spacing = a.spacing;
     let backdrop_dim = crate::theme::backdrop_alpha(a.backdrop_dim, a.backdrop_strength, a.backdrop_blur);
+    // GTK ≥ 4.24 gives every surface an ext-background-effect object, and its
+    // empty blur region overrides the "vela-backdrop" layer rule in Hyprland.
+    // backdrop-filter sets the region; the compositor's blur settings apply.
+    let backdrop_blur = if a.backdrop_blur { " backdrop-filter: blur(20px);" } else { "" };
     let clock_size = cfg.general.clock_size;
     let date_size = (f64::from(clock_size) * 0.2).round();
     let clock_family = cfg.general.clock_font.replace(['"', '\\', ';', '{', '}'], "");
@@ -46,7 +50,7 @@ pub fn launcher_css(cfg: &Config) -> String {
     format!(
         r#"
 window.vela-launcher, window.vela-launcher.background {{ background: transparent; box-shadow: none; }}
-window.vela-backdrop, window.vela-backdrop.background {{ background: rgba(0, 0, 0, {backdrop_dim}); box-shadow: none; }}
+window.vela-backdrop, window.vela-backdrop.background {{ background: rgba(0, 0, 0, {backdrop_dim}); box-shadow: none;{backdrop_blur} }}
 window.vela-clock, window.vela-clock.background {{ background: transparent; box-shadow: none; }}
 .vela-clock-time {{ font-size: {clock_size}px;{clock_family} font-weight: 300; color: {fg}; }}
 .vela-clock-date {{ font-size: {date_size}px;{clock_family} color: {dim}; }}
@@ -394,6 +398,19 @@ mod tests {
         cfg.appearance.animations = false;
         let css = launcher_css(&cfg);
         assert!(!css.contains("@keyframes") && css.contains("animation: none"));
+    }
+
+    #[test]
+    fn blurred_backdrop_asks_gtk_for_compositor_blur() {
+        let backdrop_rule = |cfg: &Config| {
+            let css = launcher_css(cfg);
+            css.lines().find(|l| l.starts_with("window.vela-backdrop")).unwrap().to_owned()
+        };
+        let mut cfg = Config::default();
+        cfg.appearance.backdrop_blur = true;
+        assert!(backdrop_rule(&cfg).contains("backdrop-filter: blur("));
+        cfg.appearance.backdrop_blur = false;
+        assert!(!backdrop_rule(&cfg).contains("backdrop-filter"), "dim only: no blur region");
     }
 
     #[test]

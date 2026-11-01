@@ -15,6 +15,13 @@ notes = [
   "Without a shared network, vela can open a Wi-Fi access point of its own for the transfer (`./install.sh --hotspot`, NixOS: `programs.vela.hotspot.enable`). The phone joins it by itself; the PC stays on its own Wi-Fi.",
 ]
 
+["0.46.8"]
+area = ["launcher"]
+title = "The launcher's backdrop blurs again"
+notes = [
+  "Since GTK 4.24 every GTK surface tells Hyprland its own blur region, empty unless asked for, and that beat the blur rule from vela.lua: the backdrop behind the launcher only dimmed while the one behind the control center blurred. The backdrop now asks GTK for the blur itself, so both look the same again.",
+]
+
 ["0.46.7"]
 area = ["updates", "nixos", "launcher"]
 title = "Self-update works again"
