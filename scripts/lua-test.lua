@@ -70,11 +70,14 @@ check("full: peek bind", #s.binds == 1)
 
 check("full: Pulse shortcut", s.pulse == "CTRL + SHIFT + Escape")
 check("full: Pulse window rule", s.rules["vela-pulse"])
+check("full: Quick Share window rule", s.rules["vela-quickshare"])
 
 -- Without Pulse: no shortcut, no rule; and the option can switch it off.
 s = run('profile = "custom"\npulse = false\n', nil)
 check("no pulse: no shortcut", s.pulse == nil)
 check("no pulse: no rule", not s.rules["vela-pulse"])
+s = run('profile = "custom"\nquickshare = false\n', nil)
+check("no quickshare: no rule", not s.rules["vela-quickshare"])
 s = run(nil, { pulse = false })
 check("pulse = false: no shortcut", s.pulse == nil)
 s = run(nil, { pulse = "SUPER + Escape" })

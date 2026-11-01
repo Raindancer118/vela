@@ -14,7 +14,7 @@ FloatingWindow {
 
     title: "Quick Share"
     implicitWidth: 460
-    implicitHeight: 700
+    implicitHeight: 680
     minimumSize: Qt.size(380, 520)
     color: Theme.colors.panel
     // Closed by the compositor (its X, Super+Q): forget it.
@@ -31,6 +31,11 @@ FloatingWindow {
         function onRaiseQuickShare(): void {
             win.raise();
         }
+    }
+
+    Shortcut {
+        sequence: "Escape"
+        onActivated: ShellState.quickShareWindow = false
     }
 
     QuickShareDetail {
