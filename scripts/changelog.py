@@ -46,6 +46,7 @@ AREAS = {
     "install": ("Install", "#a9b1d6"),
     "share": ("Share picker", "#ef8a9b"),
     "quickshare": ("Quick Share", "#5fd0b4"),
+    "drives": ("Drives", "#f0a868"),
     "docs": ("Docs", "#8a93b8"),
 }
 
