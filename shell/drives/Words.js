@@ -66,8 +66,30 @@ const families = {
     garuda: ["#e45d97", "#b83a72"],
     gparted: ["#e8b21c", "#a87a00"],
     clonezilla: ["#e8b21c", "#a87a00"],
-    memtest: ["#6aa84f", "#38761d"]
+    memtest: ["#6aa84f", "#38761d"],
+    rocky: ["#10b981", "#047857"],
+    alma: ["#ffcb4c", "#b8860b"],
+    centos: ["#a14f8c", "#6f2f60"],
+    rhel: ["#ee0000", "#b00000"],
+    elementary: ["#64baff", "#1e6ab0"],
+    zorin: ["#15a6f0", "#0b72a8"],
+    void: ["#6abf69", "#2e7d32"],
+    gentoo: ["#a59fd8", "#54487a"],
+    opnsense: ["#e8762b", "#b8571a"],
+    pfsense: ["#5b9bd5", "#212121"],
+    unraid: ["#f15a2c", "#b8401a"],
+    libreelec: ["#61c1e7", "#17809b"],
+    retropie: ["#cc2e2e", "#991f1f"]
 };
+
+// Bundled monochrome logos (Simple Icons, assets/logos/<family>.svg).
+const bundled = ["arch", "cachyos", "endeavouros", "manjaro", "ubuntu", "kubuntu", "debian", "fedora", "mint", "pop", "elementary", "zorin", "kali",
+    "tails", "raspberry", "nixos", "suse", "alpine", "void", "gentoo", "rhel", "centos", "rocky", "alma", "steamos", "freebsd", "proxmox", "truenas",
+    "homeassistant", "libreelec", "retropie", "opnsense", "pfsense", "unraid", "garuda"];
+
+function bundledLogo(family) {
+    return bundled.includes(family) ? family : "";
+}
 
 function familyColor(family, light) {
     const c = families[family];

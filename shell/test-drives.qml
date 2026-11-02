@@ -34,6 +34,7 @@ ShellRoot {
         check(W.nominal(15581839360, en) === "16 GB" && W.nominal(62.5e9, en) === "64 GB" && W.nominal(268435456, en) === "268 MB", "nominal size");
         check(W.monogram("Pop!_OS") === "Po" && W.monogram("") === "?", "monogram");
         check(W.logoNames("arch")[0] === "distributor-logo-archlinux" && W.logoNames("nope").length === 0, "logo names");
+        check(W.bundledLogo("proxmox") === "proxmox" && W.bundledLogo("nope") === "", "bundled logos");
         check(W.familyColor("ubuntu", false) !== "" && W.familyColor("nope", false) === "", "family colours");
         check(W.left(90, (s, ...a) => s.replace("%1", a[0])) === "2 min left", "time left");
 

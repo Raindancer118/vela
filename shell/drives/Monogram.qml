@@ -1,11 +1,13 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import qs
 import qs.components
 import "Words.js" as W
 
-// The system's logo from the icon theme; without one two letters on its
-// colour ("Ar" on Arch blue), and a disc for unknown systems.
+// The system's logo: the icon theme's (Papirus, in colour), else the bundled
+// one tinted in the system's colour, else two letters on that colour ("Ar"
+// on Arch blue); a disc for unknown systems.
 Rectangle {
     id: root
 
@@ -22,11 +24,13 @@ Rectangle {
         }
         return "";
     }
+    readonly property string bundled: logo === "" ? W.bundledLogo(family) : ""
+    readonly property bool letters: known && logo === "" && bundled === ""
 
     implicitWidth: size
     implicitHeight: size
     radius: Math.round(size * 0.3)
-    color: logo !== "" ? Theme.colors.chip : known ? Theme.withAlpha(brand, 0.2) : Theme.colors.chip
+    color: known && logo === "" ? Theme.withAlpha(brand, 0.16) : Theme.colors.chip
     border.width: known && logo === "" ? 1 : 0
     border.color: Theme.withAlpha(brand, 0.45)
 
@@ -42,8 +46,30 @@ Rectangle {
         asynchronous: true
     }
 
+    Image {
+        id: mono
+
+        anchors.centerIn: parent
+        width: Math.round(root.size * 0.55)
+        height: width
+        sourceSize: Qt.size(width * 2, height * 2)
+        source: root.bundled !== "" ? Qt.resolvedUrl("../assets/logos/" + root.bundled + ".svg") : ""
+        smooth: true
+        visible: false
+    }
+
+    // Simple Icons are black: lifted to white, then tinted.
+    MultiEffect {
+        anchors.fill: mono
+        source: mono
+        visible: root.bundled !== "" && mono.status === Image.Ready
+        brightness: 1
+        colorization: 1
+        colorizationColor: root.brand
+    }
+
     StyledText {
-        visible: root.known && root.logo === ""
+        visible: root.letters
         anchors.centerIn: parent
         text: W.monogram(root.system)
         color: root.brand

@@ -59,6 +59,11 @@ missing="$(find shell -name '*.qml' -print0 | xargs -0 grep -hoE '\bicon: "[a-z0
     while read -r n; do [[ -f "shell/assets/icons/$n.svg" ]] || echo "$n"; done)"
 [[ -z "$missing" ]] || fail "icons without an SVG: $missing"
 
+# Drives' bundled logos: one SVG per listed family, nothing extra.
+listed="$(sed -n '/const bundled/,/];/p' shell/drives/Words.js | grep -oE '"[a-z]+"' | tr -d '"' | sort)"
+present="$(find shell/assets/logos -name '*.svg' -printf '%f\n' | sed 's/\.svg$//' | sort)"
+[[ "$listed" == "$present" ]] || fail "Drives logos and their list differ"
+
 echo ":: settings"
 timeout 20 qs -p shell/test-settings.qml >"$tmp/settings.log" 2>&1 || true
 grep -E "PASS|FAIL" "$tmp/settings.log" || { cat "$tmp/settings.log"; fail "settings test gave no result"; }
