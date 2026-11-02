@@ -202,3 +202,12 @@ own_devices = []
 # Receive from own devices without asking. Devices are told apart by name
 # only, which anyone nearby could copy, so this is off by default.
 auto_accept_own = false
+
+[drives]
+# Drives: format USB sticks and SD cards and write images to them
+# (right-click in Dolphin, or `vela drives`).
+# Folder whose images (.iso, .img, also compressed .xz/.gz/.zst/.bz2) the
+# window offers.
+image_dir = "~/ISOs"
+# Read the stick back after writing an image and compare.
+verify = true

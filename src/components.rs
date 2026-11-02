@@ -24,10 +24,11 @@ pub enum Component {
     Updates,
     Pulse,
     Quickshare,
+    Drives,
 }
 
 impl Component {
-    pub const ALL: [Component; 9] = [
+    pub const ALL: [Component; 10] = [
         Component::Launcher,
         Component::Claude,
         Component::Hyprland,
@@ -37,6 +38,7 @@ impl Component {
         Component::Updates,
         Component::Pulse,
         Component::Quickshare,
+        Component::Drives,
     ];
 
     /// Id in the catalog and in install.sh (`--with share-picker`).
@@ -51,6 +53,7 @@ impl Component {
             Component::Updates => "updates",
             Component::Pulse => "pulse",
             Component::Quickshare => "quickshare",
+            Component::Drives => "drives",
         }
     }
 
@@ -327,6 +330,9 @@ mod tests {
         assert!(Component::Quickshare.description().starts_with("Quick Share:"));
         assert!(catalog().components.iter().any(|s| s.id == "quickshare"));
         assert!(!Installed::profile("minimal", false).has(Component::Quickshare));
+        assert_eq!(Component::from_id("drives"), Some(Component::Drives));
+        assert_eq!(Component::Drives.profiles(), ["full", "launcher", "panel"]);
+        assert!(Component::Drives.description().starts_with("Drives:"));
     }
 
     #[test]

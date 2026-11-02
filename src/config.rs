@@ -26,6 +26,32 @@ pub struct Config {
     pub pulse: Pulse,
     /// Quick Share with phones nearby (`vela quickshare serve`).
     pub quickshare: Quickshare,
+    /// Drives: format USB sticks and SD cards, write images to them (`vela drives`).
+    pub drives: Drives,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Drives {
+    /// Folder of the images (ISO, IMG, also .xz/.gz/.zst) the window offers.
+    pub image_dir: String,
+    /// Read the stick back after writing and compare.
+    pub verify: bool,
+}
+
+impl Default for Drives {
+    fn default() -> Self {
+        Drives {
+            image_dir: "~/ISOs".into(),
+            verify: true,
+        }
+    }
+}
+
+impl Drives {
+    pub fn image_dir(&self) -> PathBuf {
+        crate::paths::expand_tilde(if self.image_dir.trim().is_empty() { "~/ISOs" } else { self.image_dir.trim() })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
