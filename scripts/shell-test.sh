@@ -74,7 +74,7 @@ out="$(timeout 20 qs -p shell/test-power.qml 2>&1 | grep -E "PASS|FAIL" || true)
 echo "$out"
 [[ "$out" == *PASS* ]] || fail "power mode"
 
-for t in highlight details claude usage updates dwell sharepicker media pulse quickshare; do
+for t in highlight details claude usage updates dwell sharepicker media pulse quickshare drives; do
     echo ":: $t"
     out="$(timeout 20 qs -p shell/test-$t.qml 2>&1 | grep -E "PASS|FAIL" || true)"
     echo "$out"
@@ -109,6 +109,23 @@ if [[ -n "$weston_pid" ]]; then
     pkill -f "qs -p $PWD/shell/pulse.qml" || true
     if [[ -n "$qslog" ]] && qs log "$qslog" 2>/dev/null | grep -E "ERROR.*(scene|qml)|Failed to load|TypeError|ReferenceError|is not defined|Cannot assign"; then
         fail "errors in the Pulse log"
+    fi
+fi
+
+# Drives' window, headless only (locally it would pop up).
+if [[ -n "$weston_pid" ]]; then
+    echo ":: Drives window through vela drives"
+    VELA_SHELL_DIR="$PWD/shell" "$BIN" drives open >"$tmp/drives.log" 2>&1 || { cat "$tmp/drives.log"; fail "vela drives did not start"; }
+    for _ in $(seq 100); do pgrep -f "qs -p $PWD/shell/drives.qml" >/dev/null && break; sleep 0.1; done
+    sleep 3
+    qslog="$(ls -t "$XDG_RUNTIME_DIR"/quickshell/by-id/*/log.qslog 2>/dev/null | head -1 || true)"
+    VELA_SHELL_DIR="$PWD/shell" "$BIN" drives format >>"$tmp/drives.log" 2>&1 || fail "second vela drives (raise) failed"
+    [[ "$(pgrep -fc "qs -p $PWD/shell/drives.qml")" == 1 ]] || fail "vela drives started a second window"
+    qs -p "$PWD/shell/drives.qml" ipc call drives quit >/dev/null 2>&1 || true
+    for _ in $(seq 30); do pgrep -f "qs -p $PWD/shell/drives.qml" >/dev/null || break; sleep 0.1; done
+    pgrep -f "qs -p $PWD/shell/drives.qml" >/dev/null && fail "Drives keeps running after quit"
+    if [[ -n "$qslog" ]] && qs log "$qslog" 2>/dev/null | grep -E "ERROR.*(scene|qml)|Failed to load|TypeError|ReferenceError|is not defined|Cannot assign"; then
+        fail "errors in the Drives log"
     fi
 fi
 
