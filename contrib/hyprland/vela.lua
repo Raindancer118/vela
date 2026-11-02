@@ -226,6 +226,17 @@ function M.setup(opts)
         })
     end
 
+    if has.drives then
+        -- Drives (Dolphin's "Write image…", "Format…"): floating, centred.
+        pcall(hl.window_rule, {
+            name = "vela-drives",
+            match = { title = "^(Drives|Laufwerke) [—–] " },
+            float = true,
+            size = "920 640",
+            center = true,
+        })
+    end
+
     if o.settings then
         local generated = o.settings_file
         if not generated then
