@@ -71,7 +71,9 @@ pub fn iso_hints(entries: &[String], read: impl Fn(&str) -> Option<String>) -> H
         add("windows");
     }
     if has("arch/version") {
-        add("archlinux");
+        // CachyOS, EndeavourOS & co. are archiso too; grubenv's NAME tells them apart.
+        let name = has("arch/grubenv").then(|| read("arch/grubenv")).flatten().and_then(|g| ini(&g, "NAME"));
+        add(name.as_deref().unwrap_or("archlinux"));
         if h.version.is_empty() {
             h.version = read("arch/version").map(|v| v.trim().to_owned()).unwrap_or_default();
         }
@@ -97,11 +99,12 @@ pub fn iso_hints(entries: &[String], read: impl Fn(&str) -> Option<String>) -> H
     if has_prefix("truenas") || has_prefix("truenas-scale") {
         add("truenas");
     }
-    if has_prefix("efi/boot/memtest") || has_prefix("boot/memtest") || has("memtest.bin") {
-        add("memtest");
-    }
     if has("ventoy") || has_prefix("ventoy/") {
         add("ventoy");
+    }
+    // Many live ISOs carry memtest as a boot entry: only a memtest when nothing else.
+    if h.text.trim().is_empty() && (has_prefix("efi/boot/memtest") || has_prefix("boot/memtest") || has("memtest.bin")) {
+        h.text.push_str(" memtest");
     }
     // FreeBSD's kernel; OPNsense and pfSense carry it too but name themselves.
     if has("boot/kernel/kernel") && !h.text.contains("opnsense") && !h.text.contains("pfsense") {
@@ -249,6 +252,16 @@ mod tests {
         const ARCH: &[(&str, &str)] = &[("arch/version", "2026.10.01\n")];
         let h = iso_hints(&list(ARCH, &["arch/boot/x86_64/vmlinuz-linux"]), read_from(ARCH));
         assert_eq!((h.text.trim(), h.version.as_str()), ("archlinux", "2026.10.01"));
+
+        // archiso derivatives name themselves in arch/grubenv; their memtest is just a boot entry.
+        const CACHY: &[(&str, &str)] = &[
+            ("arch/version", "2026.08.09\n"),
+            ("arch/grubenv", "# GRUB Environment Block\nNAME=cachyos\nVERSION=2026.08.09\n####"),
+        ];
+        let h = iso_hints(&list(CACHY, &["boot/memtest86+/memtest.efi"]), read_from(CACHY));
+        assert_eq!((h.text.trim(), h.version.as_str()), ("cachyos", "2026.08.09"));
+        let h = iso_hints(&list(&[], &["boot/memtest86+/memtest.efi"]), read_from(&[]));
+        assert_eq!(h.text.trim(), "memtest");
 
         let h = iso_hints(&list(&[], &["sources/install.wim", "bootmgr", "setup.exe"]), read_from(&[]));
         assert!(h.text.contains("windows"));

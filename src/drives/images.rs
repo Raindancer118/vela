@@ -215,7 +215,7 @@ pub fn describe_with(file_name: &str, volume_label: Option<&str>, hints: &super:
         .find(|w| w[0].len() == 4 && w[1].len() == 2 && w[2].len() == 2 && w.iter().all(|t| t.chars().all(|c| c.is_ascii_digit())));
     // A number in the name only counts when the name names the system too
     // ("download-2.iso" holding Windows is not Windows 2).
-    let name_agrees = found.is_none_or(|(n, ..)| lower.contains(n)) || by_content.is_none();
+    let name_agrees = found.is_none_or(|(n, ..)| lower.contains(n));
     let mut version = match date {
         _ if !name_agrees => String::new(),
         Some(w) => w.join("-"),
@@ -228,10 +228,11 @@ pub fn describe_with(file_name: &str, volume_label: Option<&str>, hints: &super:
     if !hints.version.is_empty() {
         version = hints.version.clone();
     }
+    // ARCH_202610, Fedora-WS-Live-44.
     if version.is_empty()
-        && let Some((_, digits)) = label.split_once('_').filter(|(_, d)| is_version(d))
+        && let Some(digits) = tokens(&label).into_iter().find(|t| is_version(t))
     {
-        version = digits.to_owned();
+        version = digits;
     }
     match found {
         Some((_, system, family)) => Description {
@@ -475,6 +476,10 @@ mod tests {
             },
         );
         assert_eq!((w.system.as_str(), w.version.as_str()), ("Windows", ""));
+        // Known by its label only (Fedora Live has no .treeinfo): the label's number, not the name's.
+        let f = describe("download-4.iso", Some("Fedora-WS-Live-44"));
+        assert_eq!((f.system.as_str(), f.version.as_str()), ("Fedora", "44"));
+        assert_eq!(describe("Fedora-Workstation-Live-44-1.7.x86_64.iso", Some("Fedora-WS-Live-44")).version, "44");
     }
 
     #[test]
