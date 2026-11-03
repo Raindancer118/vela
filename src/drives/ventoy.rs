@@ -29,6 +29,12 @@ pub fn tool() -> Option<PathBuf> {
     crate::paths::find_executable("ventoy").or_else(|| Some(PathBuf::from("/opt/ventoy/Ventoy2Disk.sh")).filter(|p| p.exists()))
 }
 
+/// Space for images on a stick right after installing Ventoy: its own 32 MiB
+/// partition, alignment and exFAT's bookkeeping are gone (a cautious guess).
+pub fn room(drive_size: u64) -> u64 {
+    (drive_size - drive_size / 100).saturating_sub(64 << 20)
+}
+
 /// argv for a fresh install: forced (the stick may hold an old Ventoy), MBR
 /// (boots on old PCs too) unless `gpt`, with secure boot support.
 pub fn install_argv(pkexec: &Path, tool: &Path, device: &str, label: &str, gpt: bool) -> Vec<String> {
@@ -218,6 +224,13 @@ pub fn copy_to(src: &Path, mount: &Path, cancel: &AtomicBool, mut progress: impl
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn room_after_install_leaves_out_ventoys_partition() {
+        let r = room(16_000_000_000);
+        assert!(r < 16_000_000_000 - (32 << 20) && r > 15_500_000_000, "{r}");
+        assert_eq!(room(32 << 20), 0);
+    }
 
     fn vol(id: &str, label: &str, fs: &str) -> Volume {
         Volume {

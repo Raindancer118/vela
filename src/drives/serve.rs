@@ -6,6 +6,7 @@
 //! - `{"cmd":"format","drive":<id>,"fs":"fat32","label":"STICK","erase":false}`
 //!   (`"ventoy":true`: install Ventoy instead, a multiboot stick)
 //! - on a Ventoy stick `write` copies the image onto it next to the others;
+//!   `"images":[…]` (several) installs Ventoy first if needed, then copies all
 //!   `{"cmd":"remove","drive":<id>,"path":<relative>}` deletes one from it
 //! - `{"cmd":"eject","drive":<id>}`, `{"cmd":"cancel"}`
 //! - `{"cmd":"extra","paths":[…]}` images from elsewhere to offer,
@@ -192,6 +193,13 @@ fn ventoy_mount(conn: &zbus::blocking::Connection, drive: &Drive) -> anyhow::Res
 }
 
 fn ventoy_install_job(drive: &Drive, label: &str, r: &mut Reporter) -> anyhow::Result<()> {
+    let mount = ventoy_install(drive, label, r)?;
+    r.send("done", json!({ "mount": mount, "ventoy": true }));
+    Ok(())
+}
+
+/// Installs Ventoy and mounts its partition; the mount point ("" if that failed).
+fn ventoy_install(drive: &Drive, label: &str, r: &mut Reporter) -> anyhow::Result<String> {
     let conn = udisks::connect()?;
     r.send("unmount", json!({}));
     udisks::release(&conn, drive)?;
@@ -216,7 +224,37 @@ fn ventoy_install_job(drive: &Drive, label: &str, r: &mut Reporter) -> anyhow::R
         }
         std::thread::sleep(Duration::from_millis(250));
     }
-    r.send("done", json!({ "mount": mount, "ventoy": true }));
+    Ok(mount)
+}
+
+/// Several images onto one stick: Ventoy first unless it is there, then each
+/// copied next to the others. Progress counts all of them together.
+fn ventoy_batch_job(drive: &Drive, images: &[Image], cancel: &AtomicBool, r: &mut Reporter) -> anyhow::Result<()> {
+    let total: u64 = images.iter().map(|i| i.size).sum();
+    let mount = if ventoy::data_volume(drive).is_some() {
+        r.send("mount", json!({}));
+        ventoy_mount(&udisks::connect()?, drive)?
+    } else {
+        if total > ventoy::room(drive.size) {
+            return Err(std::io::Error::new(std::io::ErrorKind::StorageFull, "the images don't fit on the stick together").into());
+        }
+        let m = ventoy_install(drive, "", r)?;
+        anyhow::ensure!(!m.is_empty(), "Ventoy is installed, but its partition did not mount");
+        PathBuf::from(m)
+    };
+    if total > ventoy::free_space(&mount) {
+        return Err(std::io::Error::new(std::io::ErrorKind::StorageFull, "the images don't fit on the stick together").into());
+    }
+    r.reset_rate(0);
+    let mut before = 0u64;
+    for (n, image) in images.iter().enumerate() {
+        r.base["item"] = json!(n + 1);
+        r.base["items"] = json!(images.len());
+        r.base["name"] = json!(image.file);
+        ventoy::copy_to(&image.path, &mount, cancel, |done, _| r.progress("copy", before + done, total))?;
+        before += image.size;
+    }
+    r.send("done", json!({ "ventoy": true, "count": images.len(), "mount": mount }));
     Ok(())
 }
 
@@ -503,6 +541,27 @@ pub fn run() -> anyhow::Result<()> {
                                 };
                                 let (d, label, erase) = (drive.expect("checked"), s("label"), cmd.get("erase").and_then(Value::as_bool).unwrap_or(false));
                                 Box::new(move |r| format_job(&d, fs, &label, erase, r))
+                            }
+                            _ if cmd.get("images").and_then(Value::as_array).is_some_and(|a| a.len() > 1) => {
+                                let wanted: Vec<&str> = cmd["images"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+                                let list = state.image_list();
+                                let picked: Vec<Image> = wanted.iter().filter_map(|w| list.iter().find(|i| i.path == Path::new(w)).cloned()).collect();
+                                let d = drive.expect("checked");
+                                let refuse = if picked.len() != wanted.len() {
+                                    Some(("other", "an image is gone"))
+                                } else if d.read_only {
+                                    Some(("readonly", "the drive is write-protected"))
+                                } else if ventoy::data_volume(&d).is_none() && ventoy::tool().is_none() {
+                                    Some(("noventoy", "Ventoy is not installed"))
+                                } else {
+                                    None
+                                };
+                                if let Some((reason, error)) = refuse {
+                                    rep.send("failed", json!({ "reason": reason, "error": error }));
+                                    continue;
+                                }
+                                let cancel = cancel.clone();
+                                Box::new(move |r| ventoy_batch_job(&d, &picked, &cancel, r))
                             }
                             _ => {
                                 let Some(image) = state.image_list().into_iter().find(|i| i.path == Path::new(&s("image"))) else {
