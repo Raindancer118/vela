@@ -110,10 +110,13 @@ pub fn release(conn: &Connection, drive: &Drive) -> Result<()> {
             .is_some_and(|a| !a.is_empty())
     };
     let unmount = |p: &str| -> Result<()> {
-        if mounted(p) {
-            call(conn, p, devices::FILESYSTEM, "Unmount", &(Options::new(),)).with_context(|| format!("unmounting {p}"))?;
+        if !mounted(p) {
+            return Ok(());
         }
-        Ok(())
+        match call(conn, p, devices::FILESYSTEM, "Unmount", &(Options::new(),)).with_context(|| format!("unmounting {p}")) {
+            Err(e) if !already_released(&e) => Err(e),
+            _ => Ok(()),
+        }
     };
     for (clear, backing) in &unlocked {
         unmount(clear)?;
@@ -123,6 +126,12 @@ pub fn release(conn: &Connection, drive: &Drive) -> Result<()> {
         unmount(p)?;
     }
     Ok(())
+}
+
+/// udisks can still list a mount point the kernel already dropped (it cleans
+/// up lazily): its NotMounted is what we wanted anyway.
+fn already_released(err: &anyhow::Error) -> bool {
+    format!("{err:#}").contains("Error.NotMounted")
 }
 
 /// A new MBR table with one partition over the whole drive, formatted with
@@ -228,6 +237,13 @@ pub fn reason(err: &anyhow::Error) -> &'static str {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn not_mounted_is_released() {
+        let e = anyhow::anyhow!("org.freedesktop.UDisks2.Error.NotMounted: Device `/dev/sda' is not mounted");
+        assert!(already_released(&e));
+        assert!(!already_released(&anyhow::anyhow!("org.freedesktop.UDisks2.Error.DeviceBusy: target is busy")));
+    }
 
     #[test]
     fn values_become_json() {
