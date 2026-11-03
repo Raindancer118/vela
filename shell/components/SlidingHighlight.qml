@@ -23,6 +23,20 @@ Rectangle {
             Qt.callLater(() => root.placed = true);
     }
 
+    Behavior on x {
+        enabled: root.placed
+
+        SpringAnim {
+            duration: Theme.anim.normal
+        }
+    }
+
+    Behavior on width {
+        enabled: root.placed
+
+        Anim {}
+    }
+
     Behavior on y {
         enabled: root.placed
 

@@ -5,6 +5,7 @@
 import QtQuick
 import Quickshell
 import qs
+import qs.components
 import qs.drives
 import "drives/Words.js" as W
 
@@ -78,6 +79,13 @@ ShellRoot {
 
         const w = windowComponent.createObject(root, { visible: false });
         check(w !== null, "window loads");
+
+        // The selection glides (x and y) instead of jumping.
+        glide.target = slotA;
+        Qt.callLater(() => {
+            glide.target = slotB;
+            glideCheck.start();
+        });
         timeout.start();
     }
 
@@ -85,6 +93,33 @@ ShellRoot {
         id: windowComponent
 
         DrivesWindow {}
+    }
+
+    Item {
+        id: slotA
+
+        width: 100
+        height: 40
+    }
+
+    Item {
+        id: slotB
+
+        x: 200
+        y: 300
+        width: 100
+        height: 40
+    }
+
+    SlidingHighlight {
+        id: glide
+    }
+
+    Timer {
+        id: glideCheck
+
+        interval: 60
+        onTriggered: root.check(glide.x > 0 && glide.x < 200 && glide.y > 0 && glide.y < 300, "highlight glides: " + glide.x + "," + glide.y)
     }
 
     // The real backend says hello.

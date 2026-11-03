@@ -485,14 +485,15 @@ FloatingWindow {
                                 model: Drives.images
                                 boundsBehavior: Flickable.StopAtBounds
 
-                                highlight: Rectangle {
-                                    radius: Theme.radius.small
+                                // Glides like the settings' sidebar; ListView's own
+                                // follow is linear and jumps when the list is resent.
+                                highlightFollowsCurrentItem: false
+                                highlight: SlidingHighlight {
+                                    target: list.currentItem
                                     color: Theme.colors.selected
                                     border.width: Theme.size.border
                                     border.color: Theme.colors.selectedRing
                                 }
-                                highlightMoveDuration: Theme.anim.normal
-                                highlightResizeDuration: 0
                                 currentIndex: Drives.images.findIndex(i => i.path === Drives.imagePath)
 
                                 delegate: ImageRow {
@@ -548,18 +549,34 @@ FloatingWindow {
                         Layout.fillHeight: true
                         spacing: Theme.spacing.md
 
-                        GridLayout {
+                        Item {
                             Layout.fillWidth: true
-                            columns: 2
-                            columnSpacing: Theme.spacing.sm
-                            rowSpacing: Theme.spacing.sm
+                            implicitHeight: fsGrid.implicitHeight
                             opacity: win.ventoy ? 0.4 : 1
                             enabled: !win.ventoy
                             Behavior on opacity {
                                 Anim {}
                             }
 
+                            SlidingHighlight {
+                                target: fsRepeater.count > 0 ? fsRepeater.itemAt(["fat32", "exfat", "ntfs", "ext4"].indexOf(win.fs)) : null
+                                radius: Theme.radius.card
+                                color: Theme.colors.selected
+                                border.width: Theme.size.border
+                                border.color: Theme.colors.selectedRing
+                            }
+
+                        GridLayout {
+                            id: fsGrid
+
+                            width: parent.width
+                            columns: 2
+                            columnSpacing: Theme.spacing.sm
+                            rowSpacing: Theme.spacing.sm
+
                             Repeater {
+                                id: fsRepeater
+
                                 model: [
                                     {
                                         k: "fat32",
@@ -593,9 +610,9 @@ FloatingWindow {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 84
                                     radius: Theme.radius.card
-                                    color: current ? Theme.colors.selected : Theme.colors.tile
+                                    color: current ? "transparent" : Theme.colors.tile
                                     border.width: Theme.size.border
-                                    border.color: current ? Theme.colors.selectedRing : Theme.colors.outline
+                                    border.color: current ? "transparent" : Theme.colors.outline
                                     opacity: can ? 1 : 0.5
                                     Behavior on color {
                                         ColorAnim {}
@@ -628,6 +645,7 @@ FloatingWindow {
                                     }
                                 }
                             }
+                        }
                         }
 
                         // Ventoy: many ISOs on one stick.
