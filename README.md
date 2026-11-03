@@ -228,6 +228,22 @@ commands, only the port.
 
 <br>
 
+<a id="drives"></a>
+
+## Drives
+
+Format USB sticks and SD cards and write images to them, without a terminal
+and without root. Right-click a stick in Dolphin (in *Devices*, or inside it):
+*USB stick → Write image…* or *Format…* opens Drives on that stick. An ISO or
+IMG file has *Write to USB stick…*. `vela drives` and “Drives” in the launcher
+open the window as well.
+
+- **Images**: put them into `~/ISOs` (`[drives] image_dir`), packed as .xz, .gz, .zst or .bz2 is fine, or drop them on the window. The system inside is read from the image itself (`.disk/info`, `.treeinfo`, Windows' install files, Proxmox's `.cd-info`, GPT partition names, the boot partition's label) and shown with its logo: the icon theme's (Papirus) or a bundled one from [Simple Icons](https://simpleicons.org) (CC0, `shell/assets/logos`).
+- **Writing**: unmounts the stick, unpacks while writing, reads everything back and compares (`[drives] verify`). udisks2 asks for your password once to write a drive directly.
+- **Formatting**: a new partition table with one partition over the whole stick — FAT32, exFAT, NTFS (needs `ntfs-3g`) or ext4 — and a name; optionally every byte is zeroed first. That also brings back sticks an ISO was written to.
+- **Multiboot with Ventoy**: switch on *Install Ventoy* when formatting (needs `ventoy-bin`; asks for your password). Images are then copied onto the stick next to each other instead of overwriting it, and you pick one when booting.
+- **Safety**: only removable drives are listed; disks with `/`, `/home`, `/boot` or active swap on them never are. Every erase asks first.
+
 <a id="hyprland-without-the-config-file"></a>
 <img alt="Hyprland, without the config file" src="docs/readme/h-hyprland-light.svg#gh-light-mode-only" width="100%">
 <img alt="Hyprland, without the config file" src="docs/readme/h-hyprland-dark.svg#gh-dark-mode-only" width="100%">

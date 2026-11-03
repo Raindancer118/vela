@@ -22,6 +22,10 @@ optdepends=('plocate: indexed system-wide file search'
             'brightnessctl: dimming while away'
             'xdg-desktop-portal-hyprland: screen sharing with vela-share-picker'
             'slurp: sharing a screen region'
+            'udisks2: Drives (format sticks, write images)'
+            'libarchive: Drives recognises systems inside ISOs (bsdtar)'
+            'ventoy-bin: Drives sets up multiboot sticks (AUR)'
+            'ntfs-3g: Drives formats sticks with NTFS'
             'hostapd: Quick Share over an access point of its own when the phone is not on your network'
             'iw: Quick Share over an access point of its own')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$pkgver.tar.gz")
@@ -62,6 +66,9 @@ package() {
   install -Dm644 data/vela-pulse.desktop "$pkgdir/usr/share/applications/vela-pulse.desktop"
   install -Dm644 data/vela-quickshare.desktop "$pkgdir/usr/share/applications/vela-quickshare.desktop"
   install -Dm755 data/vela-quickshare-servicemenu.desktop "$pkgdir/usr/share/kio/servicemenus/vela-quickshare.desktop"
+  install -Dm644 data/vela-drives.desktop "$pkgdir/usr/share/applications/vela-drives.desktop"
+  install -Dm755 data/vela-drives-servicemenu.desktop "$pkgdir/usr/share/kio/servicemenus/vela-drives.desktop"
+  install -Dm755 data/vela-drives-images-servicemenu.desktop "$pkgdir/usr/share/kio/servicemenus/vela-drives-images.desktop"
   for icon in data/icons/*.svg; do
     install -Dm644 "$icon" "$pkgdir/usr/share/icons/hicolor/scalable/apps/$(basename "$icon")"
   done

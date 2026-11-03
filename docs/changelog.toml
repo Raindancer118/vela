@@ -1,10 +1,22 @@
 # One entry per pushed tag. Date, time, lines and commits come from git;
 # scripts/changelog.py refuses to build while a tag has no entry here.
-# area: launcher, panel, hyprland, settings, claude, pulse, updates, nixos, install, share, quickshare, docs
+# area: launcher, panel, hyprland, settings, claude, pulse, updates, nixos, install, share, quickshare, drives, docs
 
 [intro]
 title = "The logbook"
 lede = "Every tag we pushed, newest on top. vela started as a Spotlight clone on a Wednesday evening and was a whole desktop shell by Saturday afternoon."
+
+["0.50.0"]
+area = ["drives", "install"]
+title = "Drives: sticks, cards and images"
+notes = [
+  "Right-click a USB stick in Dolphin: *USB stick → Write image…* or *Format…* opens Drives on that stick; right-click an ISO or IMG file for *Write to USB stick…*. `vela drives` and “Drives” in the launcher open it too.",
+  "Formatting makes the whole stick new: one partition, FAT32, exFAT, NTFS or ext4, a name, optionally every byte zeroed first. A stick that still carries an old ISO is fixed the same way.",
+  "Images live in `~/ISOs` (`drives.image_dir`), also packed as .xz, .gz, .zst or .bz2. Drives recognises the system inside each image from its contents — `.disk/info`, `.treeinfo`, Windows' install files, partition names — not just from the file name, and shows its logo (the icon theme's, else one of 35 bundled from Simple Icons).",
+  "Writing unpacks on the way, reads everything back and compares it. Nothing runs as root: udisks2 asks for your password once when a drive is written directly.",
+  "Multiboot: switch on *Install Ventoy* when formatting, and the stick holds as many ISOs as fit. On a Ventoy stick an image is copied next to the others instead of overwriting the stick, and the window lists and deletes what is on it. Tick several images (or Ctrl-click) and they all go onto the stick at once, with Ventoy installed first if it isn't there yet.",
+  "Only removable drives are offered; a disk the running system lives on never is.",
+]
 
 ["0.49.0"]
 area = ["quickshare"]

@@ -50,6 +50,12 @@ rustPlatform.buildRustPackage {
     sed "s|^Exec=vela|Exec=$out/bin/vela|" data/vela-quickshare.desktop \
       | install -Dm644 /dev/stdin "$out/share/applications/vela-quickshare.desktop"
     # Dolphin ignores service menus that are not executable.
+    sed "s|^Exec=vela|Exec=$out/bin/vela|" data/vela-drives.desktop \
+      | install -Dm644 /dev/stdin "$out/share/applications/vela-drives.desktop"
+    sed "s|^Exec=vela|Exec=$out/bin/vela|" data/vela-drives-servicemenu.desktop \
+      | install -Dm755 /dev/stdin "$out/share/kio/servicemenus/vela-drives.desktop"
+    sed "s|^Exec=vela|Exec=$out/bin/vela|" data/vela-drives-images-servicemenu.desktop \
+      | install -Dm755 /dev/stdin "$out/share/kio/servicemenus/vela-drives-images.desktop"
     sed "s|^Exec=vela|Exec=$out/bin/vela|" data/vela-quickshare-servicemenu.desktop \
       | install -Dm755 /dev/stdin "$out/share/kio/servicemenus/vela-quickshare.desktop"
     # pkexec runs the helper by its path in the system profile (nixosModules.default).

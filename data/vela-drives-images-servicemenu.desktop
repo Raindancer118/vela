@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Service
+MimeType=application/x-cd-image;application/vnd.efi.iso;application/x-iso9660-image;application/vnd.efi.img;application/x-raw-disk-image;application/x-raw-disk-image-xz-compressed;application/x-xz;application/zstd;application/gzip;application/x-bzip2;
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+X-KDE-Protocols=file
+Actions=write
+
+[Desktop Action write]
+Name=Write to USB stick…
+Name[de]=Auf USB-Stick schreiben…
+Icon=drive-removable-media
+Exec=vela drives image %F

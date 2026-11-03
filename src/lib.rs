@@ -8,6 +8,7 @@ pub mod apps;
 pub mod claude_usage;
 pub mod components;
 pub mod config;
+pub mod drives;
 pub mod history;
 pub mod hypranim;
 pub mod hyprconf;

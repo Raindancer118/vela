@@ -18,3 +18,4 @@ component share-picker  full,panel                   Screen sharing: vela's pick
 component updates       full,launcher,panel          Updates: pacman, AUR and Flatpak in Settings and the panel
 component pulse         full,launcher,panel          Pulse: task manager with apps, performance, diagnosis and services
 component quickshare    full,panel                   Quick Share: send and receive files with Android and Samsung phones nearby (needs the panel)
+component drives        full,launcher,panel          Drives: format USB sticks and SD cards and write images to them (right-click in Dolphin)

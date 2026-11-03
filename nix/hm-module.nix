@@ -28,6 +28,7 @@ let
     updates = false;
     pulse = true;
     quickshare = true;
+    drives = true;
   };
   components = defaultComponents // cfg.components;
 in
@@ -64,7 +65,8 @@ in
         hyprland, panel, idle, share_picker (sets vela's picker in
         ~/.config/hypr/xdph.conf), updates (pacman/Flatpak, off by default) and
         pulse (the task manager, Ctrl+Shift+Esc) and quickshare (send and
-        receive files with Android and Samsung phones nearby; needs panel).
+        receive files with Android and Samsung phones nearby; needs panel) and
+        drives (format USB sticks, write images, Ventoy; needs udisks2).
         Unset ones keep their default; all but share_picker and updates are on.
         Quick Share needs open ports, which the module does not touch; on NixOS:
         `networking.firewall.allowedTCPPorts = [ 47392 ];` and

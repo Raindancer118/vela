@@ -99,6 +99,14 @@ enum Cmd {
         /// Files to send (`send`).
         files: Vec<std::path::PathBuf>,
     },
+    /// Drives: format USB sticks and SD cards, write images to them. `open`
+    /// shows the window (default; paths: image files to offer, a folder on a
+    /// stick to pick that stick), `serve` is the window's backend (JSON lines).
+    Drives {
+        #[arg(default_value = "open", value_parser = ["open", "image", "format", "serve"])]
+        action: String,
+        paths: Vec<std::path::PathBuf>,
+    },
     /// Print which parts of vela are installed (chosen in install.sh).
     Components,
     /// Print the control center settings as JSON (used by the shell).
@@ -165,6 +173,7 @@ fn main() -> ExitCode {
         }
         Cmd::Pulse { action } => return pulse(&action),
         Cmd::Quickshare { action, files } => return quickshare(&action, &files),
+        Cmd::Drives { action, paths } => return drives(&action, &paths),
         Cmd::Components => {
             print_components();
             return ExitCode::SUCCESS;
@@ -472,18 +481,44 @@ fn quickshare(action: &str, files: &[std::path::PathBuf]) -> ExitCode {
     }
 }
 
+fn drives(action: &str, paths: &[std::path::PathBuf]) -> ExitCode {
+    if action == "serve" {
+        let _life = Lifecycle::start(true);
+        return match vela::drives::serve::run() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("vela: {e:#}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    if !vela::components::has(vela::components::Component::Drives) {
+        eprintln!("vela: drives: the Drives component is not installed");
+        return ExitCode::FAILURE;
+    }
+    let tab = if action == "open" { "" } else { action };
+    let request = vela::drives::open_request(paths, tab).to_string();
+    open_window("drives", &[("VELA_DRIVES_OPEN", &request)], &["call", "drives", "open", &request])
+}
+
 /// Shows the running Pulse window or starts one (its own Quickshell instance).
 fn open_pulse() -> ExitCode {
+    open_window("pulse", &[], &["call", "pulse", "present"])
+}
+
+/// Brings up `<name>.qml`, a window of its own Quickshell instance: asks a
+/// running one first (`present` must print true), else starts it with `env`.
+fn open_window(name: &str, env: &[(&str, &str)], present: &[&str]) -> ExitCode {
     let exe = std::env::current_exe().ok();
     let Some(dir) = shell::find_shell_dir(std::env::var_os("VELA_SHELL_DIR").as_deref(), &shell::shell_dir_candidates(exe.as_deref())) else {
-        eprintln!("vela: Pulse files not found (set VELA_SHELL_DIR or reinstall vela)");
+        eprintln!("vela: {name}: shell files not found (set VELA_SHELL_DIR or reinstall vela)");
         return ExitCode::FAILURE;
     };
     let Some(qs) = paths::find_executable("qs").or_else(|| paths::find_executable("quickshell")) else {
         eprintln!("vela: Quickshell (qs) is not installed");
         return ExitCode::FAILURE;
     };
-    let entry = dir.join("pulse.qml");
+    let entry = dir.join(format!("{name}.qml"));
     let ipc = |args: &[&str]| {
         std::process::Command::new(&qs)
             .arg("-p")
@@ -497,13 +532,13 @@ fn open_pulse() -> ExitCode {
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
     };
     // Not `show`: `qs ipc call pulse show` is read as `qs ipc show` (list).
-    if ipc(&["call", "pulse", "present"]).as_deref() == Some("true") {
+    if ipc(present).as_deref() == Some("true") {
         return ExitCode::SUCCESS;
     }
     // Running without a window (closed by an older Pulse, a reload that lost
     // it) or too old to say: end it and start a fresh one.
     if ipc(&["show"]).is_some() {
-        ipc(&["call", "pulse", "quit"]);
+        ipc(&["call", name, "quit"]);
         for _ in 0..30 {
             if ipc(&["show"]).is_none() {
                 break;
@@ -516,6 +551,7 @@ fn open_pulse() -> ExitCode {
     if let Some(exe) = exe {
         cmd.env("VELA_BIN", exe);
     }
+    cmd.envs(env.iter().copied());
     match cmd
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
@@ -524,7 +560,7 @@ fn open_pulse() -> ExitCode {
     {
         Ok(s) if s.success() => ExitCode::SUCCESS,
         Ok(s) => {
-            eprintln!("vela: Pulse exited with {s}");
+            eprintln!("vela: {name} exited with {s}");
             ExitCode::FAILURE
         }
         Err(e) => {

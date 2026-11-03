@@ -212,7 +212,8 @@ if command -v pacman >/dev/null; then
     optional=(xdg-utils)
     has launcher && optional+=(plocate)
     { has launcher || has claude; } && optional+=(kitty)
-    { has panel || has share-picker || has pulse; } && optional+=(quickshell)
+    { has panel || has share-picker || has pulse || has drives; } && optional+=(quickshell)
+    has drives && optional+=(udisks2 libarchive)
     has idle && optional+=(hypridle)
     has share-picker && optional+=(slurp xdg-desktop-portal-hyprland)
     for p in "${optional[@]}"; do
@@ -263,13 +264,13 @@ install -Dm644 contrib/hyprland/vela.lua "$HYPRDIR/vela.lua"
 stop() { pkill -f "^$BINDIR/vela $1\$" 2>/dev/null || true; }
 
 # ------------------------------------------------------------ control center files
-# The panel, the share picker and Pulse all run from the shell directory.
-if has panel || has share-picker || has pulse; then
+# The panel, the share picker, Pulse and Drives all run from the shell directory.
+if has panel || has share-picker || has pulse || has drives; then
     # Overwrite in place (cp keeps the files) so a running shell notices the
     # change and reloads itself; drop files that no longer exist.
     mkdir -p "$DATADIR/vela/shell"
-    entries=(shell.qml pulse.qml share-picker.qml)
-    (cd shell && find . -type f \( -name '*.qml' -o -name '*.js' -o -name '*.svg' \) ! -name 'test-*' ! -path ./shell.qml ! -path ./pulse.qml ! -path ./share-picker.qml -exec sh -c 'mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2"' _ "$DATADIR/vela/shell" {} \;)
+    entries=(shell.qml pulse.qml share-picker.qml drives.qml)
+    (cd shell && find . -type f \( -name '*.qml' -o -name '*.js' -o -name '*.svg' \) ! -name 'test-*' ! -path ./shell.qml ! -path ./pulse.qml ! -path ./share-picker.qml ! -path ./drives.qml -exec sh -c 'mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2"' _ "$DATADIR/vela/shell" {} \;)
     # The entry files last, after a pause and always different: a running shell,
     # Pulse or share picker may have reloaded mid-copy (old and new files mixed,
     # or a file read while empty — Pulse then lost its window for good); this
@@ -292,7 +293,7 @@ if has panel && ! had panel; then
 fi
 
 # Panel dropped but the shell files stay (share picker or Pulse).
-if removed panel && { has share-picker || has pulse; }; then
+if removed panel && { has share-picker || has pulse || has drives; }; then
     stop shell
     say "control center removed"
 fi
@@ -344,6 +345,18 @@ if has quickshare && has panel; then
     fi
 else
     rm -f "$DATADIR/applications/vela-quickshare.desktop" "$DATADIR/kio/servicemenus/vela-quickshare.desktop"
+fi
+
+# ------------------------------------------------------------ Drives
+# Format sticks, write images: Dolphin's context menu and an app entry.
+if has drives; then
+    sed "s|^Exec=vela|Exec=$BINDIR/vela|" data/vela-drives.desktop | install -Dm644 /dev/stdin "$DATADIR/applications/vela-drives.desktop"
+    sed "s|^Exec=vela|Exec=$BINDIR/vela|" data/vela-drives-servicemenu.desktop | install -Dm755 /dev/stdin "$DATADIR/kio/servicemenus/vela-drives.desktop"
+    sed "s|^Exec=vela|Exec=$BINDIR/vela|" data/vela-drives-images-servicemenu.desktop | install -Dm755 /dev/stdin "$DATADIR/kio/servicemenus/vela-drives-images.desktop"
+    had drives || say "Drives: right-click a stick in Dolphin (USB stick → Write image… / Format…), images go to ~/ISOs"
+else
+    rm -f "$DATADIR/applications/vela-drives.desktop" "$DATADIR/kio/servicemenus/vela-drives.desktop" "$DATADIR/kio/servicemenus/vela-drives-images.desktop"
+    removed drives && pkill -f "qs -p $DATADIR/vela/shell/drives.qml" 2>/dev/null || true
 fi
 
 # ------------------------------------------------------------ idle
@@ -435,7 +448,7 @@ if [[ -f "$HYPRDIR/hyprland.lua" ]]; then
     fi
     # vela.lua reads the selection when the config loads.
     lua_changed=0
-    for c in launcher panel idle hyprland pulse; do
+    for c in launcher panel idle hyprland pulse quickshare drives; do
         [[ "$(has "$c" && echo 1)" == "$(had "$c" && echo 1)" ]] || lua_changed=1
     done
     if ((lua_changed)) && [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] && grep -qF 'hypr/vela.lua' "$HYPRDIR/hyprland.lua"; then

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Drives
+Name[de]=Laufwerke
+GenericName=USB stick and image writer
+GenericName[de]=USB-Sticks formatieren und Images schreiben
+Comment=Format USB sticks and SD cards, write ISO images, set up Ventoy
+Comment[de]=USB-Sticks und SD-Karten formatieren, ISO-Images schreiben, Ventoy einrichten
+Exec=vela drives open %F
+Icon=drive-removable-media
+Terminal=false
+Categories=System;Utility;
+MimeType=application/x-cd-image;application/vnd.efi.iso;application/x-iso9660-image;application/vnd.efi.img;application/x-raw-disk-image;application/x-raw-disk-image-xz-compressed;
+Keywords=usb;stick;format;formatieren;iso;image;img;flash;etcher;rufus;ventoy;sd;card;karte;bootable;bootfähig;

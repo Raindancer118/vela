@@ -63,6 +63,9 @@ check "minimal: pulse off" key pulse false
 check "minimal: no quickshare menu entry" test ! -e "$DATA/applications/vela-quickshare.desktop"
 check "minimal: no quickshare service menu" test ! -e "$DATA/kio/servicemenus/vela-quickshare.desktop"
 check "minimal: quickshare off" key quickshare false
+check "minimal: no drives menu entry" test ! -e "$DATA/applications/vela-drives.desktop"
+check "minimal: no drives service menu" test ! -e "$DATA/kio/servicemenus/vela-drives.desktop"
+check "minimal: drives off" key drives false
 check "minimal: no shell" test ! -e "$DATA/vela/shell"
 check "minimal: vela.lua" test -f "$HOME/.config/hypr/vela.lua"
 check "minimal: unit" test -f "$HOME/.config/systemd/user/vela.service"
@@ -87,7 +90,7 @@ check "full: pulse qml" test -f "$DATA/vela/shell/pulse.qml"
 check "full: pulse js" test -f "$DATA/vela/shell/pulse/Fmt.js"
 # Entry files are written last with a fresh stamp, so a running instance
 # reloads once more after a copy it may have caught half done.
-for e in shell.qml pulse.qml share-picker.qml; do
+for e in shell.qml pulse.qml share-picker.qml drives.qml; do
     check "full: $e written last" grep -q '^// installed [0-9]*$' "$DATA/vela/shell/$e"
 done
 check "full: pulse menu entry" grep -qx "Exec=$BIN/vela-pulse" "$DATA/applications/vela-pulse.desktop"
@@ -97,6 +100,11 @@ check "full: quickshare menu entry" grep -qx "Exec=$BIN/vela quickshare send %F"
 check "full: quickshare service menu" grep -qx "Exec=$BIN/vela quickshare send %F" "$DATA/kio/servicemenus/vela-quickshare.desktop"
 check "full: quickshare service menu is executable" test -x "$DATA/kio/servicemenus/vela-quickshare.desktop"
 check "full: quickshare on" key quickshare true
+check "full: drives qml" test -f "$DATA/vela/shell/drives/DrivesWindow.qml"
+check "full: drives menu entry" grep -qx "Exec=$BIN/vela drives open %F" "$DATA/applications/vela-drives.desktop"
+check "full: drives service menu" grep -qx "Exec=$BIN/vela drives format %f" "$DATA/kio/servicemenus/vela-drives.desktop"
+check "full: drives image service menu" test -x "$DATA/kio/servicemenus/vela-drives-images.desktop"
+check "full: drives on" key drives true
 check "full: firewall hint" grep -q "Quick Share: open TCP 47392 and UDP 5353" "$tmp/out.log"
 check "full: no test files" sh -c "! ls '$DATA/vela/shell' | grep -q '^test-'"
 check "full: xdph.conf" grep -q "custom_picker_binary = $BIN/vela-share-picker" "$HOME/.config/hypr/xdph.conf"
@@ -128,13 +136,16 @@ check "panel: xdph block removed" test ! -e "$HOME/.config/hypr/xdph.conf"
 check "panel: shell kept" test -f "$DATA/vela/shell/shell.qml"
 check "panel: MCP still registered" test -e "$HOME/.mcp-registered"
 
-# Dropping Claude unregisters the MCP server; Pulse alone keeps the shell
-# files, dropping it too removes them.
+# Dropping Claude unregisters the MCP server; Pulse or Drives alone keep the
+# shell files, dropping both removes them.
 installed --without claude,panel -y
 check "drop: MCP removed" test ! -e "$HOME/.mcp-registered"
 check "drop: pulse keeps the shell" test -f "$DATA/vela/shell/pulse.qml"
 installed --without pulse -y
+check "drop: drives keeps the shell" test -f "$DATA/vela/shell/drives.qml"
+installed --without drives -y
 check "drop: shell removed" test ! -e "$DATA/vela/shell"
+check "drop: drives menu removed" test ! -e "$DATA/kio/servicemenus/vela-drives.desktop"
 check "drop: pulse removed" test ! -e "$BIN/vela-pulse"
 check "drop: pulse menu entry removed" test ! -e "$DATA/applications/vela-pulse.desktop"
 check "drop: idle kept" key idle true
@@ -174,6 +185,7 @@ check "uninstall: vela gone" test ! -e "$BIN/vela"
 check "uninstall: pulse gone" test ! -e "$BIN/vela-pulse"
 check "uninstall: quickshare menu entry gone" test ! -e "$DATA/applications/vela-quickshare.desktop"
 check "uninstall: quickshare service menu gone" test ! -e "$DATA/kio/servicemenus/vela-quickshare.desktop"
+check "uninstall: drives service menus gone" test ! -e "$DATA/kio/servicemenus/vela-drives.desktop" -a ! -e "$DATA/kio/servicemenus/vela-drives-images.desktop"
 check "uninstall: selection gone" test ! -e "$DATA/vela/components.toml"
 check "uninstall: config kept" test -f "$XDG_CONFIG_HOME/vela/config.toml"
 check "uninstall: hyprland.lua kept" test -f "$HOME/.config/hypr/hyprland.lua"
