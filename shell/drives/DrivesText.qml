@@ -79,10 +79,12 @@ Singleton {
         case "mount":
             return I18n.tr("Mounting…");
         case "copy":
+            if (j.items > 1)
+                return I18n.tr("Copying image %1 of %2", j.item, j.items);
             return j.kind === "add" ? I18n.tr("Copying into the image folder") : I18n.tr("Copying onto the stick");
         case "done":
             return {
-                write: j.ventoy ? I18n.tr("The image is on the stick") : I18n.tr("The stick is ready to boot"),
+                write: j.count > 1 ? I18n.tr("%1 images are on the stick", j.count) : j.ventoy ? I18n.tr("The image is on the stick") : I18n.tr("The stick is ready to boot"),
                 format: j.ventoy ? I18n.tr("Ventoy is on the stick") : I18n.tr("The stick is formatted"),
                 eject: I18n.tr("You can unplug the stick now"),
                 add: I18n.tr("The image is in the folder"),
@@ -104,6 +106,8 @@ Singleton {
             return I18n.tr("Writing to a drive directly needs your permission once.");
         if (j.phase === "ventoy")
             return I18n.tr("Ventoy needs administrator rights; the system asks for your password.");
+        if (j.phase === "copy" && j.items > 1)
+            return j.name ?? "";
         if (j.phase === "erase")
             return I18n.tr("Every byte is overwritten with zeros. That takes a while.");
         if (j.phase === "cancelled")
@@ -136,6 +140,8 @@ Singleton {
             return I18n.tr("The image file is damaged (unpacking failed). Download it again.");
         case "readonly":
             return I18n.tr("The stick is write-protected. Check the little switch on its side.");
+        case "noventoy":
+            return I18n.tr("Several images need Ventoy. Install the package ventoy-bin.");
         case "running":
             return I18n.tr("Something else is still running.");
         case "backend":

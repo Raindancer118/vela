@@ -78,6 +78,21 @@ FloatingWindow {
         };
     }
 
+    function askSeveral(): void {
+        if (!drive)
+            return;
+        if (ventoyStick) {
+            Drives.writeSeveral();
+            return;
+        }
+        confirm = {
+            title: I18n.tr("Put %1 images onto “%2”?", Drives.pickedImages.length, DrivesText.name(drive)),
+            text: I18n.tr("Ventoy is installed first, so everything on %1 (%2) is erased. This can't be undone.", drive.device, W.nominal(drive.size, Qt.locale())),
+            label: I18n.tr("Erase and install"),
+            action: () => Drives.writeSeveral()
+        };
+    }
+
     function askFormat(): void {
         if (!drive)
             return;
@@ -490,6 +505,7 @@ FloatingWindow {
                                 highlightFollowsCurrentItem: false
                                 highlight: SlidingHighlight {
                                     target: list.currentItem
+                                    opacity: Drives.several ? 0 : 1
                                     color: Theme.colors.selected
                                     border.width: Theme.size.border
                                     border.color: Theme.colors.selectedRing
@@ -502,8 +518,11 @@ FloatingWindow {
                                     width: list.width
                                     image: modelData
                                     selected: modelData.path === Drives.imagePath
+                                    checked: Drives.picked.includes(modelData.path)
+                                    several: Drives.several
                                     fits: Drives.fits(modelData, win.drive)
-                                    onPicked: Drives.imagePath = modelData.path
+                                    onPicked: Drives.pick(modelData.path)
+                                    onToggled: Drives.toggle(modelData.path)
                                     onKeep: Drives.keep(modelData.path)
                                 }
                             }
@@ -514,30 +533,57 @@ FloatingWindow {
                             spacing: Theme.spacing.md
 
                             Switch {
-                                visible: !win.ventoyStick
+                                visible: !win.ventoyStick && !Drives.several
                                 checked: win.verify
                                 onToggled: win.verify = !win.verify
                             }
 
                             StyledText {
-                                visible: !win.ventoyStick
+                                visible: !win.ventoyStick && !Drives.several
                                 Layout.fillWidth: true
                                 text: I18n.tr("Read back and compare afterwards")
                                 color: Theme.colors.textMuted
                                 wrapMode: Text.Wrap
                             }
 
+                            // Several: how much, and what happens to the stick.
+                            StyledText {
+                                visible: Drives.several
+                                Layout.fillWidth: true
+                                text: {
+                                    const total = W.size(Drives.pickedImages.reduce((a, i) => a + i.size, 0), Qt.locale());
+                                    const head = I18n.tr("%1 images · %2", Drives.pickedImages.length, total);
+                                    if (!Drives.severalFit(win.drive))
+                                        return head + " · " + I18n.tr("too big for the stick together");
+                                    if (win.ventoyStick)
+                                        return head + " · " + I18n.tr("copied next to the others");
+                                    return head + " · " + (Drives.hello.ventoy ? I18n.tr("Ventoy is installed first") : I18n.tr("needs Ventoy (package ventoy-bin)"));
+                                }
+                                color: Drives.severalFit(win.drive) && (win.ventoyStick || Drives.hello.ventoy) ? Theme.colors.textMuted : Theme.pulse.crit
+                                wrapMode: Text.Wrap
+                            }
+
                             Item {
-                                visible: win.ventoyStick
+                                visible: win.ventoyStick && !Drives.several
                                 Layout.fillWidth: true
                             }
 
                             PillButton {
+                                visible: !Drives.several
                                 style: win.ventoyStick ? "filled" : "danger"
                                 icon: win.ventoyStick ? "download" : "disc"
                                 text: win.ventoyStick ? I18n.tr("Copy onto the stick") : I18n.tr("Write to the stick")
                                 enabled: !!Drives.image && !Drives.busy && !win.drive?.read_only && Drives.fits(Drives.image, win.drive)
                                 onClicked: win.askWrite()
+                            }
+
+                            PillButton {
+                                visible: Drives.several
+                                style: win.ventoyStick ? "filled" : "danger"
+                                icon: "download"
+                                text: win.ventoyStick ? I18n.tr("Copy %1 onto the stick", Drives.pickedImages.length) : I18n.tr("Put %1 onto the stick", Drives.pickedImages.length)
+                                enabled: !Drives.busy && !win.drive?.read_only && Drives.severalFit(win.drive) && (win.ventoyStick || (Drives.hello.ventoy ?? false))
+                                onClicked: win.askSeveral()
                             }
                         }
                     }

@@ -64,7 +64,7 @@ ShellRoot {
             const t = DrivesText.phase({ phase: "done", kind: kind });
             check(german(t), "done " + kind + ": " + t);
         }
-        for (const reason of ["auth", "busy", "gone", "space", "verify", "unpack", "readonly", "running", "backend"]) {
+        for (const reason of ["auth", "busy", "gone", "space", "verify", "unpack", "readonly", "running", "backend", "noventoy"]) {
             const t = DrivesText.detail({ phase: "failed", reason: reason });
             check(t !== "" && german(t), "reason " + reason + ": " + t);
         }
@@ -76,6 +76,30 @@ ShellRoot {
         Drives.apply(JSON.stringify({ type: "drives", drives: [Object.assign({}, stick, { id: "/b/sdz", device: "/dev/sdz" })] }));
         check(Drives.driveId === "/b/sdz" && Drives.wantedDevice === "", "wanted drive picked");
         check(Drives.fits({ written: 20e9, size: 1 }, Drives.drive) === false && Drives.fits({ written: 0, size: 1 }, Drives.drive), "fits");
+
+        // Several images: Ctrl-click adds, a plain click goes back to one.
+        Drives.apply(JSON.stringify({ type: "images", images: [
+            { path: "/i/a.iso", size: 3e9, written: 3e9 },
+            { path: "/i/b.iso", size: 4e9, written: 4e9 },
+            { path: "/i/c.iso", size: 9e9, written: 9e9 }
+        ] }));
+        Drives.pick("/i/a.iso");
+        check(!Drives.several, "one picked");
+        Drives.toggle("/i/b.iso");
+        check(Drives.several && Drives.pickedImages.length === 2, "two picked");
+        check(Drives.severalFit(Drives.drive), "7 GB fit a fresh 16 GB stick");
+        Drives.toggle("/i/c.iso");
+        check(!Drives.severalFit(Drives.drive), "16 GB don't fit a fresh 16 GB stick");
+        check(Drives.severalFit(Object.assign({}, Drives.drive, { ventoy: { mount: "/m", free: 20e9 } })), "fit into Ventoy's free space");
+        Drives.toggle("/i/c.iso");
+        Drives.toggle("/i/b.iso");
+        Drives.toggle("/i/a.iso");
+        check(Drives.picked.length === 1 && Drives.picked[0] === "/i/a.iso", "the last one stays");
+        Drives.pick("/i/c.iso");
+        check(!Drives.several && Drives.imagePath === "/i/c.iso", "plain click: one again");
+        const copying = DrivesText.phase({ phase: "copy", kind: "write", item: 2, items: 3 });
+        check(copying === I18n.tr("Copying image %1 of %2", 2, 3) && german("Copying image %1 of %2"), "copying several");
+        check(german("%1 images are on the stick") && DrivesText.phase({ phase: "done", kind: "write", count: 3 }) === I18n.tr("%1 images are on the stick", 3), "several done");
 
         const w = windowComponent.createObject(root, { visible: false });
         check(w !== null, "window loads");

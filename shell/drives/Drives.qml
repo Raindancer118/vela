@@ -20,6 +20,10 @@ Singleton {
     property string tab: "image"
     property string driveId: ""
     property string imagePath: ""
+    // Several images (Ctrl-click or the check): they go onto a Ventoy stick.
+    property var picked: []
+    readonly property var pickedImages: picked.map(p => images.find(i => i.path === p)).filter(i => !!i)
+    readonly property bool several: pickedImages.length > 1
     // What `vela drives` asked for before the drives were listed.
     property string wantedDevice: ""
 
@@ -49,6 +53,7 @@ Singleton {
                 paths: request.images
             });
             imagePath = request.images[0];
+            picked = request.images.slice();
         }
         if (request.drive) {
             wantedDevice = request.drive;
@@ -84,6 +89,41 @@ Singleton {
                 image: image.path,
                 verify: verify
             });
+    }
+
+    function pick(path: string): void {
+        imagePath = path;
+        picked = [path];
+    }
+
+    // Adds or drops one; the last one left stays the single choice.
+    function toggle(path: string): void {
+        const now = picked.includes(path) ? picked.filter(p => p !== path) : picked.concat([path]);
+        if (now.length === 0)
+            return;
+        picked = now;
+        imagePath = now.includes(imagePath) ? imagePath : now[now.length - 1];
+    }
+
+    // Several images: Ventoy goes onto the stick first unless it is there.
+    function writeSeveral(): void {
+        if (drive && several)
+            start({
+                cmd: "write",
+                drive: drive.id,
+                images: pickedImages.map(i => i.path)
+            });
+    }
+
+    // Whether the picked images fit: on a Ventoy stick into its free space,
+    // else onto a fresh one (Ventoy's partition and exFAT take ~1 %).
+    function severalFit(d: var): bool {
+        if (!d)
+            return true;
+        const total = pickedImages.reduce((a, i) => a + i.size, 0);
+        if (d.ventoy)
+            return !d.ventoy.mount || total <= d.ventoy.free;
+        return total <= d.size * 0.99 - 64 * 1048576;
     }
 
     function format(fs: string, label: string, erase: bool, ventoy: bool): void {
@@ -172,6 +212,9 @@ Singleton {
             images = m.images;
             if (!images.some(i => i.path === imagePath))
                 imagePath = images.length > 0 ? images[0].path : "";
+            picked = picked.filter(p => images.some(i => i.path === p));
+            if (picked.length === 0 && imagePath !== "")
+                picked = [imagePath];
             break;
         case "job":
             // Only ours (a refused second job reports with its own id).
@@ -179,7 +222,7 @@ Singleton {
                 job = Object.assign({}, job, m.job);
                 // A kept image: show it from the folder from now on.
                 if (job.kind === "add" && job.phase === "done" && job.path)
-                    imagePath = job.path;
+                    pick(job.path);
             }
             break;
         }
