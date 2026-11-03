@@ -14,7 +14,7 @@ notes = [
   "Formatting makes the whole stick new: one partition, FAT32, exFAT, NTFS or ext4, a name, optionally every byte zeroed first. A stick that still carries an old ISO is fixed the same way.",
   "Images live in `~/ISOs` (`drives.image_dir`), also packed as .xz, .gz, .zst or .bz2. Drives recognises the system inside each image from its contents — `.disk/info`, `.treeinfo`, Windows' install files, partition names — not just from the file name, and shows its logo (the icon theme's, else one of 35 bundled from Simple Icons).",
   "Writing unpacks on the way, reads everything back and compares it. Nothing runs as root: udisks2 asks for your password once when a drive is written directly.",
-  "Multiboot: switch on *Install Ventoy* when formatting, and the stick holds as many ISOs as fit. On a Ventoy stick an image is copied next to the others instead of overwriting the stick, and the window lists and deletes what is on it.",
+  "Multiboot: switch on *Install Ventoy* when formatting, and the stick holds as many ISOs as fit. On a Ventoy stick an image is copied next to the others instead of overwriting the stick, and the window lists and deletes what is on it. Tick several images (or Ctrl-click) and they all go onto the stick at once, with Ventoy installed first if it isn't there yet.",
   "Only removable drives are offered; a disk the running system lives on never is.",
 ]
 
